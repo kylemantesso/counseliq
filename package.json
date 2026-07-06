@@ -1,0 +1,51 @@
+{
+  "name": "app-template",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "npm@10.9.2",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "init": "node scripts/init.mjs",
+    "deploy": "node scripts/init.mjs --deploy",
+    "env:sync:convex-email": "node scripts/sync-convex-email-env.mjs",
+    "dev": "npm run dev --workspace=web",
+    "dev:web": "npm run dev --workspace=web",
+    "dev:mobile": "npm run dev --workspace=mobile",
+    "build:mobile:dev": "npm run build:dev --workspace=mobile",
+    "dev:all": "concurrently \"npm run convex:dev\" \"turbo run dev --parallel --filter=web --filter=mobile\"",
+    "build": "turbo run build",
+    "build:web": "npm run build --workspace=web",
+    "build:mobile": "npm run build --workspace=mobile",
+    "convex:dev": "convex dev",
+    "convex:deploy": "convex deploy",
+    "typecheck": "turbo run typecheck",
+    "lint": "turbo run lint"
+  },
+  "dependencies": {
+    "@convex-dev/rate-limiter": "^0.3.2",
+    "@convex-dev/resend": "^0.2.5",
+    "@convex-dev/workpool": "^0.4.7",
+    "@react-email/components": "^1.0.12",
+    "@react-email/render": "^2.0.9",
+    "convex-helpers": "^0.1.119",
+    "expo-server-sdk": "^6.1.0",
+    "react-email": "^6.6.3"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "convex": "^1.39.1",
+    "turbo": "^2.5.4",
+    "typescript": "~5.9.3"
+  },
+  "overrides": {
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "react-native": "0.81.5",
+    "react-native-svg": "^15.15.5",
+    "expo-constants": "~18.0.13",
+    "lightningcss": "1.30.1"
+  }
+}

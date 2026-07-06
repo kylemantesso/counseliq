@@ -1,0 +1,14 @@
+---
+description: Convex backend conventions
+globs: convex/**
+alwaysApply: false
+---
+
+# Convex backend
+
+- All backend code lives in repo-root `convex/` — not in apps or packages.
+- After changing schema or functions, run `npm run convex:dev` to regenerate types.
+- Client code imports API via `@app-template/app/db/api` — do not import `_generated` directly from apps.
+- Auth mutations live in `convex/auth.ts`; schema in `convex/schema.ts`.
+- Do not edit files in `convex/_generated/`.
+- **User-facing failures:** throw `appError(AppErrorCode.X)` from `convex/errors.ts` — not plain `Error` or string `ConvexError`. Add new codes to `AppErrorCode` and map them in `packages/app/src/errors/messages.ts`.

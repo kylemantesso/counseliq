@@ -1,0 +1,27 @@
+---
+description: PostHog product analytics conventions for shared app code
+globs: packages/app/**
+alwaysApply: false
+---
+
+# Product analytics (PostHog)
+
+Product analytics lives in `packages/app/src/analytics/`. Platform init stays in `apps/web` (`instrumentation-client.ts`) and `apps/mobile` (`PostHogRuntime` in `_layout.tsx`).
+
+## APIs (shared code)
+
+| API | When to use |
+|-----|-------------|
+| `trackProductEvent(event, category, properties?)` | **Default** — outcome events from hooks, handlers, mutations |
+| `AnalyticsEvent` | Named constants — never hard-code event strings |
+| `useAnalytics()` | Rare — only when you need `identify` / `reset` / low-level capture |
+
+Import from `@app-template/app` or relative `../analytics/...`.
+
+## Do / don't
+
+- **Do** track user-visible outcomes at success-path choke points
+- **Don't** import `posthog-js` or `posthog-react-native` in screens — use `trackProductEvent`
+- **Don't** track PII beyond what `PostHogAuthSync` already identifies
+
+See root `AGENTS.md` for env vars.

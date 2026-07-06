@@ -1,0 +1,73 @@
+---
+description: Design system package conventions
+globs: packages/ui/**
+alwaysApply: false
+---
+
+# packages/ui — design system (Gluestack v5)
+
+Docs: [gluestack.io/llms.txt](https://gluestack.io/llms.txt) · [v5.gluestack.io](https://v5.gluestack.io/ui/docs)
+
+## Stack
+
+- **Gluestack UI v5** (`@gluestack-ui/core`, `@gluestack-ui/utils`)
+- **NativeWind v5** + **Tailwind CSS v4** (CSS-first — no `tailwind.config.js`)
+- **PostCSS** via `@tailwindcss/postcss` — do **not** add `nativewind/babel`
+
+## Boundaries
+
+- Presentational components only. No `useAuth`, Convex, Solito, or screen-level logic.
+- Style with semantic Tailwind utilities on Gluestack/RN components. No raw `StyleSheet.create`.
+- Export every public component from `packages/ui/index.ts`.
+- Export `UIProvider` and `@app-template/ui/global.css` for app shells.
+
+## Theme (semantic tokens)
+
+v5 uses **shadcn-inspired semantic tokens**, not numerical scales (`primary-500`, `typography-900`).
+
+| Token | Typical use |
+|-------|-------------|
+| `background`, `foreground` | Page / body |
+| `card`, `popover` | Surfaces |
+| `primary`, `primary-foreground` | Brand actions |
+| `secondary`, `secondary-foreground` | Secondary surfaces |
+| `muted`, `muted-foreground` | Subtle backgrounds / helper text |
+| `accent`, `accent-foreground` | Highlights |
+| `destructive` | Errors / delete |
+| `border`, `input`, `ring` | Borders, inputs, focus |
+
+Define tokens in **both** places (keep in sync):
+
+1. `global.css` — `@layer theme` + `@theme inline` (web + Tailwind)
+2. `src/components/ui/gluestack-ui-provider/config.ts` — `vars({ '--primary': '45 45 45', ... })` (RN runtime)
+
+RGB values are space-separated **without** `rgb()` so opacity modifiers work (`bg-primary/50`).
+
+## Add Gluestack primitives
+
+From **repo root** (monorepo mode):
+
+```bash
+npx gluestack-ui@latest add button --monorepo --path packages/ui/src/components/ui -y
+```
+
+Then export from `packages/ui/index.ts`. Config lives in root `gluestack-ui.config.json`.
+
+## v5 component APIs (do not use v3 props)
+
+- **Button:** `variant="default" | "outline" | "secondary" | "destructive" | "ghost" | "link"` — no `action="primary"`
+- **Alert:** `variant="default" | "destructive"` — no `action="error"`
+- **Input:** no `variant="outline"` prop (border is built into v5 base styles)
+
+## Project-specific notes
+
+- Generated components import `cssInterop` from `src/nativewind-compat.ts` (shim — removed from NativeWind v5).
+- Types: `react-native-css-env.d.ts` (`/// <reference types="react-native-css/types" />`).
+- Do **not** recreate `tailwind.config.js` or `nativewind-env.d.ts`.
+
+Example:
+
+```
+packages/ui/src/components/ui/card/   # via gluestack-ui add
+packages/ui/index.ts                  # export { Card } from './src/components/ui/card'
+```

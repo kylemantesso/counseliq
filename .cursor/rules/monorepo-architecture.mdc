@@ -1,0 +1,21 @@
+---
+description: Core monorepo architecture and package boundaries
+alwaysApply: true
+---
+
+# Monorepo architecture
+
+Three layers — respect boundaries:
+
+1. **`packages/ui`** — Gluestack v5 design system (NativeWind v5 + Tailwind CSS v4). Components + theme only. No screens, auth, Convex, or Solito.
+2. **`packages/app`** — screens, auth, db client. Composes `@app-template/ui`.
+3. **`apps/web` + `apps/mobile`** — thin routes and platform wiring only.
+
+When adding UI:
+- Reusable presentational piece → `packages/ui`
+- Full screen or feature logic → `packages/app/src/screens`
+- Route file → one-line re-export in `apps/web` or `apps/mobile`
+
+Convex backend lives in repo-root `convex/`. Never duplicate backend logic in apps.
+
+Shared screens use React Native components (rendered on web via react-native-web). Navigation in shared code uses Solito.

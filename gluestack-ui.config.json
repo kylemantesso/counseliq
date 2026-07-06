@@ -1,0 +1,8 @@
+{
+  "app": {
+    "components": "packages/ui/src/components/ui"
+  },
+  "tailwind": {
+    "css": "packages/ui/global.css"
+  }
+}

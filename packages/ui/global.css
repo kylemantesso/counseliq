@@ -1,0 +1,146 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/preflight.css" layer(base);
+@import "tailwindcss/utilities.css";
+@import "nativewind/theme";
+
+@source "./src/**/*.{js,jsx,ts,tsx}";
+@source "../app/src/**/*.{js,jsx,ts,tsx}";
+@source "../../apps/web/**/*.{js,jsx,ts,tsx}";
+@source "../../apps/mobile/**/*.{js,jsx,ts,tsx}";
+
+@layer theme {
+  :root {
+    --primary: 45 45 45;
+    --primary-foreground: 255 255 255;
+    --card: 255 255 255;
+    --secondary: 245 245 240;
+    --secondary-foreground: 26 26 26;
+    --background: 245 245 240;
+    --popover: 255 255 255;
+    --popover-foreground: 26 26 26;
+    --muted: 250 250 246;
+    --muted-foreground: 136 136 136;
+    --destructive: 230 53 53;
+    --foreground: 26 26 26;
+    --border: 221 216 208;
+    --input: 221 216 208;
+    --ring: 45 45 45;
+    --accent: 231 129 40;
+    --accent-foreground: 255 255 255;
+    --success: 52 131 82;
+    --success-foreground: 255 255 255;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --primary: 230 230 230;
+      --primary-foreground: 18 18 18;
+      --card: 31 31 31;
+      --secondary: 39 39 39;
+      --secondary-foreground: 245 245 245;
+      --background: 18 18 18;
+      --popover: 31 31 31;
+      --popover-foreground: 245 245 245;
+      --muted: 51 51 51;
+      --muted-foreground: 163 163 163;
+      --destructive: 239 68 68;
+      --foreground: 245 245 245;
+      --border: 83 82 82;
+      --input: 83 82 82;
+      --ring: 230 230 230;
+      --accent: 251 157 75;
+      --accent-foreground: 18 18 18;
+      --success: 72 151 102;
+      --success-foreground: 255 255 255;
+    }
+  }
+
+  :root.dark {
+    --primary: 230 230 230;
+    --primary-foreground: 18 18 18;
+    --card: 31 31 31;
+    --secondary: 39 39 39;
+    --secondary-foreground: 245 245 245;
+    --background: 18 18 18;
+    --popover: 31 31 31;
+    --popover-foreground: 245 245 245;
+    --muted: 51 51 51;
+    --muted-foreground: 163 163 163;
+    --destructive: 239 68 68;
+    --foreground: 245 245 245;
+    --border: 83 82 82;
+    --input: 83 82 82;
+    --ring: 230 230 230;
+    --accent: 251 157 75;
+    --accent-foreground: 18 18 18;
+    --success: 72 151 102;
+    --success-foreground: 255 255 255;
+  }
+
+  :root.light {
+    --primary: 45 45 45;
+    --primary-foreground: 255 255 255;
+    --card: 255 255 255;
+    --secondary: 245 245 240;
+    --secondary-foreground: 26 26 26;
+    --background: 245 245 240;
+    --popover: 255 255 255;
+    --popover-foreground: 26 26 26;
+    --muted: 250 250 246;
+    --muted-foreground: 136 136 136;
+    --destructive: 230 53 53;
+    --foreground: 26 26 26;
+    --border: 221 216 208;
+    --input: 221 216 208;
+    --ring: 45 45 45;
+    --accent: 231 129 40;
+    --accent-foreground: 255 255 255;
+    --success: 52 131 82;
+    --success-foreground: 255 255 255;
+  }
+}
+
+@theme inline {
+  --color-primary: rgb(var(--primary));
+  --color-primary-foreground: rgb(var(--primary-foreground));
+  --color-card: rgb(var(--card));
+  --color-secondary: rgb(var(--secondary));
+  --color-secondary-foreground: rgb(var(--secondary-foreground));
+  --color-background: rgb(var(--background));
+  --color-popover: rgb(var(--popover));
+  --color-popover-foreground: rgb(var(--popover-foreground));
+  --color-muted: rgb(var(--muted));
+  --color-muted-foreground: rgb(var(--muted-foreground));
+  --color-destructive: rgb(var(--destructive));
+  --color-foreground: rgb(var(--foreground));
+  --color-border: rgb(var(--border));
+  --color-input: rgb(var(--input));
+  --color-ring: rgb(var(--ring));
+  --color-accent: rgb(var(--accent));
+  --color-accent-foreground: rgb(var(--accent-foreground));
+  --color-success: rgb(var(--success));
+  --color-success-foreground: rgb(var(--success-foreground));
+  --font-sans: Inter, sans-serif;
+  --font-body: Inter, sans-serif;
+}
+
+@layer base {
+  html,
+  body {
+    font-family: Inter, sans-serif;
+  }
+
+  input,
+  textarea,
+  select,
+  button {
+    font: inherit;
+  }
+
+  button,
+  [role='button'] {
+    text-align: center;
+    text-decoration: none;
+  }
+}

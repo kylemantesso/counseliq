@@ -1,0 +1,21 @@
+import { ConvexError } from "convex/values";
+
+/** Stable codes for expected failures — UI maps these to copy in packages/app. */
+export const AppErrorCode = {
+  UNAUTHORIZED: "UNAUTHORIZED",
+  TASK_TITLE_REQUIRED: "TASK_TITLE_REQUIRED",
+  TASK_NOT_FOUND: "TASK_NOT_FOUND",
+  PUSH_TOKEN_INVALID: "PUSH_TOKEN_INVALID",
+  EMAIL_SEND_FAILED: "EMAIL_SEND_FAILED",
+  ADMIN_FORBIDDEN: "ADMIN_FORBIDDEN",
+  USER_NOT_FOUND: "USER_NOT_FOUND",
+} as const;
+
+export type AppErrorCodeType = (typeof AppErrorCode)[keyof typeof AppErrorCode];
+
+export type AppErrorPayload = { code: AppErrorCodeType };
+
+/** Throw a structured app error the client maps to human-readable copy. */
+export function appError(code: AppErrorCodeType): never {
+  throw new ConvexError({ code } satisfies AppErrorPayload);
+}

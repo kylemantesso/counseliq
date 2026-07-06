@@ -1,0 +1,57 @@
+---
+description: App layer conventions for screens, auth, and db
+globs: packages/app/**
+alwaysApply: false
+---
+
+# packages/app — product layer
+
+## Screens (`src/screens/`)
+
+- Compose `@app-template/ui` components — do not duplicate design-system styles inline.
+- Use **v5 semantic color tokens** (`bg-background`, `bg-card`, `text-foreground`, `text-muted-foreground`, `border-border`, `text-primary`) — not v3 scales (`bg-background-50`, `text-typography-500`).
+- **Button:** `variant="default" | "outline" | "destructive"` — not `action="primary"`. **Alert:** `variant="default" | "destructive"`.
+- Import auth via `../auth` (`useAuth`). Never import auth from apps.
+- Use Solito for navigation: `Link`, `TextLink` from `solito/link`; `useRouter` from `solito/navigation` (Next.js App Router on web).
+- Mark screen files with `"use client"` when they use hooks.
+- Export new screens from `packages/app/index.ts`.
+- **Safe area:** wrap full-screen roots in `Screen` from `../components/screen`. Use `AuthScreen` for auth forms (login/signup). Never apply `useSafeAreaInsets()` or fixed top padding in screen files — `Screen` handles insets.
+
+```tsx
+import { Screen } from '../components/screen';
+
+export function MyScreen() {
+  return (
+    <Screen className="flex-1 bg-background">
+      {/* content */}
+    </Screen>
+  );
+}
+```
+
+## Auth (`src/auth/`)
+
+- `createAuthProvider` + module-level `useAuth` — apps wire token stores via adapters.
+- Web adapter: `createLocalStorageTokenStore`. Mobile: `createSecureStoreTokenStore`.
+- **User-facing errors:** backend throws `appError(AppErrorCode.X)` from `convex/errors.ts`. UI copy lives in `packages/app/src/errors/messages.ts`. Use `getUserFacingErrorMessage(error, fallback)` in every `catch` — it maps codes only, never reads `error.message`.
+
+```tsx
+import { getUserFacingErrorMessage } from '../auth/errors';
+
+try {
+  await login(email, password);
+} catch (error) {
+  setError(getUserFacingErrorMessage(error, 'Login failed. Check your email and password.'));
+}
+```
+
+## DB (`src/db/`)
+
+- `createConvexClient(url)` for ConvexProvider setup in apps.
+- `api` re-exports from `../../../../convex/_generated/api` — run `npm run convex:dev` after schema changes.
+
+## Dependencies
+
+- `@app-template/ui` — allowed
+- `solito`, `convex` — allowed
+- Do not add dependencies that belong in apps (Next.js, Expo APIs)

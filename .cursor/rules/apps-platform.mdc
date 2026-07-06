@@ -1,0 +1,55 @@
+---
+description: Platform app conventions for apps/web and apps/mobile
+globs: apps/**
+alwaysApply: false
+---
+
+# apps/web and apps/mobile — platform shells
+
+## Routes must stay thin
+
+```tsx
+'use client'; // web only, when re-exporting shared screens
+export { LoginScreen as default } from '@app-template/app';
+```
+
+Do not add screen UI, forms, or business logic in route files.
+
+## What belongs in apps (platform-specific)
+
+- **Web:** `providers.tsx`, `lib/auth.tsx`, `lib/convex-client.ts`, OAuth pages (`/auth/google`, `/auth/apple`), API routes, `next.config.mjs`
+- **Mobile:** `_layout.tsx`, `lib/auth.tsx`, `lib/convex.ts`, `app/auth/callback.tsx`, `lib/oauth.tsx`
+
+## Mobile dev builds
+
+Mobile uses **expo-dev-client**, not Expo Go. OAuth and native modules require a dev build with the app's bundle ID.
+
+- First run: `cd apps/mobile && npx expo run:ios` (or `eas build --profile development`)
+- Daily dev: `npm run dev:mobile` from repo root (Metro for dev client)
+- Rebuild dev client when adding/changing native dependencies
+
+## Auth wiring pattern
+
+Apps create `AuthProvider` by calling `createAuthProvider(api, tokenStore)` from `@app-template/app` with the platform token store, then wrap the tree in `_layout` / `providers.tsx`.
+
+## Safe area
+
+Both shells must include `SafeAreaProvider` around the app tree (already in `_layout.tsx` / `providers.tsx`). Screen-level safe-area padding lives in `@app-template/app` (`Screen`, `AuthScreen`) — do not add inset logic in route files.
+
+## User-facing errors
+
+Platform routes and callbacks must never render `error.message` directly. Use `getUserFacingErrorMessage()` from `@app-template/app` — it maps backend `AppErrorCode` values to UI copy.
+
+## Gluestack v5 platform wiring
+
+Both apps import `@app-template/ui/global.css`. Do not add `tailwind.config.js` or `nativewind/babel`.
+
+- **Web:** PostCSS via `@tailwindcss/postcss` (`apps/web/postcss.config.js`). `next.config.mjs` transpiles `nativewind`, `react-native-css`, `@gluestack-ui/*` and defines `__DEV__` for RN-web SSR. No `@gluestack/ui-next-adapter`.
+- **Mobile:** Metro uses `withNativewind` from `nativewind/metro` with `input` pointing to `packages/ui/global.css`. Babel uses `babel-preset-expo` only (no NativeWind babel plugin). Rebuild dev client after native/Metro config changes.
+
+Types: `react-native-css-env.d.ts` in each app (not `nativewind-env.d.ts`).
+
+## Web + react-native-web
+
+- Shared screens transpile via `next.config.mjs` (`transpilePackages`, `react-native-web` alias).
+- Do not import `@app-template/ui` or `@app-template/app` in Server Components without a `'use client'` boundary.
