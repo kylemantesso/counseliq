@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { Providers } from './providers';
-import '@app-template/ui/global.css';
+import '@counseliq/ui/global.css';
 
 export const metadata: Metadata = {
   title: 'YourApp | Discover Something New',

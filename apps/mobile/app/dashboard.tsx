@@ -1,1 +1,1 @@
-export { DashboardScreen as default } from "@app-template/app";
+export { DashboardScreen as default } from "@counseliq/app";

@@ -13,8 +13,8 @@ const appVersion = JSON.parse(
 const nextConfig = {
   outputFileTracingRoot: monorepoRoot,
   transpilePackages: [
-    '@app-template/app',
-    '@app-template/ui',
+    '@counseliq/app',
+    '@counseliq/ui',
     'react-native',
     'react-native-web',
     'solito',

@@ -3,13 +3,13 @@
 import { ClerkProvider, useClerk } from '@clerk/nextjs';
 import { useRouter } from 'next/navigation';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { UIProvider } from '@app-template/ui';
+import { UIProvider } from '@counseliq/ui';
 import {
   AppErrorBoundary,
   AuthProvider,
   PostHogRuntime,
-} from '@app-template/app';
-import { getClerkAllowedRedirectOrigins } from '@app-template/app/auth';
+} from '@counseliq/app';
+import { getClerkAllowedRedirectOrigins } from '@counseliq/app/auth';
 import { ReactNode, useCallback } from 'react';
 import { ConvexClientProvider } from './convex-client-provider';
 

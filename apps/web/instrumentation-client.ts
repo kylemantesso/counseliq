@@ -1,4 +1,4 @@
-import { initializePostHog } from '@app-template/app/analytics/posthog-init';
+import { initializePostHog } from '@counseliq/app/analytics/posthog-init';
 import * as Sentry from '@sentry/nextjs';
 
 initializePostHog();

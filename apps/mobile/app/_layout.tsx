@@ -1,4 +1,4 @@
-import "@app-template/ui/global.css";
+import "@counseliq/ui/global.css";
 import * as WebBrowser from "expo-web-browser";
 import { Stack, useRouter } from "expo-router";
 import { View } from "react-native";
@@ -8,7 +8,7 @@ import { resourceCache } from "@clerk/clerk-expo/resource-cache";
 import { ConvexProviderWithClerk } from "convex/react-clerk";
 import { useAuth } from "@clerk/clerk-expo";
 import { SafeAreaProvider } from "react-native-safe-area-context";
-import { UIProvider } from "@app-template/ui";
+import { UIProvider } from "@counseliq/ui";
 import {
   AppErrorBoundary,
   AuthProvider,
@@ -16,7 +16,7 @@ import {
   OtaUpdateRuntime,
   PostHogRuntime,
   PushNotificationsRuntime,
-} from "@app-template/app";
+} from "@counseliq/app";
 import { convex } from "../lib/convex";
 import { useCallback } from "react";
 

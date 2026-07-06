@@ -8,10 +8,11 @@
  * and Clerk projects and writes local env files.
  *
  * Usage:
- *   node scripts/init.mjs              create projects, rename, deploy
- *   node scripts/init.mjs --deploy     deploy only (Convex + Vercel)
+ *   node scripts/init.mjs                  create projects, rename, deploy
+ *   node scripts/init.mjs --use-existing   skip Convex/Vercel/Clerk creation; use env files
+ *   node scripts/init.mjs --deploy         deploy only (Convex + Vercel)
  *
- * Or: npm run init   /   npm run deploy
+ * Or: npm run init / npm run init:existing / npm run deploy
  */
 
 import fs from "fs/promises";
@@ -19,7 +20,12 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { spawn, execSync } from "child_process";
 import { createPrompter } from "./lib/init-prompts.mjs";
-import { setupClerkAutomatically } from "./lib/init-clerk.mjs";
+import { getFrontendApiUrl, setupClerkAutomatically } from "./lib/init-clerk.mjs";
+
+const args = process.argv.slice(2);
+const DEPLOY_ONLY = args.includes("--deploy");
+const USE_EXISTING = args.includes("--use-existing");
+const AUTH_ONLY = args.includes("--auth");
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
@@ -137,12 +143,133 @@ async function prepareConvexAuthEnv(clerkConfig, { convexUrl, deployKey, convexD
 async function writeConvexDeploymentLink({ deploymentName, convexUrl }) {
   if (!deploymentName && !convexUrl) return;
 
+  const existing = await parseEnvFile(path.join(ROOT, ".env.local"));
   const lines = [];
-  if (deploymentName) lines.push(`CONVEX_DEPLOYMENT=${deploymentName}`);
-  if (convexUrl) lines.push(`NEXT_PUBLIC_CONVEX_URL=${convexUrl}`);
+  if (deploymentName || existing.CONVEX_DEPLOYMENT) {
+    lines.push(`CONVEX_DEPLOYMENT=${deploymentName || existing.CONVEX_DEPLOYMENT}`);
+  }
+  if (convexUrl || existing.NEXT_PUBLIC_CONVEX_URL) {
+    lines.push(`NEXT_PUBLIC_CONVEX_URL=${convexUrl || existing.NEXT_PUBLIC_CONVEX_URL}`);
+  }
+  if (existing.CONVEX_SITE_URL) {
+    lines.push(`CONVEX_SITE_URL=${existing.CONVEX_SITE_URL}`);
+  }
 
   await fs.writeFile(path.join(ROOT, ".env.local"), lines.join("\n") + "\n");
   console.log("Wrote .env.local (Convex deployment link)");
+}
+
+async function parseEnvFile(filePath) {
+  try {
+    const content = await fs.readFile(filePath, "utf8");
+    const env = {};
+    for (const line of content.split("\n")) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      const eq = trimmed.indexOf("=");
+      if (eq === -1) continue;
+      const key = trimmed.slice(0, eq).trim();
+      let value = trimmed.slice(eq + 1).trim();
+      if (
+        (value.startsWith('"') && value.endsWith('"')) ||
+        (value.startsWith("'") && value.endsWith("'"))
+      ) {
+        value = value.slice(1, -1);
+      }
+      env[key] = value;
+    }
+    return env;
+  } catch {
+    return {};
+  }
+}
+
+async function findLinkedVercelProjectName() {
+  for (const dir of [ROOT, path.join(ROOT, "apps/web")]) {
+    try {
+      const project = JSON.parse(
+        await fs.readFile(path.join(dir, ".vercel", "project.json"), "utf8")
+      );
+      if (project.projectName) return project.projectName;
+    } catch {
+      // try next location
+    }
+  }
+  return null;
+}
+
+function projectNameFromVercelOidc(token) {
+  if (!token) return null;
+  try {
+    const payload = token.split(".")[1];
+    const json = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
+    return json.project || null;
+  } catch {
+    return null;
+  }
+}
+
+async function loadExistingProvisioning() {
+  const rootEnv = await parseEnvFile(path.join(ROOT, ".env.local"));
+  const webEnv = await parseEnvFile(path.join(ROOT, "apps/web/.env.local"));
+  const mobileEnv = await parseEnvFile(path.join(ROOT, "apps/mobile/.env"));
+
+  const convexUrl =
+    rootEnv.NEXT_PUBLIC_CONVEX_URL ||
+    webEnv.NEXT_PUBLIC_CONVEX_URL ||
+    mobileEnv.EXPO_PUBLIC_CONVEX_URL ||
+    null;
+  const deploymentName = rootEnv.CONVEX_DEPLOYMENT || null;
+  const publishableKey =
+    webEnv.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY ||
+    mobileEnv.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY ||
+    process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY ||
+    null;
+  const secretKey = webEnv.CLERK_SECRET_KEY || process.env.CLERK_SECRET_KEY || null;
+  let jwtIssuerDomain =
+    webEnv.CLERK_JWT_ISSUER_DOMAIN || process.env.CLERK_JWT_ISSUER_DOMAIN || null;
+
+  if (!jwtIssuerDomain && secretKey) {
+    jwtIssuerDomain = await getFrontendApiUrl(secretKey);
+  }
+
+  const vercelProjectName =
+    (await findLinkedVercelProjectName()) ||
+    projectNameFromVercelOidc(webEnv.VERCEL_OIDC_TOKEN) ||
+    null;
+
+  return {
+    convexUrl,
+    deploymentName,
+    clerkConfig: publishableKey
+      ? { publishableKey, secretKey, jwtIssuerDomain, applicationId: null }
+      : null,
+    vercelProjectName,
+  };
+}
+
+function validateExistingProvisioning({ convexUrl, clerkConfig }) {
+  const missing = [];
+  if (!convexUrl) missing.push("NEXT_PUBLIC_CONVEX_URL (root, apps/web, or apps/mobile env)");
+  if (!clerkConfig?.publishableKey) {
+    missing.push("NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY (apps/web or apps/mobile env)");
+  }
+  if (!clerkConfig?.secretKey) {
+    missing.push("CLERK_SECRET_KEY (apps/web/.env.local)");
+  }
+  if (missing.length) {
+    throw new Error(
+      `Missing required values in env files:\n  - ${missing.join("\n  - ")}\n` +
+        "Add them, then re-run with --use-existing."
+    );
+  }
+}
+
+async function writeEnvFile(filePath, updates) {
+  const existing = await parseEnvFile(filePath);
+  const merged = { ...existing, ...updates };
+  const lines = Object.entries(merged).map(([key, value]) => `${key}=${value}`);
+  await fs.writeFile(filePath, lines.join("\n") + "\n");
 }
 
 async function runDeployOnly(prompter) {
@@ -541,23 +668,46 @@ async function main() {
       return;
     }
 
-    console.log("Project init – Convex + Clerk + Vercel\n");
-    console.log("This wizard creates cloud projects and writes local env files.");
-    console.log("Press Enter to accept defaults shown in [brackets].\n");
+    if (USE_EXISTING) {
+      console.log("Project init – resume with existing Convex, Clerk, and Vercel\n");
+      console.log(
+        "Skipping cloud project creation. Using values from .env.local and apps/*/.env files."
+      );
+      console.log("Press Enter to accept defaults shown in [brackets].\n");
+    } else {
+      console.log("Project init – Convex + Clerk + Vercel\n");
+      console.log("This wizard creates cloud projects and writes local env files.");
+      console.log("Press Enter to accept defaults shown in [brackets].\n");
+    }
 
-    const convexToken = await prompter.promptToken("Convex deploy token", {
-      envVar: "CONVEX_TOKEN",
-      helpText: [
-        "Convex Dashboard → Settings → Deploy Keys → Generate",
-        "https://dashboard.convex.dev",
-      ],
-    });
-    const vercelToken = await prompter.promptToken("Vercel token", {
-      envVar: "VERCEL_TOKEN",
-      helpText: ["https://vercel.com/account/tokens"],
-    });
+    let convexToken = null;
+    let vercelToken = null;
+    if (!USE_EXISTING) {
+      convexToken = await prompter.promptToken("Convex deploy token", {
+        envVar: "CONVEX_TOKEN",
+        helpText: [
+          "Convex Dashboard → Settings → Deploy Keys → Generate",
+          "https://dashboard.convex.dev",
+        ],
+      });
+      vercelToken = await prompter.promptToken("Vercel token", {
+        envVar: "VERCEL_TOKEN",
+        helpText: ["https://vercel.com/account/tokens"],
+      });
+    } else {
+      vercelToken = await prompter.promptToken("Vercel token (for link/deploy only)", {
+        envVar: "VERCEL_TOKEN",
+        helpText: ["https://vercel.com/account/tokens"],
+        required: false,
+      });
+    }
 
-    const displayName = await prompter.question("Project display name (e.g. My Awesome App): ");
+    const defaultDisplayName =
+      path.basename(ROOT).replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) ||
+      "My App";
+    const displayName = await prompter
+      .question(`Project display name (e.g. My Awesome App) [${defaultDisplayName}]: `)
+      .then((s) => (s.trim() ? s.trim() : defaultDisplayName));
   if (!displayName.trim()) {
     console.error("Display name is required.");
     process.exit(1);
@@ -576,9 +726,39 @@ async function main() {
   console.log("  bundle prefix:", bundlePrefix);
   console.log("");
 
-  // --- Convex: get team ID then create project ---
   let convexUrl = null;
   let deploymentName = null;
+  let vercelProjectUrl = null;
+  let vercelProjectName = slug;
+  let clerkConfig = null;
+
+  if (USE_EXISTING) {
+    try {
+      const existing = await loadExistingProvisioning();
+      validateExistingProvisioning(existing);
+      convexUrl = existing.convexUrl;
+      deploymentName = existing.deploymentName;
+      clerkConfig = existing.clerkConfig;
+      vercelProjectName =
+        existing.vercelProjectName ||
+        (await prompter
+          .question(
+            `Vercel project name [${existing.vercelProjectName || slug}]: `
+          )
+          .then((s) => (s.trim() ? s.trim() : existing.vercelProjectName || slug)));
+      vercelProjectUrl = `https://${vercelProjectName}.vercel.app`;
+      console.log("Using existing Convex deployment:", convexUrl);
+      if (deploymentName) console.log("  deployment:", deploymentName);
+      console.log("Using existing Vercel project:", vercelProjectName);
+      if (clerkConfig.jwtIssuerDomain) {
+        console.log("Using existing Clerk JWT issuer:", clerkConfig.jwtIssuerDomain);
+      }
+    } catch (e) {
+      console.error(e.message);
+      process.exit(1);
+    }
+  } else {
+  // --- Convex: get team ID then create project ---
   try {
     const tokenRes = await fetch("https://api.convex.dev/v1/token_details", {
       headers: { Authorization: `Bearer ${convexToken}` },
@@ -625,7 +805,6 @@ async function main() {
   }
 
   // --- Vercel: create project ---
-  let vercelProjectUrl = null;
   try {
     const vercelRes = await fetch("https://api.vercel.com/v9/projects", {
       method: "POST",
@@ -647,16 +826,18 @@ async function main() {
     }
     const vercelData = await vercelRes.json();
     vercelProjectUrl = vercelData.project?.projectId ? `https://${slug}.vercel.app` : null;
+    vercelProjectName = slug;
     console.log("Vercel project created:", vercelData.name || slug);
   } catch (e) {
     console.error("Vercel setup failed:", e.message);
     process.exit(1);
   }
 
-  const clerkConfig = await setupClerkAutomatically(displayName, prompter, {
+  clerkConfig = await setupClerkAutomatically(displayName, prompter, {
     vercelProjectUrl,
     slug,
   });
+  }
 
   // --- Replacements ---
   const replacements = [
@@ -667,22 +848,32 @@ async function main() {
     ["com.apptemplate", bundlePrefix],
     ["@app-template/app", `@${slug}/app`],
     ["@app-template/ui", `@${slug}/ui`],
+    ["@app-template/course-schema", `@${slug}/course-schema`],
   ];
 
+  async function collectReplaceTargets(dir) {
+    const entries = await fs.readdir(dir, { withFileTypes: true });
+    const files = [];
+    for (const entry of entries) {
+      if (entry.name === "node_modules" || entry.name === ".next") continue;
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        files.push(...(await collectReplaceTargets(fullPath)));
+        continue;
+      }
+      if (/\.(tsx?|jsx?|json|md|mdc|mjs)$/.test(entry.name)) {
+        files.push(fullPath);
+      }
+    }
+    return files;
+  }
+
   const filesToReplace = [
+    ...(await collectReplaceTargets(path.join(ROOT, "apps"))),
+    ...(await collectReplaceTargets(path.join(ROOT, "packages"))),
     path.join(ROOT, "package.json"),
-    path.join(ROOT, "packages/app/package.json"),
-    path.join(ROOT, "packages/ui/package.json"),
-    path.join(ROOT, "apps/web/package.json"),
-    path.join(ROOT, "apps/mobile/package.json"),
-    path.join(ROOT, "apps/web/next.config.mjs"),
-    path.join(ROOT, "apps/mobile/app.json"),
-    path.join(ROOT, "apps/web/app/layout.tsx"),
-    path.join(ROOT, "apps/web/app/page.tsx"),
-    path.join(ROOT, "apps/mobile/app/index.tsx"),
     path.join(ROOT, "README.md"),
-    path.join(ROOT, "apps/web/lib/convex-client.ts"),
-    path.join(ROOT, "apps/mobile/lib/convex.ts"),
+    path.join(ROOT, "AGENTS.md"),
   ];
 
   for (const filePath of filesToReplace) {
@@ -719,39 +910,48 @@ async function main() {
   }
 
   // --- Write env files ---
-  const webEnvLines = [];
-  const mobileEnvLines = [];
+  const webEnvUpdates = {};
+  const mobileEnvUpdates = {};
   if (convexUrl) {
-    webEnvLines.push(`NEXT_PUBLIC_CONVEX_URL=${convexUrl}`);
-    mobileEnvLines.push(`EXPO_PUBLIC_CONVEX_URL=${convexUrl}`);
+    webEnvUpdates.NEXT_PUBLIC_CONVEX_URL = convexUrl;
+    mobileEnvUpdates.EXPO_PUBLIC_CONVEX_URL = convexUrl;
   }
   if (clerkConfig) {
-    webEnvLines.push(`NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${clerkConfig.publishableKey}`);
-    webEnvLines.push(`CLERK_SECRET_KEY=${clerkConfig.secretKey}`);
-    mobileEnvLines.push(`EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY=${clerkConfig.publishableKey}`);
+    webEnvUpdates.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY = clerkConfig.publishableKey;
+    webEnvUpdates.CLERK_SECRET_KEY = clerkConfig.secretKey;
+    mobileEnvUpdates.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY = clerkConfig.publishableKey;
   }
 
-  if (webEnvLines.length) {
-    await fs.writeFile(path.join(ROOT, "apps/web/.env.local"), webEnvLines.join("\n") + "\n");
+  if (Object.keys(webEnvUpdates).length) {
+    await writeEnvFile(path.join(ROOT, "apps/web/.env.local"), webEnvUpdates);
     console.log("Wrote apps/web/.env.local");
   }
-  if (mobileEnvLines.length) {
-    await fs.writeFile(path.join(ROOT, "apps/mobile/.env"), mobileEnvLines.join("\n") + "\n");
+  if (Object.keys(mobileEnvUpdates).length) {
+    await writeEnvFile(path.join(ROOT, "apps/mobile/.env"), mobileEnvUpdates);
     console.log("Wrote apps/mobile/.env");
   }
 
   // --- Vercel env vars ---
-  if (convexUrl) {
-    await setVercelEnvVar(slug, vercelToken, "NEXT_PUBLIC_CONVEX_URL", convexUrl);
-  }
-  if (clerkConfig) {
-    await setVercelEnvVar(
-      slug,
-      vercelToken,
-      "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY",
-      clerkConfig.publishableKey
-    );
-    await setVercelEnvVar(slug, vercelToken, "CLERK_SECRET_KEY", clerkConfig.secretKey);
+  if (!USE_EXISTING) {
+    if (convexUrl) {
+      await setVercelEnvVar(vercelProjectName, vercelToken, "NEXT_PUBLIC_CONVEX_URL", convexUrl);
+    }
+    if (clerkConfig) {
+      await setVercelEnvVar(
+        vercelProjectName,
+        vercelToken,
+        "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY",
+        clerkConfig.publishableKey
+      );
+      await setVercelEnvVar(
+        vercelProjectName,
+        vercelToken,
+        "CLERK_SECRET_KEY",
+        clerkConfig.secretKey
+      );
+    }
+  } else {
+    console.log("Skipping Vercel env sync (--use-existing).");
   }
 
   console.log("\nRunning npm install...");
@@ -765,49 +965,67 @@ async function main() {
   });
 
   // --- Deploy to Convex ---
-  if (deploymentName && convexUrl) {
+  if (convexUrl) {
     console.log("\nDeploying to Convex...");
     try {
-      const keyRes = await fetch(
-        `https://api.convex.dev/v1/deployments/${encodeURIComponent(deploymentName)}/create_deploy_key`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${convexToken}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ name: "init-script" }),
+      if (USE_EXISTING) {
+        await writeConvexDeploymentLink({ deploymentName, convexUrl });
+        if (clerkConfig?.jwtIssuerDomain) {
+          await prepareConvexAuthEnv(clerkConfig, { convexUrl });
         }
-      );
-      if (!keyRes.ok) {
-        const t = await keyRes.text();
-        throw new Error(`Convex create_deploy_key failed: ${keyRes.status} ${t}`);
-      }
-      const keyData = await keyRes.json();
-      const deployKey = keyData.deployKey;
-      if (!deployKey) throw new Error("No deployKey in response");
-
-      const convexDeployEnv = { ...process.env, CONVEX_DEPLOY_KEY: deployKey };
-
-      await writeConvexDeploymentLink({ deploymentName, convexUrl });
-      await prepareConvexAuthEnv(clerkConfig, {
-        convexUrl,
-        deployKey,
-        convexDeployEnv,
-      });
-
-      await new Promise((resolve, reject) => {
-        const child = spawn("npx", ["convex", "deploy"], {
-          cwd: ROOT,
-          stdio: "inherit",
-          shell: true,
-          env: convexDeployEnv,
+        await new Promise((resolve, reject) => {
+          const child = spawn("npx", ["convex", "deploy"], {
+            cwd: ROOT,
+            stdio: "inherit",
+            shell: true,
+          });
+          child.on("exit", (code) =>
+            code === 0 ? resolve() : reject(new Error("convex deploy failed"))
+          );
         });
-        child.on("exit", (code) =>
-          code === 0 ? resolve() : reject(new Error("convex deploy failed"))
+        console.log("Convex deploy done.");
+      } else if (deploymentName) {
+        const keyRes = await fetch(
+          `https://api.convex.dev/v1/deployments/${encodeURIComponent(deploymentName)}/create_deploy_key`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${convexToken}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ name: "init-script" }),
+          }
         );
-      });
-      console.log("Convex deploy done.");
+        if (!keyRes.ok) {
+          const t = await keyRes.text();
+          throw new Error(`Convex create_deploy_key failed: ${keyRes.status} ${t}`);
+        }
+        const keyData = await keyRes.json();
+        const deployKey = keyData.deployKey;
+        if (!deployKey) throw new Error("No deployKey in response");
+
+        const convexDeployEnv = { ...process.env, CONVEX_DEPLOY_KEY: deployKey };
+
+        await writeConvexDeploymentLink({ deploymentName, convexUrl });
+        await prepareConvexAuthEnv(clerkConfig, {
+          convexUrl,
+          deployKey,
+          convexDeployEnv,
+        });
+
+        await new Promise((resolve, reject) => {
+          const child = spawn("npx", ["convex", "deploy"], {
+            cwd: ROOT,
+            stdio: "inherit",
+            shell: true,
+            env: convexDeployEnv,
+          });
+          child.on("exit", (code) =>
+            code === 0 ? resolve() : reject(new Error("convex deploy failed"))
+          );
+        });
+        console.log("Convex deploy done.");
+      }
     } catch (e) {
       console.error("Convex deploy failed:", e.message);
       console.error(
@@ -816,12 +1034,13 @@ async function main() {
     }
   }
 
+  if (vercelToken) {
   console.log("\nDeploying to Vercel...");
   try {
     await new Promise((resolve, reject) => {
       const child = spawn(
         "npx",
-        ["vercel", "link", "--project", slug, "--yes"],
+        ["vercel", "link", "--project", vercelProjectName, "--yes"],
         {
           cwd: ROOT,
           stdio: "inherit",
@@ -854,6 +1073,9 @@ async function main() {
     console.warn(
       "Recovery: connect your own GitHub repo in Vercel settings (not the template repo), then run npm run deploy from the project root."
     );
+  }
+  } else if (USE_EXISTING) {
+    console.log("\nSkipping Vercel link/deploy (no VERCEL_TOKEN provided).");
   }
 
   console.log("\nDone. Next steps:");

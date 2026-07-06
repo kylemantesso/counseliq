@@ -1,1 +1,1 @@
-export { OnboardingHomeScreen as default } from "@app-template/app";
+export { OnboardingHomeScreen as default } from "@counseliq/app";

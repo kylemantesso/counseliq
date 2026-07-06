@@ -3,7 +3,7 @@
  * numeric `major.minor.patch` core — any pre-release / build metadata suffix
  * (e.g. "-beta.1", "+exp.sha") is ignored, which is the right call for a
  * "is this build old enough to block?" decision. No dependency on the `semver`
- * package so this stays usable from the shared `@app-template/app` layer on every
+ * package so this stays usable from the shared `@counseliq/app` layer on every
  * platform.
  */
 

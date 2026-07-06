@@ -2,7 +2,7 @@
 
 import type { ReactNode } from 'react';
 import { Platform } from 'react-native';
-import { Box, KeyboardAvoidingView, ScrollView } from '@app-template/ui';
+import { Box, KeyboardAvoidingView, ScrollView } from '@counseliq/ui';
 import { Screen } from './screen';
 
 type AuthScreenProps = {

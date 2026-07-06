@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ScrollView } from "@app-template/ui";
+import { ScrollView } from "@counseliq/ui";
 import { useRouter } from "solito/navigation";
 import {
   Box,
@@ -9,7 +9,7 @@ import {
   ButtonText,
   Heading,
   Text,
-} from "@app-template/ui";
+} from "@counseliq/ui";
 import { AnalyticsEvent } from "../analytics/events";
 import { trackProductEvent } from "../analytics/track-product-event";
 import { AdminGuard } from "../components/admin-guard";

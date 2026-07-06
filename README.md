@@ -1,8 +1,8 @@
-# App Template
+# CounselIQ
 
-A production-ready universal app template with Next.js 15, Expo (React Native), Convex (auth + database), and Gluestack UI v5 (NativeWind v5 + Tailwind v4). Web and mobile share the same Convex backend, auth logic, screens, and design system.
+A production-ready universal counseliq with Next.js 15, Expo (React Native), Convex (auth + database), and Gluestack UI v5 (NativeWind v5 + Tailwind v4). Web and mobile share the same Convex backend, auth logic, screens, and design system.
 
-**Repository:** [github.com/kylemantesso/app-template](https://github.com/kylemantesso/app-template)
+**Repository:** [github.com/kylemantesso/counseliq](https://github.com/kylemantesso/counseliq)
 
 ## Features
 
@@ -11,8 +11,8 @@ A production-ready universal app template with Next.js 15, Expo (React Native), 
 - **Clerk** — Authentication (email/password, OAuth) with Convex JWT integration
 - **Convex** — Real-time database, notification outbox, Resend email, push notifications
 - **PostHog + Sentry** — Optional analytics and error monitoring (no-op without env vars)
-- **Gluestack UI v5** — Universal component library in `@app-template/ui` (NativeWind v5 / Tailwind v4)
-- **Shared packages** — `@app-template/ui` (design system) and `@app-template/app` (screens, auth, db)
+- **Gluestack UI v5** — Universal component library in `@counseliq/ui` (NativeWind v5 / Tailwind v4)
+- **Shared packages** — `@counseliq/ui` (design system) and `@counseliq/app` (screens, auth, db)
 - **Turborepo** — Cached builds and parallel dev tasks
 - **Example feature** — `/tasks` route demonstrating AuthGuard + Convex CRUD
 - **Vercel + EAS** — Web deploy config and mobile build profiles
@@ -28,7 +28,7 @@ A production-ready universal app template with Next.js 15, Expo (React Native), 
 ### 1. Clone the template
 
 ```bash
-git clone https://github.com/kylemantesso/app-template.git my-app
+git clone https://github.com/kylemantesso/counseliq.git my-app
 cd my-app
 npm install
 ```
@@ -36,7 +36,7 @@ npm install
 To start with a clean git history:
 
 ```bash
-rm -rf .git && git init && git add . && git commit -m "Initial commit from app template"
+rm -rf .git && git init && git add . && git commit -m "Initial commit from counseliq"
 ```
 
 ### 2. Bootstrap (recommended)
@@ -164,7 +164,7 @@ npm run dev:mobile     # Metro — open the dev client app on your device/simula
 ## Quick Start
 
 ```bash
-git clone https://github.com/kylemantesso/app-template.git my-app
+git clone https://github.com/kylemantesso/counseliq.git my-app
 cd my-app
 npm install
 npm run init   # or manual setup — see above
@@ -173,7 +173,7 @@ npm run init   # or manual setup — see above
 ## Project Structure
 
 ```
-app-template/
+counseliq/
 ├── apps/
 │   ├── web/                 # Next.js — thin routes + platform wiring
 │   └── mobile/              # Expo — thin routes + platform wiring

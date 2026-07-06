@@ -1,5 +1,5 @@
 {
-  "name": "@app-template/ui",
+  "name": "@counseliq/ui",
   "version": "0.1.0",
   "private": true,
   "main": "./index.ts",

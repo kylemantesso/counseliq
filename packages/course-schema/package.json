@@ -1,5 +1,5 @@
 {
-  "name": "@app-template/course-schema",
+  "name": "@counseliq/course-schema",
   "version": "0.1.0",
   "private": true,
   "main": "./index.ts",

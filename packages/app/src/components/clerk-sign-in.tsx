@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Platform } from 'react-native';
 import { useRouter } from 'solito/navigation';
-import { Box, Pressable } from '@app-template/ui';
+import { Box, Pressable } from '@counseliq/ui';
 import {
   AuthDivider,
   AuthField,

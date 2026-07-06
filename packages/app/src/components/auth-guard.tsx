@@ -2,7 +2,7 @@
 
 import { useEffect, type ReactNode } from 'react';
 import { useRouter } from 'solito/navigation';
-import { Box, Spinner } from '@app-template/ui';
+import { Box, Spinner } from '@counseliq/ui';
 import { useAuth } from '../auth';
 
 type AuthGuardProps = {

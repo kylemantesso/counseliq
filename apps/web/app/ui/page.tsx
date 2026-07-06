@@ -1,3 +1,3 @@
 'use client';
 
-export { UiShowcaseScreen as default } from '@app-template/app';
+export { UiShowcaseScreen as default } from '@counseliq/app';

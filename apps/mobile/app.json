@@ -1,10 +1,10 @@
 {
   "expo": {
-    "name": "App Template Mobile",
-    "slug": "app-template-mobile",
+    "name": "CounselIQ Mobile",
+    "slug": "counseliq-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
-    "scheme": "app-template",
+    "scheme": "counseliq",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
@@ -12,11 +12,11 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.apptemplate.mobile",
+      "bundleIdentifier": "com.counseliq.mobile",
       "appleTeamId": "5YHDP5R5DB"
     },
     "android": {
-      "package": "com.apptemplate.mobile",
+      "package": "com.counseliq.mobile",
       "edgeToEdgeEnabled": true
     },
     "web": {

@@ -1,3 +1,3 @@
 'use client';
 
-export { AdminEmailTestScreen as default } from '@app-template/app';
+export { AdminEmailTestScreen as default } from '@counseliq/app';

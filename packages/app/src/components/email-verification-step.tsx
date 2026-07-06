@@ -1,6 +1,6 @@
 "use client";
 
-import { Box, Pressable, Text } from "@app-template/ui";
+import { Box, Pressable, Text } from "@counseliq/ui";
 import {
   AuthField,
   AuthLinkText,

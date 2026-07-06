@@ -3,7 +3,7 @@
 import type { ReactNode } from 'react';
 import type { ViewProps } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Box } from '@app-template/ui';
+import { Box } from '@counseliq/ui';
 
 type SafeAreaEdge = 'top' | 'bottom' | 'left' | 'right';
 

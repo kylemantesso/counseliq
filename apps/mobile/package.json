@@ -18,8 +18,8 @@
     "typecheck": "echo 'Mobile typecheck skipped (Expo 54 + React 19 vs react-native types). Run: cd apps/mobile && npx tsc --noEmit to see status.'"
   },
   "dependencies": {
-    "@app-template/app": "*",
-    "@app-template/ui": "*",
+    "@counseliq/app": "*",
+    "@counseliq/ui": "*",
     "@clerk/clerk-expo": "^2.19.31",
     "@sentry/react-native": "~7.2.0",
     "convex": "^1.39.1",

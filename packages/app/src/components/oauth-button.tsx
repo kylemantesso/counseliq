@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Pressable, Text } from '@app-template/ui';
+import { Pressable, Text } from '@counseliq/ui';
 
 type OAuthProvider = 'google' | 'apple';
 

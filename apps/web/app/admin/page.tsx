@@ -1,3 +1,3 @@
 'use client';
 
-export { AdminScreen as default } from '@app-template/app';
+export { AdminScreen as default } from '@counseliq/app';

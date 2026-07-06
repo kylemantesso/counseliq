@@ -16,7 +16,7 @@ import {
   Input,
   InputField,
   Text,
-} from '@app-template/ui';
+} from '@counseliq/ui';
 
 type InputFieldProps = ComponentProps<typeof InputField>;
 

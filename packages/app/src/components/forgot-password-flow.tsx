@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Box, Pressable } from "@app-template/ui";
+import { Box, Pressable } from "@counseliq/ui";
 import { useRouter } from "solito/navigation";
 import {
   AuthField,

@@ -15,7 +15,7 @@ import {
   ButtonText,
   ScrollView,
   Text,
-} from "@app-template/ui";
+} from "@counseliq/ui";
 import { Screen } from "../components/screen";
 import { footerLinkStyle } from "../auth/auth-styles";
 import { ONBOARDING_SLIDES } from "../constants";

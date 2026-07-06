@@ -1,6 +1,6 @@
 'use client';
 
-import { Alert, AlertText } from '@app-template/ui';
+import { Alert, AlertText } from '@counseliq/ui';
 
 type AuthBannerTone = 'error' | 'info';
 

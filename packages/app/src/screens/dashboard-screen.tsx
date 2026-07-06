@@ -1,13 +1,13 @@
 "use client";
 
-import { ScrollView } from "@app-template/ui";
+import { ScrollView } from "@counseliq/ui";
 import { useRouter } from "solito/navigation";
 import {
   Box,
   Button,
   ButtonText,
   Text,
-} from "@app-template/ui";
+} from "@counseliq/ui";
 import { AuthGuard } from "../components/auth-guard";
 import { Screen } from "../components/screen";
 import { useAuth } from "../auth";

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Platform } from "react-native";
-import { Box } from "@app-template/ui";
+import { Box } from "@counseliq/ui";
 import { useRouter } from "solito/navigation";
 import {
   AuthDivider,

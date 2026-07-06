@@ -1,1 +1,1 @@
-export { AdminNotificationTestScreen as default } from '@app-template/app';
+export { AdminNotificationTestScreen as default } from '@counseliq/app';

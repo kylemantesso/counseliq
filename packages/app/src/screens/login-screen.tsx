@@ -7,7 +7,7 @@ import {
   Box,
   Heading,
   Text,
-} from "@app-template/ui";
+} from "@counseliq/ui";
 import { AuthScreen } from "../components/auth-screen";
 import { LoadingView } from "../components/loading-spinner";
 import {

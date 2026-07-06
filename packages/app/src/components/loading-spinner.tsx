@@ -1,6 +1,6 @@
 'use client';
 
-import { Box, Spinner } from '@app-template/ui';
+import { Box, Spinner } from '@counseliq/ui';
 
 type LoadingViewProps = {
   containerClassName?: string;

@@ -1,6 +1,6 @@
 "use client";
 
-import { ScrollView } from "@app-template/ui";
+import { ScrollView } from "@counseliq/ui";
 import { useQuery } from "convex/react";
 import { useRouter } from "solito/navigation";
 import {
@@ -9,7 +9,7 @@ import {
   ButtonText,
   Heading,
   Text,
-} from "@app-template/ui";
+} from "@counseliq/ui";
 import { AdminGuard } from "../components/admin-guard";
 import { Screen } from "../components/screen";
 import { api } from "../db/api";

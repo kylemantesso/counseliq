@@ -1,1 +1,1 @@
-export { AdminPostHogTestScreen as default } from '@app-template/app';
+export { AdminPostHogTestScreen as default } from '@counseliq/app';

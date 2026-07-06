@@ -1,1 +1,1 @@
-export { TasksScreen as default } from "@app-template/app";
+export { TasksScreen as default } from "@counseliq/app";

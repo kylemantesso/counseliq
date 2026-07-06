@@ -1,6 +1,6 @@
 "use client";
 
-import { ScrollView } from "@app-template/ui";
+import { ScrollView } from "@counseliq/ui";
 import { useRouter } from "solito/navigation";
 import {
   Box,
@@ -8,7 +8,7 @@ import {
   ButtonText,
   Heading,
   Text,
-} from "@app-template/ui";
+} from "@counseliq/ui";
 import { AdminGuard } from "../components/admin-guard";
 import { Screen } from "../components/screen";
 import { ADMIN_TOOLS } from "../components/admin/admin-tools";

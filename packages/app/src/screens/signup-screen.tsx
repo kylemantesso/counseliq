@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { TextLink } from "solito/link";
-import { Box, Heading, Text } from "@app-template/ui";
+import { Box, Heading, Text } from "@counseliq/ui";
 import { AuthScreen } from "../components/auth-screen";
 import { LoadingView } from "../components/loading-spinner";
 import { ClerkSignUp } from "../components/clerk-sign-up";

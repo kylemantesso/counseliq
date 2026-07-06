@@ -7,7 +7,7 @@ import {
   ButtonText,
   Heading,
   Text,
-} from "@app-template/ui";
+} from "@counseliq/ui";
 import { Screen } from "../components/screen";
 import { APP_VERSION_NUMBER } from "../version/app-version";
 import { openStoreListing } from "../version/store-links";

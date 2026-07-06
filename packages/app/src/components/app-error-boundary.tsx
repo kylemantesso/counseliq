@@ -1,7 +1,7 @@
 'use client';
 
 import { Component, type ErrorInfo, type ReactNode } from 'react';
-import { Box, Button, ButtonText, Text } from '@app-template/ui';
+import { Box, Button, ButtonText, Text } from '@counseliq/ui';
 import { getUserFacingErrorMessage } from '../auth/errors';
 
 type Props = {

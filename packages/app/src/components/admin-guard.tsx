@@ -3,7 +3,7 @@
 import { useEffect, type ReactNode } from "react";
 import { useQuery } from "convex/react";
 import { useRouter } from "solito/navigation";
-import { Box } from "@app-template/ui";
+import { Box } from "@counseliq/ui";
 import { api } from "../db/api";
 import { AuthGuard } from "./auth-guard";
 import { LoadingSpinner } from "./loading-spinner";

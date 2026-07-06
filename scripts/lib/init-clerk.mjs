@@ -76,7 +76,7 @@ async function createClerkAppViaPlatformApi(name, platformApiKey) {
   );
 }
 
-async function getFrontendApiUrl(secretKey) {
+export async function getFrontendApiUrl(secretKey) {
   try {
     const domains = await clerkFetch(`${BAPI_BASE}/domains`, { token: secretKey });
     const list = Array.isArray(domains) ? domains : domains?.data ?? [];

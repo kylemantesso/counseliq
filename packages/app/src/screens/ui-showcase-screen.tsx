@@ -30,7 +30,7 @@ import {
   ToastDescription,
   ToastTitle,
   useToast,
-} from "@app-template/ui";
+} from "@counseliq/ui";
 import { Screen } from "../components/screen";
 
 const BUTTON_VARIANTS = [
@@ -115,7 +115,7 @@ export function UiShowcaseScreen() {
           <Box className="flex-col gap-1">
             <Heading size="xl">UI Kit</Heading>
             <Text className="text-sm text-muted-foreground">
-              Gluestack v5 components exported from @app-template/ui
+              Gluestack v5 components exported from @counseliq/ui
             </Text>
           </Box>
           <TextLink href="/">

@@ -1,1 +1,1 @@
-export { LoginScreen as default } from "@app-template/app";
+export { LoginScreen as default } from "@counseliq/app";

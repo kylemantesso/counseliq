@@ -12,7 +12,7 @@ import {
   Pressable,
   ScrollView,
   Text,
-} from "@app-template/ui";
+} from "@counseliq/ui";
 import { footerLinkStyle } from "../auth/auth-styles";
 import { GITHUB_REPO_URL, ONBOARDING_SLIDES } from "../constants";
 

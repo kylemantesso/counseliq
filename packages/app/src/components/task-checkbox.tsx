@@ -1,6 +1,6 @@
 'use client';
 
-import { CheckIcon, Pressable } from '@app-template/ui';
+import { CheckIcon, Pressable } from '@counseliq/ui';
 
 type TaskCheckboxProps = {
   checked: boolean;
