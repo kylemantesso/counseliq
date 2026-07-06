@@ -9,4 +9,10 @@ export const APP_ERROR_MESSAGES: Record<AppErrorCodeType, string> = {
   [AppErrorCode.EMAIL_SEND_FAILED]: "Could not send email. Try again later.",
   [AppErrorCode.ADMIN_FORBIDDEN]: "You do not have access to this page.",
   [AppErrorCode.USER_NOT_FOUND]: "User not found.",
+  [AppErrorCode.INSTITUTION_NOT_FOUND]: "That institution could not be found.",
+  [AppErrorCode.RUN_NOT_FOUND]: "That pipeline run could not be found.",
+  [AppErrorCode.RUN_TRANSITION_INVALID]:
+    "That pipeline run cannot move to the requested state.",
+  [AppErrorCode.RUN_NOT_AT_GATE]:
+    "That pipeline run is not waiting at the requested review gate.",
 };
