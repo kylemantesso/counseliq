@@ -22,11 +22,15 @@
     "convex:dev": "convex dev",
     "convex:deploy": "convex deploy",
     "typecheck": "turbo run typecheck",
+    "test": "turbo run test && npm run test:convex",
+    "test:convex": "vitest run --config vitest.config.convex.ts",
+    "walkthrough": "node scripts/walkthrough.mjs",
     "lint": "turbo run lint"
   },
   "dependencies": {
     "@convex-dev/rate-limiter": "^0.3.2",
     "@convex-dev/resend": "^0.2.5",
+    "@convex-dev/workflow": "^0.4.4",
     "@convex-dev/workpool": "^0.4.7",
     "@react-email/components": "^1.0.12",
     "@react-email/render": "^2.0.9",
@@ -35,10 +39,13 @@
     "react-email": "^6.6.3"
   },
   "devDependencies": {
+    "@edge-runtime/vm": "^5.0.0",
     "concurrently": "^9.1.2",
     "convex": "^1.39.1",
+    "convex-test": "^0.0.54",
     "turbo": "^2.5.4",
-    "typescript": "~5.9.3"
+    "typescript": "~5.9.3",
+    "vitest": "^4.1.10"
   },
   "overrides": {
     "react": "19.1.0",

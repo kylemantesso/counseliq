@@ -1,0 +1,1270 @@
+{
+  "$schema": "counseliq://course-definition/v1",
+  "courseId": "latrobe-health-portfolio-v1",
+  "courseTitle": "La Trobe Health Portfolio",
+  "credentialLevel": 3,
+  "badge": "La Trobe Specialist — Health & Sciences",
+  "prerequisite": "latrobe-courses-admissions-v1",
+  "brandRef": "latrobe",
+  "language": "en-AU",
+  "voice": {
+    "provider": "elevenlabs",
+    "voiceRef": "latrobe-narrator-01",
+    "pronunciationLexicon": {
+      "Bundoora": "bun-DOOR-ah",
+      "Albury-Wodonga": "AWL-bree wuh-DONG-ga",
+      "ACAMI": "ah-KAH-mee",
+      "BioNTech": "BY-on-tek",
+      "Thanthiriwattage": "CONFIRM_WITH_INSTITUTION"
+    }
+  },
+  "_pipelineNotes": {
+    "withheldFacts": [
+      {
+        "fact": "Projected shortage of 70,000+ nurses by 2035",
+        "provenance": "masterdeck:16",
+        "reason": "Institution slide attributes this to Health Workforce Australia, abolished 2014. Withheld pending verification against current Department of Health workforce modelling. Do not narrate until cleared at review gate 1."
+      }
+    ],
+    "verificationFlags": [
+      {
+        "fact": "Nursing ranked 42nd globally",
+        "provenance": "masterdeck:12",
+        "note": "Master slides cite QS 2024 by Subject; the institution's own study guide separately claims 'top 50 for nursing' citing QS 2025. Year conflict in source material — institution must confirm which edition to teach at review gate 1. Card below carries the conservative label."
+      }
+    ],
+    "assessmentGate": "Level 3 badge is gated on the AI roleplay consultation (scenario ref: rp-health-amara-01), not the MCQ bank. Retrieve questions feed the adaptive scheduler only."
+  },
+  "modules": [
+    {
+      "moduleId": "m1-why-latrobe-health",
+      "title": "Why La Trobe for Health",
+      "microUnits": [
+        {
+          "unitId": "mu-health-101",
+          "concept": "health-rankings-with-provenance",
+          "secondsBudget": 45,
+          "hook": {
+            "type": "commit-question",
+            "questionRef": "q-h101"
+          },
+          "content": {
+            "narration": [
+              {
+                "id": "n1",
+                "text": "When a student asks whether La Trobe is genuinely strong in health, you need evidence, not adjectives."
+              },
+              {
+                "id": "n2",
+                "text": "Start with nursing. La Trobe is ranked forty-second in the world for nursing in the QS subject rankings."
+              },
+              {
+                "id": "n3",
+                "text": "The wider health portfolio holds up too: top one hundred and seventy-five globally for medical and health, and top one hundred and fifty for public health."
+              },
+              {
+                "id": "n4",
+                "text": "One professional habit: always quote the ranking with its source and year. A ranking without provenance is a compliance risk, not a selling point."
+              }
+            ],
+            "cards": [
+              {
+                "template": "title-card",
+                "props": {
+                  "kicker": "MODULE 1",
+                  "title": "Why La Trobe for Health",
+                  "courseLabel": "La Trobe Health Portfolio"
+                },
+                "enterAt": {
+                  "narration": "n1",
+                  "word": "student"
+                },
+                "provenance": "structural"
+              },
+              {
+                "template": "stat-card",
+                "props": {
+                  "headline": "42nd",
+                  "supporting": "in the world for nursing",
+                  "sourceLabel": "QS 2024 by Subject — confirm current edition",
+                  "verificationRequired": true
+                },
+                "enterAt": {
+                  "narration": "n2",
+                  "word": "forty-second"
+                },
+                "provenance": "masterdeck:12"
+              },
+              {
+                "template": "list-reveal",
+                "props": {
+                  "heading": "The health portfolio",
+                  "items": [
+                    {
+                      "text": "Top 175 — Medical & Health",
+                      "sourceLabel": "THE 2024 / CSIC"
+                    },
+                    {
+                      "text": "Top 150 — Public Health",
+                      "sourceLabel": "ShanghaiRanking 2024"
+                    }
+                  ]
+                },
+                "enterAt": {
+                  "narration": "n3",
+                  "word": "portfolio"
+                },
+                "provenance": "masterdeck:12"
+              },
+              {
+                "template": "alert-card",
+                "props": {
+                  "message": "Quote rankings with source and year. Misquoted or stale rankings in counselling material are a compliance risk."
+                },
+                "enterAt": {
+                  "narration": "n4",
+                  "word": "habit"
+                },
+                "provenance": "structural"
+              }
+            ]
+          },
+          "retrieve": [
+            "q-h102",
+            "q-h103"
+          ],
+          "anchor": {
+            "template": "takeaway-card",
+            "props": {
+              "text": "Evidence, not adjectives: every ranking you quote carries its source and its year."
+            }
+          }
+        },
+        {
+          "unitId": "mu-health-102",
+          "concept": "clinical-placement-model",
+          "secondsBudget": 25,
+          "hook": {
+            "type": "commit-question",
+            "questionRef": "q-h104"
+          },
+          "content": {
+            "narration": [
+              {
+                "id": "n1",
+                "text": "Rankings open the conversation. Placements close it."
+              },
+              {
+                "id": "n2",
+                "text": "La Trobe health students train through three settings: on-site clinical placements, the university's own public clinics run under expert clinicians, and Australia's largest Rural Health School."
+              },
+              {
+                "id": "n3",
+                "text": "For a student weighing offers, this is the differentiator: patient contact before graduation, not after it."
+              }
+            ],
+            "cards": [
+              {
+                "template": "photo-kenburns",
+                "props": {
+                  "imageRef": "asset:masterdeck:12:photo",
+                  "overlayText": "Clinical training, on campus and in community",
+                  "panDirection": "in"
+                },
+                "enterAt": {
+                  "narration": "n1",
+                  "word": "Rankings"
+                },
+                "provenance": "masterdeck:12"
+              },
+              {
+                "template": "list-reveal",
+                "props": {
+                  "heading": "Where students train",
+                  "items": [
+                    {
+                      "text": "On-site clinical placements"
+                    },
+                    {
+                      "text": "Public clinics under expert clinicians"
+                    },
+                    {
+                      "text": "Australia's largest Rural Health School"
+                    }
+                  ]
+                },
+                "enterAt": {
+                  "narration": "n2",
+                  "word": "three"
+                },
+                "provenance": "masterdeck:12"
+              }
+            ]
+          },
+          "retrieve": [
+            "q-h105",
+            "q-h106"
+          ],
+          "anchor": {
+            "template": "takeaway-card",
+            "props": {
+              "text": "The placement story is the differentiator: patient contact before graduation."
+            }
+          }
+        }
+      ]
+    },
+    {
+      "moduleId": "m2-health-course-family",
+      "title": "The Health Course Family",
+      "microUnits": [
+        {
+          "unitId": "mu-health-201",
+          "concept": "postgrad-health-course-map",
+          "secondsBudget": 40,
+          "hook": {
+            "type": "commit-question",
+            "questionRef": "q-h201"
+          },
+          "content": {
+            "narration": [
+              {
+                "id": "n1",
+                "text": "Five postgraduate courses do most of the work in this portfolio, and you should be able to place each one without looking it up."
+              },
+              {
+                "id": "n2",
+                "text": "The Master of Digital Health, for technology-focused careers. Health Information Management and Health Administration, for the systems side. Counselling, Rehabilitation and Mental Health, for allied practice. And the Master of Public Health, for population-level work."
+              },
+              {
+                "id": "n3",
+                "text": "Each attracts a different student profile, and mismatching them is the most common health counselling error."
+              }
+            ],
+            "cards": [
+              {
+                "template": "list-reveal",
+                "props": {
+                  "heading": "The postgraduate five",
+                  "items": [
+                    {
+                      "text": "Master of Digital Health"
+                    },
+                    {
+                      "text": "Master of Health Information Management"
+                    },
+                    {
+                      "text": "Master of Health Administration"
+                    },
+                    {
+                      "text": "Master of Counselling, Rehabilitation & Mental Health"
+                    },
+                    {
+                      "text": "Master of Public Health"
+                    }
+                  ]
+                },
+                "enterAt": {
+                  "narration": "n1",
+                  "word": "Five"
+                },
+                "provenance": "masterdeck:16"
+              }
+            ]
+          },
+          "retrieve": [
+            "q-h202",
+            "q-h203"
+          ],
+          "anchor": {
+            "template": "takeaway-card",
+            "props": {
+              "text": "Five flagship masters, five different student profiles — know which is which cold."
+            }
+          }
+        },
+        {
+          "unitId": "mu-health-202",
+          "concept": "registration-vs-nonregistration",
+          "secondsBudget": 40,
+          "hook": {
+            "type": "commit-question",
+            "questionRef": "q-h204"
+          },
+          "content": {
+            "narration": [
+              {
+                "id": "n1",
+                "text": "Here is the distinction counsellors get wrong more than any other in health."
+              },
+              {
+                "id": "n2",
+                "text": "Some courses lead toward eligibility for professional registration, like nursing, midwifery, and occupational therapy. Others, like public health and health information management, build expertise but do not qualify a graduate to practise clinically."
+              },
+              {
+                "id": "n3",
+                "text": "Telling a student that a non-registration course leads to clinical practice is not a small mistake. It misrepresents their career pathway, their visa narrative, and their investment."
+              }
+            ],
+            "cards": [
+              {
+                "template": "myth-fact-card",
+                "props": {
+                  "myth": "A health masters qualifies you to practise clinically",
+                  "fact": "Only registration-track courses lead toward professional registration eligibility"
+                },
+                "enterAt": {
+                  "narration": "n1",
+                  "word": "distinction"
+                },
+                "provenance": "compiler:derived"
+              },
+              {
+                "template": "comparison-split",
+                "props": {
+                  "leftHeading": "Registration-track",
+                  "leftItems": [
+                    "Nursing",
+                    "Midwifery",
+                    "Occupational Therapy"
+                  ],
+                  "rightHeading": "Non-registration",
+                  "rightItems": [
+                    "Public Health",
+                    "Health Information Mgmt",
+                    "Health Administration"
+                  ]
+                },
+                "enterAt": {
+                  "narration": "n2",
+                  "word": "registration"
+                },
+                "provenance": "compiler:derived"
+              },
+              {
+                "template": "alert-card",
+                "props": {
+                  "message": "Never state or imply that a non-registration course leads to clinical practice. Registration eligibility also involves professional bodies and English standards beyond admission."
+                },
+                "enterAt": {
+                  "narration": "n3",
+                  "word": "Telling"
+                },
+                "provenance": "structural"
+              }
+            ]
+          },
+          "retrieve": [
+            "q-h205",
+            "q-h206",
+            "q-h207"
+          ],
+          "anchor": {
+            "template": "takeaway-card",
+            "props": {
+              "text": "Registration-track or not — settle this before any other health counselling question."
+            }
+          }
+        },
+        {
+          "unitId": "mu-health-203",
+          "concept": "matching-student-to-health-course",
+          "secondsBudget": 35,
+          "hook": {
+            "type": "commit-question",
+            "questionRef": "q-h208"
+          },
+          "content": {
+            "narration": [
+              {
+                "id": "n1",
+                "text": "Meet Amara. Twenty-four, from Lagos, a biology degree, two years in a hospital records office, and a goal of working in health systems, not at the bedside."
+              },
+              {
+                "id": "n2",
+                "text": "Her background points away from the registration-track courses and toward Health Information Management or Digital Health."
+              },
+              {
+                "id": "n3",
+                "text": "That is the matching method: background, career goal, registration need — in that order. The course recommendation falls out of the answers."
+              }
+            ],
+            "cards": [
+              {
+                "template": "persona-card",
+                "props": {
+                  "name": "Amara, 24",
+                  "location": "Lagos, Nigeria",
+                  "chips": [
+                    "BSc Biology",
+                    "2 yrs hospital records",
+                    "Goal: health systems"
+                  ],
+                  "footerPrompt": "Which course family fits?"
+                },
+                "enterAt": {
+                  "narration": "n1",
+                  "word": "Amara"
+                },
+                "provenance": "compiler:scenario"
+              },
+              {
+                "template": "pathway-card",
+                "props": {
+                  "heading": "The matching method",
+                  "stages": [
+                    "Background",
+                    "Career goal",
+                    "Registration need",
+                    "Course match"
+                  ],
+                  "note": "In that order, every time"
+                },
+                "enterAt": {
+                  "narration": "n3",
+                  "word": "matching"
+                },
+                "provenance": "structural"
+              }
+            ]
+          },
+          "retrieve": [
+            "q-h209",
+            "q-h210"
+          ],
+          "anchor": {
+            "template": "takeaway-card",
+            "props": {
+              "text": "Background → goal → registration need. The course match falls out of the answers."
+            }
+          }
+        }
+      ]
+    },
+    {
+      "moduleId": "m3-infrastructure-partnerships",
+      "title": "Infrastructure & Partnerships as Evidence",
+      "microUnits": [
+        {
+          "unitId": "mu-health-301",
+          "concept": "clinical-training-infrastructure",
+          "secondsBudget": 40,
+          "hook": {
+            "type": "commit-question",
+            "questionRef": "q-h301"
+          },
+          "content": {
+            "narration": [
+              {
+                "id": "n1",
+                "text": "Facilities are facts a student can verify, which makes them ideal material for a genuine student narrative."
+              },
+              {
+                "id": "n2",
+                "text": "Three to know. An eighty-two million dollar clinical teaching building at Bundoora, adding capacity to train four hundred more allied health professionals a year."
+              },
+              {
+                "id": "n3",
+                "text": "A new clinical simulation suite at Albury-Wodonga, doubling regional training capacity. And La Trobe Private Hospital, a thirty-four bed teaching hospital run with Healthscope, offering placements for nursing, allied health, and health information students."
+              }
+            ],
+            "cards": [
+              {
+                "template": "stat-card",
+                "props": {
+                  "headline": "A$82M",
+                  "supporting": "clinical teaching building, Bundoora — +400 allied health graduates per year",
+                  "sourceLabel": "La Trobe, institution claim"
+                },
+                "enterAt": {
+                  "narration": "n2",
+                  "word": "eighty-two"
+                },
+                "provenance": "masterdeck:13"
+              },
+              {
+                "template": "list-reveal",
+                "props": {
+                  "heading": "Clinical training footprint",
+                  "items": [
+                    {
+                      "text": "Clinical simulation suite — Albury-Wodonga"
+                    },
+                    {
+                      "text": "La Trobe Private Hospital — 34 beds, with Healthscope"
+                    },
+                    {
+                      "text": "Placements: nursing, allied health, health information"
+                    }
+                  ]
+                },
+                "enterAt": {
+                  "narration": "n3",
+                  "word": "simulation"
+                },
+                "provenance": "masterdeck:13;masterdeck:18"
+              }
+            ]
+          },
+          "retrieve": [
+            "q-h302",
+            "q-h303"
+          ],
+          "anchor": {
+            "template": "takeaway-card",
+            "props": {
+              "text": "Facilities are verifiable facts — the best raw material for a specific GS narrative."
+            }
+          }
+        },
+        {
+          "unitId": "mu-health-302",
+          "concept": "research-partnerships-ai-medicine",
+          "secondsBudget": 55,
+          "hook": {
+            "type": "commit-question",
+            "questionRef": "q-h304"
+          },
+          "content": {
+            "narration": [
+              {
+                "id": "n1",
+                "text": "For research-minded students, La Trobe's health story runs through artificial intelligence and biotechnology."
+              },
+              {
+                "id": "n2",
+                "text": "ACAMI, the Australian Centre for Artificial Intelligence in Medical Innovation, is described by the university as the world's first university-led centre for AI-powered medical breakthroughs, partnered with mRNA Victoria."
+              },
+              {
+                "id": "n3",
+                "text": "The campus hosts an mRNA manufacturing facility in development with BioNTech, and La Trobe was the first Australian university to deploy NVIDIA's D-G-X H-two-hundred systems for medical research."
+              },
+              {
+                "id": "n4",
+                "text": "Notice the framing: these are the university's own claims, so present them as such — 'La Trobe describes ACAMI as the world's first' travels safely; a bare superlative does not."
+              }
+            ],
+            "cards": [
+              {
+                "template": "list-reveal",
+                "props": {
+                  "heading": "Research differentiators",
+                  "items": [
+                    {
+                      "text": "ACAMI — AI in medical innovation, with mRNA Victoria",
+                      "sourceLabel": "institution claim"
+                    },
+                    {
+                      "text": "BioNTech mRNA facility, on campus",
+                      "sourceLabel": "institution claim"
+                    },
+                    {
+                      "text": "First Australian university with NVIDIA DGX H200",
+                      "sourceLabel": "institution claim"
+                    }
+                  ]
+                },
+                "enterAt": {
+                  "narration": "n2",
+                  "word": "ACAMI"
+                },
+                "provenance": "masterdeck:17"
+              },
+              {
+                "template": "alert-card",
+                "props": {
+                  "message": "Superlatives ('world's first', 'Australia's largest') are institution claims. Attribute them — don't assert them as independent fact."
+                },
+                "enterAt": {
+                  "narration": "n4",
+                  "word": "framing"
+                },
+                "provenance": "structural"
+              }
+            ]
+          },
+          "retrieve": [
+            "q-h305",
+            "q-h306"
+          ],
+          "anchor": {
+            "template": "takeaway-card",
+            "props": {
+              "text": "Attribute superlatives to the institution — 'La Trobe describes it as…' travels safely."
+            }
+          }
+        },
+        {
+          "unitId": "mu-health-303",
+          "concept": "care-economy-virtual-health",
+          "secondsBudget": 50,
+          "hook": {
+            "type": "commit-question",
+            "questionRef": "q-h307"
+          },
+          "content": {
+            "narration": [
+              {
+                "id": "n1",
+                "text": "The digital health investment thread ties the portfolio together."
+              },
+              {
+                "id": "n2",
+                "text": "La Trobe leads the Care Economy Cooperative Research Centre with a thirty-five million dollar federal funding boost and sixty partner organisations across care technology, data, and workforce innovation."
+              },
+              {
+                "id": "n3",
+                "text": "It also delivers the Victorian Virtual Emergency Department with Northern Health and Cisco — augmented reality that lets a remote doctor see what the on-site nurse sees, now permanent and available around the clock."
+              },
+              {
+                "id": "n4",
+                "text": "For a Digital Health applicant, these are exactly the named, checkable programs a strong genuine student statement is built from."
+              }
+            ],
+            "cards": [
+              {
+                "template": "stat-card",
+                "props": {
+                  "headline": "A$35M",
+                  "supporting": "federal funding — Care Economy CRC, 60 partner organisations",
+                  "sourceLabel": "La Trobe, institution claim"
+                },
+                "enterAt": {
+                  "narration": "n2",
+                  "word": "thirty-five"
+                },
+                "provenance": "masterdeck:13"
+              },
+              {
+                "template": "list-reveal",
+                "props": {
+                  "heading": "Virtual health in practice",
+                  "items": [
+                    {
+                      "text": "Victorian Virtual ED — with Northern Health & Cisco"
+                    },
+                    {
+                      "text": "AR link: remote doctor sees what the nurse sees"
+                    },
+                    {
+                      "text": "Permanent, 24/7, expanding capacity"
+                    }
+                  ]
+                },
+                "enterAt": {
+                  "narration": "n3",
+                  "word": "Virtual"
+                },
+                "provenance": "masterdeck:18"
+              }
+            ]
+          },
+          "retrieve": [
+            "q-h308",
+            "q-h309"
+          ],
+          "anchor": {
+            "template": "takeaway-card",
+            "props": {
+              "text": "Named, checkable programs beat generic praise in a GS statement — every time."
+            }
+          }
+        }
+      ]
+    },
+    {
+      "moduleId": "m4-placement-career-outcomes",
+      "title": "Placement & Career Outcomes Counselling",
+      "microUnits": [
+        {
+          "unitId": "mu-health-401",
+          "concept": "industry-pathway-case-study",
+          "secondsBudget": 40,
+          "hook": {
+            "type": "commit-question",
+            "questionRef": "q-h401"
+          },
+          "content": {
+            "narration": [
+              {
+                "id": "n1",
+                "text": "One graduate journey shows the pattern you are selling."
+              },
+              {
+                "id": "n2",
+                "text": "Randi completed the Master of Digital Health, then a thirteen-month internship with Medibank, mentored by Medibank's Head of Virtual Health."
+              },
+              {
+                "id": "n3",
+                "text": "She researched Australian consumer behaviour in digital health, and moved into full-time work with a start-up testing AI accuracy in clinical settings."
+              },
+              {
+                "id": "n4",
+                "text": "Degree, embedded industry experience, employment. When you tell this story, tell it as a pattern the university enables — not a guarantee every student receives."
+              }
+            ],
+            "cards": [
+              {
+                "template": "quote-card",
+                "props": {
+                  "quote": "La Trobe's industry work experience opportunities are really good pathways for students to develop their employability skills along with their studies.",
+                  "attribution": "Randi, Master of Digital Health graduate",
+                  "sourceLabel": "La Trobe master slides"
+                },
+                "enterAt": {
+                  "narration": "n1",
+                  "word": "graduate"
+                },
+                "provenance": "masterdeck:22"
+              },
+              {
+                "template": "pathway-card",
+                "props": {
+                  "heading": "The pattern",
+                  "stages": [
+                    "Master of Digital Health",
+                    "13-month Medibank internship",
+                    "Industry mentorship",
+                    "Full-time digital health role"
+                  ],
+                  "note": "A pattern the university enables — not a promise"
+                },
+                "enterAt": {
+                  "narration": "n2",
+                  "word": "thirteen-month"
+                },
+                "provenance": "masterdeck:22"
+              }
+            ]
+          },
+          "retrieve": [
+            "q-h402",
+            "q-h403"
+          ],
+          "anchor": {
+            "template": "takeaway-card",
+            "props": {
+              "text": "Sell the pattern, never the promise: degree → embedded industry experience → employment."
+            }
+          }
+        },
+        {
+          "unitId": "mu-health-402",
+          "concept": "regional-health-pathways-and-limits",
+          "secondsBudget": 45,
+          "hook": {
+            "type": "commit-question",
+            "questionRef": "q-h404"
+          },
+          "content": {
+            "narration": [
+              {
+                "id": "n1",
+                "text": "Regional campuses carry the health portfolio's strongest placement story."
+              },
+              {
+                "id": "n2",
+                "text": "Bendigo and Albury-Wodonga host the Rural Medical Pathway Program, and regional health students place into local hospitals and clinics where the workforce need is real."
+              },
+              {
+                "id": "n3",
+                "text": "Regional study can also carry post-study work advantages under the graduate visa settings — but here is the hard line."
+              },
+              {
+                "id": "n4",
+                "text": "You may state current, factual visa settings. You may never promise migration outcomes, permanent residency, or visa grants. That line is where counselling ends and misconduct begins."
+              }
+            ],
+            "cards": [
+              {
+                "template": "map-card",
+                "props": {
+                  "region": "Victoria & southern NSW",
+                  "markers": [
+                    "Melbourne (Bundoora)",
+                    "Bendigo",
+                    "Albury-Wodonga",
+                    "Shepparton",
+                    "Mildura"
+                  ],
+                  "highlight": [
+                    "Bendigo",
+                    "Albury-Wodonga"
+                  ],
+                  "caption": "Rural Medical Pathway Program campuses"
+                },
+                "enterAt": {
+                  "narration": "n2",
+                  "word": "Bendigo"
+                },
+                "provenance": "masterdeck:18;masterdeck:25"
+              },
+              {
+                "template": "alert-card",
+                "props": {
+                  "message": "State current visa settings. NEVER promise migration outcomes, PR, or visa grants. This is the misconduct line."
+                },
+                "enterAt": {
+                  "narration": "n4",
+                  "word": "promise"
+                },
+                "provenance": "structural"
+              }
+            ]
+          },
+          "retrieve": [
+            "q-h405",
+            "q-h406"
+          ],
+          "anchor": {
+            "template": "takeaway-card",
+            "props": {
+              "text": "Facts about visa settings: yes. Promises about visa outcomes: never."
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "assessment": {
+    "type": "roleplay-consultation",
+    "scenarioRef": "rp-health-amara-01",
+    "description": "Counsellor conducts a simulated consultation with an AI student persona seeking health study advice. Rubric: registration-track distinction handled correctly, rankings quoted with provenance, placement story told as pattern not promise, no migration-outcome promises, appropriate course match with reasoning.",
+    "passRubricThreshold": 0.8,
+    "mcqFallback": false
+  },
+  "questionBank": [
+    {
+      "id": "q-h101",
+      "conceptTag": "health-rankings-with-provenance",
+      "type": "commit",
+      "prompt": "A student asks: 'Is La Trobe actually good for nursing, or just easier to get into?' Your strongest opening answer is:",
+      "options": [
+        "It's a top university in Australia",
+        "It's ranked 42nd in the world for nursing — QS subject rankings",
+        "Thousands of international students choose it",
+        "Its nursing degree is well respected"
+      ],
+      "correctIndex": 1,
+      "explanation": "Specific ranking + source beats generic praise. Always attach the source and year."
+    },
+    {
+      "id": "q-h102",
+      "conceptTag": "health-rankings-with-provenance",
+      "type": "mcq",
+      "prompt": "Which source ranks La Trobe 42nd globally for nursing?",
+      "options": [
+        "Times Higher Education",
+        "QS subject rankings",
+        "ShanghaiRanking",
+        "QILT"
+      ],
+      "correctIndex": 1,
+      "explanation": "QS World University Rankings by Subject. THE and CSIC underpin the Medical & Health top-175 claim; ShanghaiRanking underpins Public Health."
+    },
+    {
+      "id": "q-h103",
+      "conceptTag": "health-rankings-with-provenance",
+      "type": "mcq",
+      "prompt": "Why must rankings always be quoted with source and year?",
+      "options": [
+        "It sounds more impressive",
+        "Different rankings measure different things and editions change — a stale or mismatched ranking is a compliance risk",
+        "Institutions require it contractually",
+        "Students always ask for it"
+      ],
+      "correctIndex": 1,
+      "explanation": "Rankings shift between editions and sources measure different things. Provenance protects the student and the counsellor."
+    },
+    {
+      "id": "q-h104",
+      "conceptTag": "clinical-placement-model",
+      "type": "commit",
+      "prompt": "Where do La Trobe health students get supervised patient contact before graduating?",
+      "options": [
+        "Only after graduation, in their first job",
+        "Through placements, university public clinics, and the Rural Health School",
+        "Only in simulation labs",
+        "Only students at metropolitan campuses"
+      ],
+      "correctIndex": 1,
+      "explanation": "Three settings: on-site clinical placements, La Trobe's public clinics under expert clinicians, and Australia's largest Rural Health School."
+    },
+    {
+      "id": "q-h105",
+      "conceptTag": "clinical-placement-model",
+      "type": "mcq",
+      "prompt": "La Trobe describes its Rural Health School as:",
+      "options": [
+        "Victoria's newest",
+        "Australia's largest",
+        "The Southern Hemisphere's first",
+        "A fully online school"
+      ],
+      "correctIndex": 1,
+      "explanation": "'Australia's largest Rural Health School' — an institution claim, so attribute it to La Trobe when you use it."
+    },
+    {
+      "id": "q-h106",
+      "conceptTag": "clinical-placement-model",
+      "type": "mcq",
+      "prompt": "The strongest placement-based differentiator to give a student comparing offers is:",
+      "options": [
+        "Modern buildings",
+        "Patient contact before graduation through embedded clinical placements",
+        "Larger class sizes",
+        "City-centre location"
+      ],
+      "correctIndex": 1,
+      "explanation": "Pre-graduation patient contact is the employability differentiator the placement model delivers."
+    },
+    {
+      "id": "q-h201",
+      "conceptTag": "postgrad-health-course-map",
+      "type": "commit",
+      "prompt": "A student wants a health career 'in systems and data, not with patients'. Which course family do you reach for first?",
+      "options": [
+        "Nursing",
+        "Health Information Management / Digital Health",
+        "Counselling & Rehabilitation",
+        "Midwifery"
+      ],
+      "correctIndex": 1,
+      "explanation": "Systems-and-data goals point to HIM and Digital Health, not clinical registration tracks."
+    },
+    {
+      "id": "q-h202",
+      "conceptTag": "postgrad-health-course-map",
+      "type": "mcq",
+      "prompt": "Which of these is NOT one of the flagship postgraduate health courses covered in this module?",
+      "options": [
+        "Master of Digital Health",
+        "Master of Public Health",
+        "Master of Veterinary Science",
+        "Master of Health Administration"
+      ],
+      "correctIndex": 2,
+      "explanation": "The flagship five: Digital Health, Health Information Management, Health Administration, Counselling/Rehabilitation & Mental Health, and Public Health."
+    },
+    {
+      "id": "q-h203",
+      "conceptTag": "postgrad-health-course-map",
+      "type": "mcq",
+      "prompt": "A student with a psychology background wanting hands-on allied practice best matches:",
+      "options": [
+        "Master of Counselling, Rehabilitation and Mental Health",
+        "Master of Health Information Management",
+        "Master of Digital Health",
+        "Master of Health Administration"
+      ],
+      "correctIndex": 0,
+      "explanation": "Counselling/Rehab & Mental Health is the allied-practice route among the five."
+    },
+    {
+      "id": "q-h204",
+      "conceptTag": "registration-vs-nonregistration",
+      "type": "commit",
+      "prompt": "True or false: completing a Master of Public Health qualifies a graduate to practise as a registered health professional.",
+      "options": [
+        "True",
+        "False"
+      ],
+      "correctIndex": 1,
+      "explanation": "Public health is a non-registration course. It builds expertise but does not lead to clinical registration."
+    },
+    {
+      "id": "q-h205",
+      "conceptTag": "registration-vs-nonregistration",
+      "type": "mcq",
+      "prompt": "Which group below is registration-track?",
+      "options": [
+        "Public Health, Health Administration",
+        "Nursing, Midwifery, Occupational Therapy",
+        "Digital Health, Health Information Management",
+        "All postgraduate health courses"
+      ],
+      "correctIndex": 1,
+      "explanation": "Nursing, midwifery and OT lead toward professional registration eligibility; the systems courses do not."
+    },
+    {
+      "id": "q-h206",
+      "conceptTag": "registration-vs-nonregistration",
+      "type": "mcq",
+      "prompt": "Why is misstating the registration distinction a serious error rather than a small one?",
+      "options": [
+        "It slightly overstates the course",
+        "It misrepresents the student's career pathway, visa narrative, and financial investment",
+        "Institutions dislike it",
+        "It affects scholarship eligibility"
+      ],
+      "correctIndex": 1,
+      "explanation": "It corrupts the three things counselling exists to protect: pathway, narrative, investment."
+    },
+    {
+      "id": "q-h207",
+      "conceptTag": "registration-vs-nonregistration",
+      "type": "mcq",
+      "prompt": "Registration eligibility for clinical courses depends on:",
+      "options": [
+        "Course admission alone",
+        "Course completion plus professional-body requirements, including English standards that can exceed admission levels",
+        "The visa subclass held",
+        "The campus attended"
+      ],
+      "correctIndex": 1,
+      "explanation": "Professional bodies set their own requirements beyond university admission — flag this early with clinical aspirants."
+    },
+    {
+      "id": "q-h208",
+      "conceptTag": "matching-student-to-health-course",
+      "type": "commit",
+      "prompt": "Amara: biology degree, 2 years in hospital records, wants health systems work, not bedside care. First course family to explore:",
+      "options": [
+        "Nursing",
+        "Health Information Management or Digital Health",
+        "Occupational Therapy",
+        "Midwifery"
+      ],
+      "correctIndex": 1,
+      "explanation": "Background + systems goal + no registration need → HIM/Digital Health."
+    },
+    {
+      "id": "q-h209",
+      "conceptTag": "matching-student-to-health-course",
+      "type": "mcq",
+      "prompt": "The matching method, in order:",
+      "options": [
+        "Budget → ranking → intake",
+        "Background → career goal → registration need",
+        "English score → GPA → work history",
+        "Campus preference → course → visa"
+      ],
+      "correctIndex": 1,
+      "explanation": "Background, then goal, then registration need. The course match falls out of the answers."
+    },
+    {
+      "id": "q-h210",
+      "conceptTag": "matching-student-to-health-course",
+      "type": "mcq",
+      "prompt": "A student insists on nursing but their goal is hospital data management. You should:",
+      "options": [
+        "Enrol them in nursing as requested",
+        "Explore the mismatch: explain the registration distinction and surface HIM/Digital Health before they commit",
+        "Refuse to assist",
+        "Suggest a double degree"
+      ],
+      "correctIndex": 1,
+      "explanation": "Fit-based counselling means surfacing the mismatch, not rubber-stamping the request — the behaviour the credential certifies."
+    },
+    {
+      "id": "q-h301",
+      "conceptTag": "clinical-training-infrastructure",
+      "type": "commit",
+      "prompt": "Why do named facilities make strong GS-statement material?",
+      "options": [
+        "They sound impressive",
+        "They are specific, verifiable facts a case officer can check",
+        "They are required in the visa form",
+        "They guarantee placement"
+      ],
+      "correctIndex": 1,
+      "explanation": "GS assessment favours specific, checkable claims over generic praise."
+    },
+    {
+      "id": "q-h302",
+      "conceptTag": "clinical-training-infrastructure",
+      "type": "mcq",
+      "prompt": "The A$82M clinical teaching building at Bundoora adds capacity for approximately:",
+      "options": [
+        "40 allied health graduates a year",
+        "400 allied health graduates a year",
+        "4,000 allied health graduates a year",
+        "400 nursing graduates a year"
+      ],
+      "correctIndex": 1,
+      "explanation": "Around 400 additional allied health professionals per year — an institution claim from La Trobe's materials."
+    },
+    {
+      "id": "q-h303",
+      "conceptTag": "clinical-training-infrastructure",
+      "type": "mcq",
+      "prompt": "La Trobe Private Hospital is:",
+      "options": [
+        "A public teaching hospital",
+        "A 34-bed hospital run with Healthscope offering student placements",
+        "A simulation-only facility",
+        "Located at the Sydney campus"
+      ],
+      "correctIndex": 1,
+      "explanation": "34 beds, partnered with Healthscope, with placements for nursing, allied health and health information students."
+    },
+    {
+      "id": "q-h304",
+      "conceptTag": "research-partnerships-ai-medicine",
+      "type": "commit",
+      "prompt": "How should you present La Trobe's claim that ACAMI is 'the world's first university-led AI medical innovation centre'?",
+      "options": [
+        "As independent fact",
+        "Attributed: 'La Trobe describes ACAMI as the world's first…'",
+        "Omit it entirely",
+        "Only in writing, never verbally"
+      ],
+      "correctIndex": 1,
+      "explanation": "Superlatives are institution claims. Attribution keeps the statement safe and honest."
+    },
+    {
+      "id": "q-h305",
+      "conceptTag": "research-partnerships-ai-medicine",
+      "type": "mcq",
+      "prompt": "The on-campus mRNA manufacturing facility is being developed with:",
+      "options": [
+        "Pfizer",
+        "BioNTech",
+        "CSL",
+        "Moderna"
+      ],
+      "correctIndex": 1,
+      "explanation": "BioNTech — connected to La Trobe's research in cancer, cardiovascular and infectious disease."
+    },
+    {
+      "id": "q-h306",
+      "conceptTag": "research-partnerships-ai-medicine",
+      "type": "mcq",
+      "prompt": "La Trobe states it was the first Australian university to deploy which system for medical research?",
+      "options": [
+        "IBM Watson",
+        "NVIDIA DGX H200",
+        "Google TPU v5",
+        "AWS Trainium"
+      ],
+      "correctIndex": 1,
+      "explanation": "NVIDIA DGX H200 — supporting ACAMI's AI-driven medical research. An institution claim; attribute it."
+    },
+    {
+      "id": "q-h307",
+      "conceptTag": "care-economy-virtual-health",
+      "type": "commit",
+      "prompt": "A Digital Health applicant needs named programs for their GS statement. Which pair is strongest?",
+      "options": [
+        "'Great facilities' and 'strong reputation'",
+        "Care Economy CRC and the Victorian Virtual Emergency Department",
+        "Campus food court and sports park",
+        "Generic references to AI research"
+      ],
+      "correctIndex": 1,
+      "explanation": "Named, checkable programs — a CRC with federal funding and a live virtual ED — are exactly what a specific GS narrative is built from."
+    },
+    {
+      "id": "q-h308",
+      "conceptTag": "care-economy-virtual-health",
+      "type": "mcq",
+      "prompt": "The Care Economy CRC that La Trobe leads involves:",
+      "options": [
+        "A$35M federal funding and 60 partner organisations",
+        "A$82M state funding and 30 partners",
+        "Private funding only",
+        "A single hospital partner"
+      ],
+      "correctIndex": 0,
+      "explanation": "A$35M federal boost, 60 partner organisations across care technology, data solutions and workforce innovation."
+    },
+    {
+      "id": "q-h309",
+      "conceptTag": "care-economy-virtual-health",
+      "type": "mcq",
+      "prompt": "The Victorian Virtual Emergency Department uses AR to:",
+      "options": [
+        "Train surgeons in VR",
+        "Let a remote doctor see what the on-site nurse sees",
+        "Replace triage nurses",
+        "Run fully automated diagnosis"
+      ],
+      "correctIndex": 1,
+      "explanation": "Delivered with Northern Health and Cisco — remote doctor sees the on-site nurse's view; now permanent and 24/7."
+    },
+    {
+      "id": "q-h401",
+      "conceptTag": "industry-pathway-case-study",
+      "type": "commit",
+      "prompt": "When telling a graduate success story like Randi's, the correct framing is:",
+      "options": [
+        "A guarantee of what the student will receive",
+        "A pattern the university enables, with the specifics named",
+        "A typical outcome for all graduates",
+        "Confidential information not to be shared"
+      ],
+      "correctIndex": 1,
+      "explanation": "Sell the pattern with named specifics; promising the outcome misleads the student."
+    },
+    {
+      "id": "q-h402",
+      "conceptTag": "industry-pathway-case-study",
+      "type": "mcq",
+      "prompt": "Randi's pathway ran:",
+      "options": [
+        "Master of Public Health → hospital job",
+        "Master of Digital Health → 13-month Medibank internship → full-time digital health role",
+        "Bachelor of Nursing → registration → Medibank",
+        "Master of Digital Health → PhD"
+      ],
+      "correctIndex": 1,
+      "explanation": "Digital Health masters, 13-month Medibank internship with senior mentorship, then full-time work in clinical AI."
+    },
+    {
+      "id": "q-h403",
+      "conceptTag": "industry-pathway-case-study",
+      "type": "mcq",
+      "prompt": "What makes the Randi story usable in counselling (rather than just marketing)?",
+      "options": [
+        "It has a happy ending",
+        "Every element is specific and attributable: named degree, named employer, named duration",
+        "It mentions AI",
+        "It involves a scholarship"
+      ],
+      "correctIndex": 1,
+      "explanation": "Specific, attributable elements can be verified and framed honestly as an enabled pattern."
+    },
+    {
+      "id": "q-h404",
+      "conceptTag": "regional-health-pathways-and-limits",
+      "type": "commit",
+      "prompt": "A student asks: 'If I study nursing at Bendigo, will I get PR?' Your answer:",
+      "options": [
+        "'Yes, regional study leads to PR'",
+        "'Regional study can carry post-study work advantages under current settings — but no one can promise migration outcomes, and I won't'",
+        "'Probably, if your grades are good'",
+        "'Ask me again after you enrol'"
+      ],
+      "correctIndex": 1,
+      "explanation": "State current settings factually; never promise outcomes. This is the misconduct line."
+    },
+    {
+      "id": "q-h405",
+      "conceptTag": "regional-health-pathways-and-limits",
+      "type": "mcq",
+      "prompt": "The Rural Medical Pathway Program runs at which campuses?",
+      "options": [
+        "Melbourne and Sydney",
+        "Bendigo and Albury-Wodonga",
+        "Shepparton and Mildura",
+        "All campuses"
+      ],
+      "correctIndex": 1,
+      "explanation": "Bendigo and Albury-Wodonga — per La Trobe's materials."
+    },
+    {
+      "id": "q-h406",
+      "conceptTag": "regional-health-pathways-and-limits",
+      "type": "mcq",
+      "prompt": "Which statement is a counsellor permitted to make?",
+      "options": [
+        "'This course guarantees a graduate visa'",
+        "'Regional graduates always get extended work rights'",
+        "'Under current settings, regional study can carry post-study work advantages — settings change, so we verify at application time'",
+        "'PR is straightforward from this course'"
+      ],
+      "correctIndex": 2,
+      "explanation": "Factual, current, hedged for change, no outcome promise — the only compliant formulation of the four."
+    }
+  ]
+}
