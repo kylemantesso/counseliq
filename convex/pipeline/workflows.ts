@@ -129,16 +129,41 @@ export const compileAndJudge = workflow
   .handler(async (step, args): Promise<void> => {
     const { runId } = args;
 
-    // D1 stub: replaced by the real compiler (D3) and judge (D4).
-    await step.runAction(internal.pipeline.steps.runNoopStage, {
-      runId,
-      stage: "compile",
-    });
+    const compilation: {
+      status: string;
+      cause?: string;
+      unitCount?: number;
+      moduleCount?: number;
+      questionCount?: number;
+    } = await step.runAction(
+      internal.pipeline.compiler.compile.runCompilation,
+      {
+        runId,
+        ...(args.reAuthorUnitIds !== undefined
+          ? { reAuthorUnitIds: args.reAuthorUnitIds }
+          : {}),
+      }
+    );
+    if (compilation.status !== "ok") {
+      await step.runMutation(internal.pipeline.transitions.transitionRun, {
+        runId,
+        toState: "FAILED",
+        actor: ACTOR,
+        detail: "compileAndJudge: compilation failed",
+        error: {
+          retryable: true,
+          cause: compilation.cause ?? "compilation failed",
+        },
+      });
+      return;
+    }
     await step.runMutation(internal.pipeline.transitions.transitionRun, {
       runId,
       toState: "COMPILED",
       actor: ACTOR,
-      detail: "compileAndJudge: compilation complete (no-op)",
+      detail:
+        `compileAndJudge: compiled ${compilation.unitCount ?? 0} micro-unit(s) across ` +
+        `${compilation.moduleCount ?? 0} module(s) with ${compilation.questionCount ?? 0} question(s)`,
     });
 
     await step.runMutation(internal.pipeline.transitions.transitionRun, {

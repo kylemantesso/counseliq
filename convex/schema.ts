@@ -257,21 +257,47 @@ export default defineSchema({
     version: v.number(),
     status: courseStatusValidator,
     specHash: v.optional(v.string()),
+    /**
+     * Course-level CourseDefinition fields that don't live on unit rows
+     * ($schema, courseId slug, badge, voice, assessment, _pipelineNotes, …)
+     * so the definition reconstructs losslessly from DB rows.
+     */
+    definitionMeta: v.optional(v.any()),
   }).index("by_institution", ["institutionId"]),
 
   microUnits: defineTable({
     courseId: v.id("courses"),
     moduleKey: v.string(),
+    /** Module title (kept per-unit so reconstruction is lossless). */
+    moduleTitle: v.optional(v.string()),
     unitKey: v.string(),
     concept: v.string(),
     narration: v.any(),
     cards: v.any(),
+    /**
+     * Unit-level definition fields: secondsBudget, hook, retrieve refs,
+     * anchor, conceptKey, and (module, unit) ordering.
+     */
+    meta: v.optional(v.any()),
     contentHash: v.optional(v.string()),
     audioKey: v.optional(v.string()),
     timing: v.optional(v.any()),
     qa: v.optional(v.any()),
     state: microUnitStateValidator,
   }).index("by_course", ["courseId"]),
+
+  /**
+   * Per-unit authoring cache (M4 compiler): re-runs with an unchanged unit
+   * plan + facts, prompt version, and model reuse the stored result instead
+   * of calling the LLM again. Failed authorings store an error marker and
+   * are re-attempted on the next compile.
+   */
+  unitAuthorings: defineTable({
+    runId: v.id("runs"),
+    unitId: v.string(),
+    cacheKey: v.string(),
+    result: v.any(),
+  }).index("by_run_and_unit", ["runId", "unitId"]),
 
   questions: defineTable({
     courseId: v.id("courses"),
