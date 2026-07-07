@@ -61,15 +61,43 @@ export const ingestAndCompile = workflow
       actor: ACTOR,
       detail: "ingestAndCompile: starting extraction",
     });
-    await step.runAction(internal.pipeline.steps.runNoopStage, {
+    const extraction: {
+      status: string;
+      cause?: string;
+      counts?: {
+        total: number;
+        concepts: number;
+        facts: number;
+        entities: number;
+        quotes: number;
+        flaggedFacts: number;
+      };
+      pages?: number;
+    } = await step.runAction(internal.pipeline.extract.runExtraction, {
       runId,
-      stage: "extract",
     });
+    if (extraction.status !== "ok") {
+      await step.runMutation(internal.pipeline.transitions.transitionRun, {
+        runId,
+        toState: "FAILED",
+        actor: ACTOR,
+        detail: "ingestAndCompile: extraction failed",
+        error: {
+          retryable: true,
+          cause: extraction.cause ?? "extraction failed",
+        },
+      });
+      return;
+    }
+    const counts = extraction.counts;
     await step.runMutation(internal.pipeline.transitions.transitionRun, {
       runId,
       toState: "EXTRACTED",
       actor: ACTOR,
-      detail: "ingestAndCompile: extraction complete (no-op)",
+      detail:
+        `ingestAndCompile: extraction complete — ${counts?.total ?? 0} inventory items ` +
+        `(${counts?.concepts ?? 0} concepts, ${counts?.facts ?? 0} facts, ` +
+        `${counts?.flaggedFacts ?? 0} flagged) from ${extraction.pages ?? 0} page(s)`,
     });
 
     await step.runMutation(internal.pipeline.transitions.transitionRun, {

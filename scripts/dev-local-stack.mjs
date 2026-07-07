@@ -122,6 +122,20 @@ function setConvexEnvVars() {
   if (process.env.ADMIN_EMAILS) {
     vars.ADMIN_EMAILS = process.env.ADMIN_EMAILS;
   }
+  // LLM extraction (M3). Forward when present; an already-set value on the
+  // local deployment persists across stack restarts either way.
+  for (const key of [
+    "OPENROUTER_API_KEY",
+    "MODEL_EXTRACT_PAGE",
+    "MODEL_MERGE_INVENTORY",
+    "MODEL_INFER_THEME",
+    "EXTRACTION_PARALLELISM",
+    "EXTRACTION_MODE",
+  ]) {
+    if (process.env[key]) {
+      vars[key] = process.env[key];
+    }
+  }
 
   for (const [key, value] of Object.entries(vars)) {
     run("npx", ["convex", "env", "set", `${key}=${value}`], {

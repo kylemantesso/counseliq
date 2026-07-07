@@ -1,15 +1,16 @@
 #!/usr/bin/env node
 
 /**
- * M2 exit test: drive a pipeline run end-to-end against the dev deployment,
- * with REAL ingestion.
+ * Pipeline exit test: drive a run end-to-end against the dev deployment,
+ * with REAL ingestion (M2) and REAL LLM extraction (M3).
  *
  * 1. Upload both fixture docs (presigned PUT) from
  *    packages/course-schema/fixtures/ingestion/doc-{a,b}.(pptx|pdf)
  * 2. registerSourceDoc x 2, startRun (docs linked to the run)
  * 3. Watch CONVERTING -> CONVERTED with per-doc progress
- * 4. Continue through the remaining (stubbed) states and gates to PUBLISHED
- * 5. Print page counts, first-page provenance + object keys, theme summary
+ * 4. Watch EXTRACTING -> EXTRACTED (real LLM extraction; running cost printed)
+ * 5. Resolve every gate-1 flagged-fact item, then approve gates to PUBLISHED
+ * 6. Print inventory counts, cost breakdown, provenance + theme summary
  *
  * Usage:
  *   npm run walkthrough                — full run (requires fixture docs,
@@ -216,6 +217,7 @@ async function main() {
   const decidedGates = new Set();
   const docStatuses = new Map();
   let lastState = null;
+  let lastCostPrinted = 0;
   const startedAt = Date.now();
 
   for (;;) {
@@ -256,6 +258,19 @@ async function main() {
       }
     }
 
+    // Running LLM cost while extraction is live.
+    if (run.state === "EXTRACTING") {
+      const cost = await convexRun("pipeline/llmCalls:getRunCostInternal", {
+        runId,
+      });
+      if (cost.totalCalls > 0 && cost.totalUsd !== lastCostPrinted) {
+        lastCostPrinted = cost.totalUsd;
+        console.log(
+          `  extraction cost so far: $${cost.totalUsd.toFixed(4)} (${cost.totalCalls} calls)`
+        );
+      }
+    }
+
     if (run.state === "FAILED") {
       console.error(`\nRun FAILED: ${JSON.stringify(run.error)}`);
       process.exit(1);
@@ -272,24 +287,87 @@ async function main() {
         await printDocSummaries(sourceDocIds, docNamesById);
 
         console.log("\nTheme candidates:");
-        for (const sourceDocId of sourceDocIds) {
-          const name = docNamesById.get(sourceDocId) ?? sourceDocId;
-          const theme = docThemes.get(sourceDocId);
+        const finalDocs = await convexRun(
+          "pipeline/ingestion:listSourceDocsForRun",
+          { runId }
+        );
+        for (const doc of finalDocs) {
+          const name = docNamesById.get(doc._id) ?? doc._id;
+          const theme = doc.theme;
           if (!theme) {
             console.log(`  ${name}: none (pdf-native or not extracted)`);
           } else {
             console.log(
-              `  ${name}: colors [${theme.colors.join(", ")}], fonts [${theme.fonts.join(", ")}], ${theme.logoCandidates.length} logo candidate(s)`
+              `  ${name}: [${theme.method ?? "ooxml"}] colors [${theme.colors.join(", ")}], fonts [${theme.fonts.join(", ")}], ${theme.logoCandidates.length} logo candidate(s)`
             );
           }
         }
       }
+
+      // M3: inventory + cost summary.
+      const inventory = await convexRun(
+        "pipeline/inventory:listInventoryForRun",
+        { runId }
+      );
+      const byKind = new Map();
+      let flagged = 0;
+      for (const item of inventory) {
+        byKind.set(item.kind, (byKind.get(item.kind) ?? 0) + 1);
+        if (item.flagged) flagged += 1;
+      }
+      console.log("\nKnowledge inventory:");
+      console.log(
+        `  ${inventory.length} items — ` +
+          `${byKind.get("concept") ?? 0} concepts, ${byKind.get("fact") ?? 0} facts, ` +
+          `${byKind.get("entity") ?? 0} entities, ${byKind.get("quote") ?? 0} quotes ` +
+          `(${flagged} flagged at extraction)`
+      );
+
+      const cost = await convexRun("pipeline/llmCalls:getRunCostInternal", {
+        runId,
+      });
+      console.log("\nLLM cost:");
+      console.log(
+        `  total: $${cost.totalUsd.toFixed(4)} across ${cost.totalCalls} calls ` +
+          `(${cost.totalTokensIn} in / ${cost.totalTokensOut} out tokens)`
+      );
+      for (const row of cost.byStage) {
+        console.log(
+          `    ${row.stage} [${row.model}]: $${row.costUsd.toFixed(4)} over ${row.calls} call(s)`
+        );
+      }
+      const docCount = sourceDocIds.length || 1;
+      console.log(`  $/doc: $${(cost.totalUsd / docCount).toFixed(4)}`);
       return;
     }
 
     const gate = GATE_STATES[run.state];
     if (gate && !decidedGates.has(gate)) {
       decidedGates.add(gate);
+
+      // Gate 1 (M3): every flagged-fact item must be individually resolved
+      // before the gate can be approved. The walkthrough auto-approves each
+      // with a placeholder source so the pipeline can proceed to the stubs.
+      if (gate === 1) {
+        const items = await convexRun(
+          "pipeline/reviewItems:listReviewItemsForRun",
+          { runId, gate: 1 }
+        );
+        const pending = items.filter((item) => item.status === "pending");
+        console.log(
+          `  gate 1: ${items.length} flagged-fact item(s), resolving ${pending.length}…`
+        );
+        for (const item of pending) {
+          await convexRun("pipeline/reviewItems:resolveReviewItem", {
+            reviewItemId: item._id,
+            resolution: "approve",
+            sourceLabel: "walkthrough-auto",
+            year: new Date().getFullYear(),
+            reviewer: "walkthrough-script",
+          });
+        }
+      }
+
       console.log(`  approving gate ${gate}…`);
       await convexRun("pipeline/runs:decideGate", {
         runId,

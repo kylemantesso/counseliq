@@ -65,15 +65,25 @@ async function decideGateHelper(
     appError(AppErrorCode.RUN_NOT_AT_GATE);
   }
 
-  const pendingItems = await ctx.db
+  const gateItems = await ctx.db
     .query("reviewItems")
     .withIndex("by_run_and_gate", (q) =>
       q.eq("runId", args.runId).eq("gate", args.gate)
     )
-    .take(100);
+    .take(1000);
+
+  // Gate 1 items are real per-fact reviews (M3): approving the gate requires
+  // every item to be individually resolved (approve-with-source / exclude).
+  if (
+    args.gate === 1 &&
+    args.decision === "approve" &&
+    gateItems.some((item) => item.status === "pending")
+  ) {
+    appError(AppErrorCode.GATE_ITEMS_UNRESOLVED);
+  }
 
   const decidedStatus = args.decision === "approve" ? "approved" : "rejected";
-  for (const item of pendingItems) {
+  for (const item of gateItems) {
     if (item.status !== "pending") {
       continue;
     }

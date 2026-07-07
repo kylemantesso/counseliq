@@ -198,12 +198,35 @@ export default defineSchema({
 
   inventoryItems: defineTable({
     runId: v.id("runs"),
+    /** "concept" | "fact" | "entity" | "quote" (inventoryItemSchema.type). */
     kind: v.string(),
+    /** The full InventoryItem (validated against the shared Zod contract). */
     body: v.any(),
-    claimClass: v.string(),
+    /** Facts only. */
+    claimClass: v.optional(v.string()),
+    /** Page provenance IDs: doc:{sourceDocId}:page:{n}. */
     provenance: v.array(v.string()),
     flagged: v.boolean(),
-  }).index("by_run", ["runId"]),
+    flagReason: v.optional(v.string()),
+    /** Set at gate-1 review; excluded facts are invisible to the compiler. */
+    excluded: v.optional(v.boolean()),
+  })
+    .index("by_run", ["runId"])
+    .index("by_run_and_flagged", ["runId", "flagged"]),
+
+  /**
+   * Per-page extraction cache: re-runs with an unchanged page (same content
+   * hash), prompt version, and model reuse the stored result instead of
+   * calling the LLM again.
+   */
+  pageExtractions: defineTable({
+    sourceDocId: v.id("sourceDocs"),
+    n: v.number(),
+    /** `{pageHash}:{promptVersionTag}:{model}` */
+    cacheKey: v.string(),
+    /** LlmPageExtraction after code-level flag floor + provenance stamping. */
+    result: v.any(),
+  }).index("by_source_doc_and_n", ["sourceDocId", "n"]),
 
   runs: defineTable({
     institutionId: v.id("institutions"),
@@ -264,6 +287,8 @@ export default defineSchema({
     status: reviewItemStatusValidator,
     reviewer: v.optional(v.string()),
     decidedAt: v.optional(v.number()),
+    /** Gate-1 items link back to the flagged fact they review. */
+    inventoryItemId: v.optional(v.id("inventoryItems")),
   })
     .index("by_run", ["runId"])
     .index("by_run_and_gate", ["runId", "gate"])
