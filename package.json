@@ -44,7 +44,8 @@
     "convex-helpers": "^0.1.119",
     "expo-server-sdk": "^6.1.0",
     "react-email": "^6.6.3",
-    "zod": "^3.25.76"
+    "zod": "^3.25.76",
+    "zod-to-json-schema": "^3.25.2"
   },
   "devDependencies": {
     "@edge-runtime/vm": "^5.0.0",
