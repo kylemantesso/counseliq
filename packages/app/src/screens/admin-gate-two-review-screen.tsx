@@ -16,6 +16,7 @@ import {
 } from "@counseliq/ui";
 import type { Doc, Id } from "../../../../convex/_generated/dataModel";
 import { AdminGuard } from "../components/admin-guard";
+import { CardStaticPreview } from "../components/card-static-preview";
 import { Screen } from "../components/screen";
 import { api } from "../db/api";
 import { getUserFacingErrorMessage } from "../errors/get-user-facing-message";
@@ -500,7 +501,18 @@ function UnitDetail({
         </Text>
         <Box className="flex-row flex-wrap gap-3">
           {cards.map((card, index) => (
-            <CardPropsView key={`card-${index}`} card={card} index={index} />
+            <Box key={`card-${index}`} className="w-56 gap-1">
+              <Text className="text-xs font-semibold">
+                {index + 1}. {card.template}
+              </Text>
+              <CardStaticPreview template={card.template} props={card.props} />
+              <Text className="text-xs text-muted-foreground" numberOfLines={1}>
+                @ {card.enterAt.narration} “{card.enterAt.word}”
+              </Text>
+              <Text className="text-xs text-muted-foreground" numberOfLines={1}>
+                {card.provenance}
+              </Text>
+            </Box>
           ))}
         </Box>
       </Box>
@@ -523,57 +535,16 @@ function UnitDetail({
         <Text className="text-xs font-semibold uppercase text-muted-foreground">
           Anchor
         </Text>
-        <Box className="bg-card border border-border rounded-xl p-3 gap-1">
+        <Box className="w-56 gap-1">
           <Text className="text-xs text-muted-foreground">
             {meta.anchor.template}
           </Text>
-          {Object.entries(meta.anchor.props).map(([key, value]) => (
-            <PropRow key={key} propKey={key} value={value} />
-          ))}
+          <CardStaticPreview
+            template={meta.anchor.template}
+            props={meta.anchor.props}
+          />
         </Box>
       </Box>
-    </Box>
-  );
-}
-
-function PropRow({ propKey, value }: { propKey: string; value: unknown }) {
-  return (
-    <Box className="flex-row gap-2">
-      <Text className="text-xs text-muted-foreground w-24" numberOfLines={1}>
-        {propKey}
-      </Text>
-      <Text className="text-xs flex-1">
-        {typeof value === "string" ? value : JSON.stringify(value)}
-      </Text>
-    </Box>
-  );
-}
-
-/**
- * Structured props view standing in for a real card render.
- * TODO(cards-track): swap for the @counseliq/cards renderer when the cards
- * package lands (Phase 0: NOT merged).
- */
-function CardPropsView({ card, index }: { card: UnitCard; index: number }) {
-  return (
-    <Box
-      className="bg-card border border-border rounded-xl p-3 gap-1 w-56"
-      style={{ aspectRatio: 9 / 16 }}
-    >
-      <Text className="text-xs font-semibold">
-        {index + 1}. {card.template}
-      </Text>
-      <Box className="flex-1 gap-1">
-        {Object.entries(card.props).map(([key, value]) => (
-          <PropRow key={key} propKey={key} value={value} />
-        ))}
-      </Box>
-      <Text className="text-xs text-muted-foreground" numberOfLines={1}>
-        @ {card.enterAt.narration} “{card.enterAt.word}”
-      </Text>
-      <Text className="text-xs text-muted-foreground" numberOfLines={1}>
-        {card.provenance}
-      </Text>
     </Box>
   );
 }

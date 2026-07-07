@@ -1,5 +1,9 @@
 import { z } from "zod";
-import { CARD_TEMPLATES, cardTemplateSchema } from "@counseliq/course-schema";
+import {
+  CARD_TEMPLATES,
+  cardTemplateSchema,
+  validateCardProps,
+} from "@counseliq/course-schema";
 
 /**
  * LLM wire contracts for the M4 compiler and QA judge. Strict structured
@@ -58,12 +62,28 @@ export type LlmCompileStructure = z.infer<typeof llmCompileStructureSchema>;
 // --- Authoring pass (author-unit) ---
 
 /**
- * Card props stay an open record until the per-template prop union merges
- * (cards track, Phase 0: NOT merged).
- * TODO(cards-track): validate props against the per-template discriminated
- * union from @counseliq/cards when it lands in course-schema.
+ * Card props stay an open record on the wire (a 21-member discriminated
+ * union would bloat structured output); the per-template registry from
+ * course-schema enforces them via superRefine below, riding
+ * completeStructured's validator-feedback retry.
  */
 const llmCardPropsSchema = z.record(z.string(), z.unknown());
+
+/** Surface per-template prop issues at the offending card's path. */
+function addCardPropIssues(
+  ctx: z.RefinementCtx,
+  template: string,
+  props: Record<string, unknown>,
+  path: (string | number)[]
+) {
+  for (const issue of validateCardProps(template, props)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: [...path, "props", ...issue.path],
+      message: issue.message,
+    });
+  }
+}
 
 export const llmAuthoredCardSchema = z.object({
   template: cardTemplateSchema,
@@ -128,6 +148,7 @@ export const llmAuthoredUnitSchema = z
     });
 
     unit.cards.forEach((card, cIndex) => {
+      addCardPropIssues(ctx, card.template, card.props, ["cards", cIndex]);
       const narrationText = narrationById.get(card.enterAt.narration);
       if (narrationText === undefined) {
         ctx.addIssue({
@@ -160,6 +181,8 @@ export const llmAuthoredUnitSchema = z
     unit.retrieveQuestions.forEach((question, qIndex) =>
       checkQuestion(question, ["retrieveQuestions", qIndex])
     );
+
+    addCardPropIssues(ctx, unit.anchor.template, unit.anchor.props, ["anchor"]);
   });
 
 export type LlmAuthoredCard = z.infer<typeof llmAuthoredCardSchema>;
