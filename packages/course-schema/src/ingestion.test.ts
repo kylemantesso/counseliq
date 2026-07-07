@@ -15,6 +15,7 @@ function validManifest() {
     sourceDocHash: HASH_A,
     pageCount: 2,
     theme: {
+      method: "ooxml",
       colors: ["#1A2B3C", "#FFFFFF"],
       fonts: ["Calibri", "Arial"],
       logoCandidates: [`sha256/${HASH_C}.png`],

@@ -131,6 +131,7 @@ export async function runConversion(
       if (key) logoCandidates.push(key);
     }
     theme = {
+      method: "ooxml",
       colors: pptx.theme.colors,
       fonts: pptx.theme.fonts,
       logoCandidates: [...new Set(logoCandidates)],

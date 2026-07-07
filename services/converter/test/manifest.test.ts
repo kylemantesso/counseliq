@@ -10,6 +10,7 @@ describe("buildManifest", () => {
     const manifest = buildManifest({
       sourceDocHash: HASH,
       theme: {
+        method: "ooxml" as const,
         colors: ["#112233"],
         fonts: ["Calibri"],
         logoCandidates: [KEY_A],

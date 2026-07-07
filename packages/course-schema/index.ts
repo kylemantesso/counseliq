@@ -40,6 +40,7 @@ export {
   embeddedImageSchema,
   manifestPageSchema,
   sourceDocKindSchema,
+  themeMethodSchema,
 } from "./src/ingestion";
 
 export type {
@@ -50,4 +51,48 @@ export type {
   EmbeddedImage,
   ManifestPage,
   SourceDocKind,
+  ThemeMethod,
 } from "./src/ingestion";
+
+export {
+  FLAG_REASON_MISSING_SOURCE_OR_YEAR,
+  PROVENANCE_ID_PATTERN,
+  applyFlagFloor,
+  claimClassSchema,
+  conceptSchema,
+  entityKindSchema,
+  entitySchema,
+  factSchema,
+  inventoryItemSchema,
+  knownDirtyStatisticSchema,
+  labelledConceptSchema,
+  labelsFileSchema,
+  llmExtractedConceptSchema,
+  llmExtractedEntitySchema,
+  llmExtractedFactSchema,
+  llmExtractedQuoteSchema,
+  llmInferredThemeSchema,
+  llmMergeResultSchema,
+  llmMergedConceptSchema,
+  llmPageExtractionSchema,
+  mustExtractEntitySchema,
+  normalizeConceptTitle,
+  provenanceIdSchema,
+  quoteSchema,
+} from "./src/inventory";
+
+export type {
+  ClaimClass,
+  Concept,
+  Entity,
+  EntityKind,
+  Fact,
+  InventoryItem,
+  KnownDirtyStatistic,
+  LabelledConcept,
+  LabelsFile,
+  LlmInferredTheme,
+  LlmMergeResult,
+  LlmPageExtraction,
+  Quote,
+} from "./src/inventory";

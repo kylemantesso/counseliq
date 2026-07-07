@@ -47,8 +47,16 @@ export const manifestPageSchema = z
   })
   .strict();
 
+/**
+ * How the candidate theme was obtained: `ooxml` = authoritative extraction
+ * from the pptx theme part; `llm-inferred` = vision-model guess from page
+ * renders (pdf-native docs) — candidates only, confirmed at review.
+ */
+export const themeMethodSchema = z.enum(["ooxml", "llm-inferred"]);
+
 export const candidateThemeSchema = z
   .object({
+    method: themeMethodSchema,
     /** Hex colors, e.g. "#1A2B3C", from the document theme. */
     colors: z.array(z.string().regex(/^#[0-9A-Fa-f]{6}$/)),
     /** Font family names from the document theme. */
@@ -117,6 +125,7 @@ export const conversionCallbackSchema = z
   })
   .strict();
 
+export type ThemeMethod = z.infer<typeof themeMethodSchema>;
 export type EmbeddedImage = z.infer<typeof embeddedImageSchema>;
 export type ManifestPage = z.infer<typeof manifestPageSchema>;
 export type CandidateTheme = z.infer<typeof candidateThemeSchema>;

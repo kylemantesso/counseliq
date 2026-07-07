@@ -73,8 +73,15 @@ export const courseStatusValidator = v.union(
   v.literal("published")
 );
 
-/** Candidate brand theme extracted by the converter (null for pdf-native docs). */
+/**
+ * Candidate brand theme: `ooxml` = extracted by the converter from pptx;
+ * `llm-inferred` = vision-model candidates for pdf-native docs (M3).
+ * Optional to tolerate rows written before the method field existed.
+ */
 export const candidateThemeValidator = v.object({
+  method: v.optional(
+    v.union(v.literal("ooxml"), v.literal("llm-inferred"))
+  ),
   colors: v.array(v.string()),
   fonts: v.array(v.string()),
   logoCandidates: v.array(v.string()),

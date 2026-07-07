@@ -26,6 +26,7 @@ function validManifest() {
     sourceDocHash: HASH_DOC,
     pageCount: 2,
     theme: {
+      method: "ooxml",
       colors: ["#1F4E79"],
       fonts: ["Georgia"],
       logoCandidates: [KEY_IMAGE],
@@ -178,6 +179,7 @@ describe("/converter/callback", () => {
     expect(doc?.pageCount).toBe(2);
     expect(doc?.sourceDocHash).toBe(HASH_DOC);
     expect(doc?.theme).toEqual({
+      method: "ooxml",
       colors: ["#1F4E79"],
       fonts: ["Georgia"],
       logoCandidates: [KEY_IMAGE],
