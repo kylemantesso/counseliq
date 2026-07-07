@@ -1,0 +1,8 @@
+{
+  "deployment": "anonymous:anonymous-counsel-iq",
+  "conceptRecallThreshold": { "doc-a": 0.8, "doc-b": 0.8 },
+  "maxConceptRatio": 3,
+  "avgTokensInPerPage": 2000,
+  "avgTokensOutPerPage": 700,
+  "timeoutMs": 900000
+}

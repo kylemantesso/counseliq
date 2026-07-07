@@ -22,6 +22,7 @@
     "dev:stack": "node scripts/dev-local-stack.mjs",
     "dev:web": "npm run dev --workspace=web",
     "env:sync:convex-email": "node scripts/sync-convex-email-env.mjs",
+    "eval": "node scripts/eval.mjs",
     "init": "node scripts/init.mjs",
     "init:existing": "node scripts/init.mjs --use-existing",
     "lint": "turbo run lint",
