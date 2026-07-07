@@ -1,6 +1,7 @@
 import type { CardPropsFor } from "@counseliq/course-schema";
 import { beatProgress, fade, fadeUp, growX, msWindow } from "../interpolate";
 import { fitDisplayFontSize } from "../fit";
+import { visibleSourceLabels } from "../source-labels";
 import { cssVar } from "../theme/brand-theme-provider";
 import type { CardComponentProps } from "../timing";
 
@@ -21,6 +22,7 @@ function numericValue(value: string | number): number | null {
 }
 
 export function ChartCard({ props, timing }: CardComponentProps<CardPropsFor<"chart-card">>) {
+  const [sourceLabel] = visibleSourceLabels(props.sourceLabel as string | undefined);
   const values = props.series.map((entry) => numericValue(entry.value));
   const max = Math.max(...values.map((v) => (v === null ? 0 : Math.abs(v))), 1);
 
@@ -106,7 +108,7 @@ export function ChartCard({ props, timing }: CardComponentProps<CardPropsFor<"ch
           );
         })}
       </div>
-      {props.sourceLabel ? (
+      {sourceLabel ? (
         <div
           style={{
             display: "flex",
@@ -135,7 +137,7 @@ export function ChartCard({ props, timing }: CardComponentProps<CardPropsFor<"ch
               color: cssVar("dim"),
             }}
           >
-            {props.sourceLabel}
+            {sourceLabel}
           </span>
         </div>
       ) : null}

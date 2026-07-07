@@ -137,3 +137,24 @@ describe("fitDisplayFontSize", () => {
     expect(fitDisplayFontSize(undefined, 47)).toBe(47);
   });
 });
+
+// --- visibleSourceLabels (provenance-class markers hidden) ---
+import { visibleSourceLabels } from "../src/source-labels";
+
+describe("visibleSourceLabels", () => {
+  test("hides Institution claim markers, keeps real citations", () => {
+    expect(
+      visibleSourceLabels("Institution claim", "QS 2025", "INSTITUTION CLAIM", "THE 2024")
+    ).toEqual(["QS 2025", "THE 2024"]);
+  });
+
+  test("dedupes case-insensitively and drops empties", () => {
+    expect(visibleSourceLabels("QS 2025", "qs 2025", "", "  ", undefined, null)).toEqual([
+      "QS 2025",
+    ]);
+  });
+
+  test("all-marker input renders nothing", () => {
+    expect(visibleSourceLabels("Institution claim", "institution claims")).toEqual([]);
+  });
+});

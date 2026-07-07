@@ -3,6 +3,7 @@ import type { CardPropsFor } from "@counseliq/course-schema";
 import type { CardComponentProps } from "../timing";
 import { fade, fadeUp, msWindow } from "../interpolate";
 import { fitDisplayFontSize } from "../fit";
+import { visibleSourceLabels } from "../source-labels";
 import { cssVar } from "../theme/brand-theme-provider";
 
 /**
@@ -20,6 +21,7 @@ const display: CSSProperties = {
 };
 
 export const DocumentCallout: FC<CardComponentProps<CardPropsFor<"document-callout">>> = ({ props, timing }) => {
+  const [sourceLabel] = visibleSourceLabels(props.sourceLabel as string | undefined);
   return (
     <div
       data-ciq-card="document-callout"
@@ -88,7 +90,7 @@ export const DocumentCallout: FC<CardComponentProps<CardPropsFor<"document-callo
         </div>
       ) : null}
       <div style={{ flex: 1 }} />
-      {props.sourceLabel ? (
+      {sourceLabel ? (
         <div
           style={{
             display: "flex",
@@ -117,7 +119,7 @@ export const DocumentCallout: FC<CardComponentProps<CardPropsFor<"document-callo
               color: cssVar("dim"),
             }}
           >
-            {props.sourceLabel}
+            {sourceLabel}
           </span>
         </div>
       ) : null}

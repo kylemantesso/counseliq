@@ -1,15 +1,17 @@
 import type { CSSProperties, FC } from "react";
 import type { CardPropsFor } from "@counseliq/course-schema";
 import { fade, fadeUp, msWindow, settle } from "../interpolate";
+import { visibleSourceLabels } from "../source-labels";
 import { cssVar } from "../theme/brand-theme-provider";
 import type { CardComponentProps } from "../timing";
 
 /**
  * stat-card — one oversized statistic. Choreography (mockup 02): kicker
  * fades, the headline settles from 1.16× scale, supporting copy rises,
- * and the sourceLabel footer fades in last. The sourceLabel ALWAYS
- * renders when present — statistic cards must carry their source
- * (compliance invariant).
+ * and the sourceLabel footer fades in last. Real citations always render
+ * (statistic cards must carry their source — compliance invariant lives
+ * in the PROPS); provenance-class markers like "Institution claim" are
+ * display-filtered via visibleSourceLabels.
  */
 
 const display: CSSProperties = {
@@ -20,6 +22,7 @@ const display: CSSProperties = {
 };
 
 export const StatCard: FC<CardComponentProps<CardPropsFor<"stat-card">>> = ({ props, timing }) => {
+  const [sourceLabel] = visibleSourceLabels(props.sourceLabel as string | undefined);
   const headline = String(props.headline ?? "");
   // Width-aware sizing: the inner column is 300px (360 − 2×30 padding) and
   // display digits/caps run ~0.62em wide, so size from the character count
@@ -84,7 +87,7 @@ export const StatCard: FC<CardComponentProps<CardPropsFor<"stat-card">>> = ({ pr
           </div>
         ) : null}
       </div>
-      {props.sourceLabel ? (
+      {sourceLabel ? (
         <div
           data-ciq-source-label=""
           style={{ display: "flex", alignItems: "flex-start", gap: 7, ...fade(msWindow(timing, 1250, 600)) }}
@@ -109,7 +112,7 @@ export const StatCard: FC<CardComponentProps<CardPropsFor<"stat-card">>> = ({ pr
               color: cssVar("dim"),
             }}
           >
-            {props.sourceLabel}
+            {sourceLabel}
           </span>
         </div>
       ) : null}

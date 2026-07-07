@@ -2,6 +2,7 @@ import type { CSSProperties, FC } from "react";
 import type { CardPropsFor } from "@counseliq/course-schema";
 import { beatProgress, fadeUp, msWindow } from "../interpolate";
 import { fitDisplayFontSize } from "../fit";
+import { visibleSourceLabels } from "../source-labels";
 import { cssVar } from "../theme/brand-theme-provider";
 import type { CardComponentProps } from "../timing";
 
@@ -28,14 +29,11 @@ export const ListReveal: FC<CardComponentProps<CardPropsFor<"list-reveal">>> = (
   const rowPadding = dense ? "12px 0" : "18px 0";
   // Per-item source labels are NOT rendered inline — repeated/truncated
   // citations read as noise in the rows. Attribution consolidates into one
-  // deduped footer line (stat-card's quiet style).
-  const sourceLabels = [
-    ...new Set(
-      items
-        .map((item) => (typeof item.sourceLabel === "string" ? item.sourceLabel.trim() : ""))
-        .filter((label) => label.length > 0)
-    ),
-  ];
+  // deduped footer line (stat-card's quiet style); provenance-class
+  // markers ("Institution claim") are filtered out entirely.
+  const sourceLabels = visibleSourceLabels(
+    ...items.map((item) => (typeof item.sourceLabel === "string" ? item.sourceLabel : undefined))
+  );
   return (
     <div
       style={{
