@@ -451,6 +451,20 @@ export const setUnitQa = internalMutation({
   },
 });
 
+/** Course-level QA verdict written by the judge (pass, courseFlags, …). */
+export const setCourseQa = internalMutation({
+  args: {
+    courseId: v.id("courses"),
+    qa: v.any(),
+  },
+  handler: async (ctx, args) => {
+    const course = await ctx.db.get(args.courseId);
+    if (!course) appError(AppErrorCode.COURSE_NOT_FOUND);
+    await ctx.db.patch(args.courseId, { qa: args.qa });
+    return null;
+  },
+});
+
 // --- Question editing (gate-2 UI, D5) ---
 
 /** Admin: edit one question in place (prompt/options/answer/explanation). */

@@ -172,15 +172,34 @@ export const compileAndJudge = workflow
       actor: ACTOR,
       detail: "compileAndJudge: running QA judge",
     });
-    await step.runAction(internal.pipeline.steps.runNoopStage, {
+    const judged: {
+      status: string;
+      cause?: string;
+      errorCount?: number;
+      warningCount?: number;
+    } = await step.runAction(internal.pipeline.compiler.judge.runQaJudge, {
       runId,
-      stage: "qa-judge",
     });
+    if (judged.status === "failed") {
+      await step.runMutation(internal.pipeline.transitions.transitionRun, {
+        runId,
+        toState: "FAILED",
+        actor: ACTOR,
+        detail: "compileAndJudge: QA judge failed",
+        error: {
+          retryable: true,
+          cause: judged.cause ?? "QA judge failed",
+        },
+      });
+      return;
+    }
     await step.runMutation(internal.pipeline.transitions.transitionRun, {
       runId,
-      toState: "QA_PASSED",
+      toState: judged.status === "flagged" ? "QA_FLAGGED" : "QA_PASSED",
       actor: ACTOR,
-      detail: "compileAndJudge: QA judge passed the course (no-op)",
+      detail:
+        `compileAndJudge: QA judge ${judged.status} the course — ` +
+        `${judged.errorCount ?? 0} error(s), ${judged.warningCount ?? 0} warning(s)`,
     });
 
     await step.runMutation(internal.pipeline.transitions.transitionRun, {

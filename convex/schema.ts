@@ -263,6 +263,8 @@ export default defineSchema({
      * so the definition reconstructs losslessly from DB rows.
      */
     definitionMeta: v.optional(v.any()),
+    /** Course-level QA verdict (judge pass/fail, courseFlags, versions). */
+    qa: v.optional(v.any()),
   }).index("by_institution", ["institutionId"]),
 
   microUnits: defineTable({
