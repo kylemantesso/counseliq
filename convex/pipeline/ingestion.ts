@@ -58,6 +58,19 @@ export const listSourceDocsForRun = internalQuery({
   },
 });
 
+/** Converted pages for one doc, ordered by page number (scripts/tests). */
+export const listSlidesForDoc = internalQuery({
+  args: { sourceDocId: v.id("sourceDocs") },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("slides")
+      .withIndex("by_source_doc_and_n", (q) =>
+        q.eq("sourceDocId", args.sourceDocId)
+      )
+      .take(500);
+  },
+});
+
 export const markSourceDocConverting = internalMutation({
   args: { sourceDocId: v.id("sourceDocs") },
   handler: async (ctx, args) => {
