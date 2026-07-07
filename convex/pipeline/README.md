@@ -128,11 +128,33 @@ grid with PNG, text, notes, provenance ID, theme candidates).
 
 ## Driving it
 
+### One-command local stack
+
+```bash
+npm run dev:stack          # MinIO + converter (Docker) + local Convex + web app
+npm run walkthrough:local  # in another terminal: e2e run against that stack
+```
+
+`dev:stack` starts docker compose, configures a **local anonymous Convex
+deployment** (cloud dev can't reach localhost) with all ingestion env vars —
+including `CLERK_JWT_ISSUER_DOMAIN` derived from the web app's Clerk
+publishable key — then runs `convex dev` and the Next.js dev server together.
+Ctrl-C stops everything and restores `.env.local` to the cloud dev deployment.
+
+Options: `WEB_PORT=3001` (web port, default 3005), `CONVERTER_PORT=8090`
+(converter host port), `ADMIN_EMAILS=you@example.com` (grant your login admin
+on the local deployment so `/admin/source-docs` works).
+
+### Against your cloud dev deployment
+
 ```bash
 npm run walkthrough                # upload fixtures → real conversion → gates → PUBLISHED
 npm run walkthrough -- --skip-docs # M1-style run, conversion phase no-ops through
 npm test                           # course-schema + converter + convex-test suites
 ```
+
+Requires a converter the cloud deployment can reach (e.g. Fly.io) and the env
+vars from "Operator setup" set on that deployment.
 
 ## What is stubbed, and which milestone makes it real
 

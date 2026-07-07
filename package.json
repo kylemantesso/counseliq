@@ -18,6 +18,8 @@
     "dev:mobile": "npm run dev --workspace=mobile",
     "build:mobile:dev": "npm run build:dev --workspace=mobile",
     "dev:all": "concurrently \"npm run convex:dev\" \"turbo run dev --parallel --filter=web --filter=mobile\"",
+    "dev:stack": "node scripts/dev-local-stack.mjs",
+    "walkthrough:local": "CONVEX_DEPLOYMENT=anonymous:anonymous-counsel-iq node scripts/walkthrough.mjs",
     "build": "turbo run build",
     "build:web": "npm run build --workspace=web",
     "build:mobile": "npm run build --workspace=mobile",

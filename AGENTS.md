@@ -130,6 +130,8 @@ catch (error) {
 | `npm run dev:mobile` | Metro dev server (requires dev client — run `npx expo run:ios` first) |
 | `npm run build:mobile:dev` | EAS development build |
 | `npm run dev:all` | Convex + web + mobile in parallel |
+| `npm run dev:stack` | Full local ingestion stack: MinIO + converter (Docker) + local Convex + web |
+| `npm run walkthrough:local` | E2e pipeline run against the `dev:stack` local deployment |
 | `npm run convex:dev` | Convex dev + codegen |
 | `npm run build:web` | Production web build |
 | `npm run typecheck` | Turborepo typecheck across workspaces |
