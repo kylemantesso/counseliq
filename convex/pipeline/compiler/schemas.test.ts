@@ -1,10 +1,13 @@
 import { describe, expect, test } from "vitest";
 import { llmAuthoredUnitSchema } from "./schemas";
+import { AUTHOR_UNIT_JSON_SCHEMA } from "../llm/schemas";
 
 /**
- * Wire-schema enforcement of per-template card props (course-schema
- * registry via superRefine). Issues land on the offending card's path so
- * completeStructured's validator-feedback retry tells the LLM what to fix.
+ * Per-template card props are enforced on the wire (discriminated union in
+ * the generated JSON schema, steering structured-output providers at
+ * generation time) and at the Zod parse. Issues land on the offending
+ * card's path so completeStructured's validator-feedback retry tells the
+ * LLM what to fix.
  */
 
 function makeUnit(overrides: Record<string, unknown> = {}) {
@@ -94,5 +97,71 @@ describe("llmAuthoredUnitSchema card-prop enforcement", () => {
     const unit = makeUnit();
     (unit.cards as Array<{ template: string }>)[0].template = "hologram-card";
     expect(llmAuthoredUnitSchema.safeParse(unit).success).toBe(false);
+  });
+
+  test("null-valued optional props are stripped, not rejected", () => {
+    const unit = makeUnit();
+    (unit.cards as Array<{ props: Record<string, unknown> }>)[0].props = {
+      headline: "40,000",
+      supporting: null,
+      kicker: null,
+      sourceLabel: "Annual report 2024",
+    };
+    const result = llmAuthoredUnitSchema.safeParse(unit);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.cards[0].props).not.toHaveProperty("supporting");
+    }
+  });
+
+  test("list props are rejected when the model emits a string", () => {
+    const unit = makeUnit();
+    (unit.cards as Array<Record<string, unknown>>)[0] = {
+      template: "list-reveal",
+      props: { heading: "Key points", items: "• one\n• two" },
+      enterAt: { narration: "n1", word: "students" },
+      provenance: "doc:abc:page:1",
+    };
+    const result = llmAuthoredUnitSchema.safeParse(unit);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const issue = result.error.issues.find((entry) =>
+        entry.path.join(".").includes("items")
+      );
+      expect(issue).toBeDefined();
+    }
+  });
+});
+
+describe("AUTHOR_UNIT_JSON_SCHEMA wire shape", () => {
+  type JsonSchema = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+
+  function cardBranches(schema: JsonSchema): JsonSchema[] {
+    const items = schema.properties?.cards?.items ?? {};
+    return (items.anyOf ?? items.oneOf ?? []) as JsonSchema[];
+  }
+
+  function branchFor(template: string): JsonSchema | undefined {
+    return cardBranches(AUTHOR_UNIT_JSON_SCHEMA as JsonSchema).find(
+      (branch) =>
+        branch.properties?.template?.const === template ||
+        branch.properties?.template?.enum?.[0] === template
+    );
+  }
+
+  test("cards are a discriminated union on the wire (21 branches)", () => {
+    expect(cardBranches(AUTHOR_UNIT_JSON_SCHEMA as JsonSchema)).toHaveLength(21);
+  });
+
+  test("list-reveal items are typed as an array on the wire", () => {
+    const branch = branchFor("list-reveal");
+    expect(branch).toBeDefined();
+    const items = branch?.properties?.props?.properties?.items;
+    expect(items?.type).toBe("array");
+  });
+
+  test("stat-card headline is required on the wire", () => {
+    const branch = branchFor("stat-card");
+    expect(branch?.properties?.props?.required ?? []).toContain("headline");
   });
 });

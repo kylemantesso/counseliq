@@ -1,8 +1,8 @@
 import { z } from "zod";
 import {
+  CARD_PROP_SCHEMAS,
   CARD_TEMPLATES,
-  cardTemplateSchema,
-  validateCardProps,
+  type CardTemplate,
 } from "@counseliq/course-schema";
 
 /**
@@ -62,45 +62,82 @@ export type LlmCompileStructure = z.infer<typeof llmCompileStructureSchema>;
 // --- Authoring pass (author-unit) ---
 
 /**
- * Card props stay an open record on the wire (a 21-member discriminated
- * union would bloat structured output); the per-template registry from
- * course-schema enforces them via superRefine below, riding
- * completeStructured's validator-feedback retry.
+ * Card props are typed per template ON THE WIRE via a discriminated union
+ * built from the course-schema registry, so structured-output providers
+ * steer the model to the right shapes at generation time (prose manifests
+ * alone produced strings where arrays belong). The Zod parse remains the
+ * enforcement; completeStructured's validator-feedback retry is the
+ * backstop, not the primary mechanism.
+ *
+ * Providers running strict structured output emit null for absent optional
+ * fields, while the registry schemas use `.optional()` — so props are
+ * deep-null-stripped before the per-template parse.
  */
-const llmCardPropsSchema = z.record(z.string(), z.unknown());
-
-/** Surface per-template prop issues at the offending card's path. */
-function addCardPropIssues(
-  ctx: z.RefinementCtx,
-  template: string,
-  props: Record<string, unknown>,
-  path: (string | number)[]
-) {
-  for (const issue of validateCardProps(template, props)) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: [...path, "props", ...issue.path],
-      message: issue.message,
-    });
+function stripNullsDeep(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stripNullsDeep);
+  if (value === null || typeof value !== "object") return value;
+  const out: Record<string, unknown> = {};
+  for (const [key, entry] of Object.entries(value)) {
+    if (entry === null) continue;
+    out[key] = stripNullsDeep(entry);
   }
+  return out;
 }
 
-export const llmAuthoredCardSchema = z.object({
-  template: cardTemplateSchema,
-  props: llmCardPropsSchema,
-  enterAt: z.object({
-    /** Narration sentence id (must exist in this unit's narration). */
-    narration: z.string().min(1),
-    /** Word anchor (must be a substring of that narration sentence). */
-    word: z.string().min(1),
-  }),
-  /**
-   * `compiler:derived` for connective/instructional cards, otherwise the
-   * provenance IDs of the inventory items backing the card, `;`-joined
-   * (doc:{sourceDocId}:page:{n}).
-   */
-  provenance: z.string().min(1),
+const llmEnterAtSchema = z.object({
+  /** Narration sentence id (must exist in this unit's narration). */
+  narration: z.string().min(1),
+  /** Word anchor (must be a substring of that narration sentence). */
+  word: z.string().min(1),
 });
+
+const llmCardBranches = CARD_TEMPLATES.map((template) =>
+  z.object({
+    template: z.literal(template),
+    props: z.preprocess(stripNullsDeep, CARD_PROP_SCHEMAS[template]),
+    enterAt: llmEnterAtSchema,
+    /**
+     * `compiler:derived` for connective/instructional cards, otherwise the
+     * provenance IDs of the inventory items backing the card, `;`-joined
+     * (doc:{sourceDocId}:page:{n}).
+     */
+    provenance: z.string().min(1),
+  })
+);
+
+const llmAnchorBranches = CARD_TEMPLATES.map((template) =>
+  z.object({
+    template: z.literal(template),
+    props: z.preprocess(stripNullsDeep, CARD_PROP_SCHEMAS[template]),
+  })
+);
+
+/** Output shapes kept stable for downstream consumers (persistence, rules,
+ * assemble treat props as an open record). */
+export type LlmAuthoredCard = {
+  template: CardTemplate;
+  props: Record<string, unknown>;
+  enterAt: { narration: string; word: string };
+  provenance: string;
+};
+export type LlmAuthoredAnchor = {
+  template: CardTemplate;
+  props: Record<string, unknown>;
+};
+
+// Branches are homogeneous by construction; the tuple cast is what
+// discriminatedUnion demands from a mapped build.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const llmAuthoredCardSchema = z.discriminatedUnion(
+  "template",
+  llmCardBranches as any
+) as unknown as z.ZodType<LlmAuthoredCard>;
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const llmAnchorSchema = z.discriminatedUnion(
+  "template",
+  llmAnchorBranches as any
+) as unknown as z.ZodType<LlmAuthoredAnchor>;
 
 export const llmDraftQuestionSchema = z.object({
   prompt: z.string().min(1),
@@ -129,10 +166,7 @@ export const llmAuthoredUnitSchema = z
     /** Retrieve (MCQ) questions testing this unit's concept. */
     retrieveQuestions: z.array(llmDraftQuestionSchema).min(2).max(3),
     /** Single-takeaway anchor card. */
-    anchor: z.object({
-      template: cardTemplateSchema,
-      props: llmCardPropsSchema,
-    }),
+    anchor: llmAnchorSchema,
   })
   .superRefine((unit, ctx) => {
     const narrationById = new Map<string, string>();
@@ -148,7 +182,6 @@ export const llmAuthoredUnitSchema = z
     });
 
     unit.cards.forEach((card, cIndex) => {
-      addCardPropIssues(ctx, card.template, card.props, ["cards", cIndex]);
       const narrationText = narrationById.get(card.enterAt.narration);
       if (narrationText === undefined) {
         ctx.addIssue({
@@ -181,11 +214,8 @@ export const llmAuthoredUnitSchema = z
     unit.retrieveQuestions.forEach((question, qIndex) =>
       checkQuestion(question, ["retrieveQuestions", qIndex])
     );
-
-    addCardPropIssues(ctx, unit.anchor.template, unit.anchor.props, ["anchor"]);
   });
 
-export type LlmAuthoredCard = z.infer<typeof llmAuthoredCardSchema>;
 export type LlmDraftQuestion = z.infer<typeof llmDraftQuestionSchema>;
 export type LlmAuthoredUnit = z.infer<typeof llmAuthoredUnitSchema>;
 
