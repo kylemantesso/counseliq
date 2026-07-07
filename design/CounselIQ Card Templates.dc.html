@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,wght@0,400;0,600;0,700;1,400;1,600&family=Source+Sans+3:wght@400;600&family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+html,body{margin:0;padding:0}
+@keyframes kFade{from{opacity:0}}
+@keyframes kFadeUp{from{opacity:0;transform:translateY(14px)}}
+@keyframes kSettle{0%{opacity:0;transform:scale(1.16)}55%{opacity:1}100%{opacity:1;transform:scale(1)}}
+@keyframes kPop{from{opacity:0;transform:scale(.4)}}
+@keyframes kGrowX{from{transform:scaleX(0)}}
+@keyframes kGrowY{from{transform:scaleY(0)}}
+@keyframes kPan{from{transform:scale(1.18) translate(3%,2%)}to{transform:scale(1.03) translate(0%,0%)}}
+@keyframes kDim{to{opacity:.35}}
+.gal{
+  --pbg:#0B1522; --pink:#F6F1E7; --pdim:rgba(246,241,231,.55); --hrule:rgba(246,241,231,.2);
+  --bg:#0E1B2C; --bg2:#16273E; --ink:#F6F1E7; --dim:rgba(246,241,231,.64);
+  --accent:#C9A227; --acc-ink:#0E1B2C; --rule:rgba(246,241,231,.16); --chip:rgba(246,241,231,.07);
+  --paper:#F6F1E7; --paper-ink:#1C2536; --paper-dim:rgba(28,37,54,.6); --paper-rule:rgba(28,37,54,.15);
+  --disp:'Source Serif 4',Georgia,serif; --text:'Source Sans 3','Segoe UI',sans-serif; --mono:'IBM Plex Mono',monospace;
+  --case:none; --track:-0.012em; --dw:600; --r:14px; --rs:8px;
+  --frame:#04090F; --imgf:none; --phA:#16273E; --phB:#0F1D30;
+  --photo-ink:#F6F1E7; --scrim:rgba(4,9,15,.86); --shadow:0 14px 34px rgba(0,0,0,.32);
+}
+.gal.tB{
+  --pbg:#ECEAE6; --pink:#141414; --pdim:rgba(20,20,20,.55); --hrule:rgba(20,20,20,.25);
+  --bg:#FCFBF9; --bg2:#F0EEEA; --ink:#141414; --dim:rgba(20,20,20,.62);
+  --accent:#E2231A; --acc-ink:#FFFFFF; --rule:rgba(20,20,20,.16); --chip:rgba(20,20,20,.05);
+  --paper:#FFFFFF; --paper-ink:#141414; --paper-dim:rgba(20,20,20,.6); --paper-rule:rgba(20,20,20,.14);
+  --disp:'Barlow Condensed','Arial Narrow',sans-serif; --text:'Barlow','Segoe UI',sans-serif;
+  --case:uppercase; --track:.015em; --dw:700; --r:4px; --rs:2px;
+  --frame:#1A1A1A; --imgf:grayscale(1) contrast(1.1); --phA:#E5E2DC; --phB:#F1EFEB;
+  --photo-ink:#FFFFFF; --scrim:rgba(10,10,10,.82); --shadow:0 14px 34px rgba(0,0,0,.14);
+}
+.gal [data-tbtn]{background:transparent;color:var(--pink)}
+.gal [data-tbtn="A"]{background:var(--pink);color:var(--pbg)}
+.gal.tB [data-tbtn="A"]{background:transparent;color:var(--pink)}
+.gal.tB [data-tbtn="B"]{background:var(--pink);color:var(--pbg)}
+.gal [data-safez]{opacity:0;transition:opacity .25s}
+.gal.safeon [data-safez]{opacity:1}
+.gal.safeon [data-sbtn]{background:var(--pink);color:var(--pbg)}
+</style>
+</helmet>
+<div class="gal {{ clsExtra }}" style="min-height:100vh;display:flex;flex-direction:column;background:var(--pbg);color:var(--pink);font-family:var(--text)">
+
+  <div style="display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:16px;padding:28px 36px 20px">
+    <div style="display:flex;flex-direction:column;gap:6px">
+      <div style="font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--pdim)">CounselIQ · Micro-lesson pipeline</div>
+      <div style="font-family:var(--disp);font-weight:var(--dw);text-transform:var(--case);letter-spacing:var(--track);font-size:30px;line-height:1.05">Card Template Library — 21 templates</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:12px">
+      <div style="display:flex;border:1px solid var(--hrule);border-radius:999px;overflow:hidden">
+        <button data-tbtn="A" onClick="{{ setA }}" style="border:0;cursor:pointer;font-family:var(--mono);font-size:12px;letter-spacing:.05em;padding:10px 18px">CounselIQ</button>
+        <button data-tbtn="B" onClick="{{ setB }}" style="border:0;cursor:pointer;font-family:var(--mono);font-size:12px;letter-spacing:.05em;padding:10px 18px">La Trobe</button>
+      </div>
+      <button data-sbtn onClick="{{ toggleSafe }}" style="border:1px solid var(--hrule);border-radius:999px;background:transparent;color:var(--pink);cursor:pointer;font-family:var(--mono);font-size:12px;letter-spacing:.05em;padding:10px 18px">Caption-safe zone</button>
+    </div>
+  </div>
+
+  <div style="flex:1;display:flex;gap:36px;overflow-x:auto;padding:16px 36px 44px;align-items:flex-start">
+
+    <!-- 01 title-card -->
+    <div style="flex:0 0 auto;display:flex;flex-direction:column;gap:10px">
+      <div style="font-family:var(--mono);font-size:11px;letter-spacing:.08em;color:var(--pdim)">01 · title-card</div>
+      <div data-screen-label="01 title-card" style="background:var(--frame);border-radius:40px;padding:10px;box-shadow:var(--shadow)">
+        <div data-card style="position:relative;width:360px;height:640px;border-radius:30px;overflow:hidden;background:var(--bg);color:var(--ink)">
+          <div style="position:absolute;inset:0;display:flex;flex-direction:column;padding:36px 30px 108px">
+            <div data-anim style="font-family:var(--mono);font-size:12px;letter-spacing:.22em;text-transform:uppercase;color:var(--accent);animation:kFade .5s ease-out .1s both">Module 3</div>
+            <div data-anim style="width:44px;height:3px;background:var(--accent);margin:22px 0 26px;transform-origin:left;animation:kGrowX .5s ease-out .3s both"></div>
+            <div data-anim style="font-family:var(--disp);font-weight:var(--dw);text-transform:var(--case);letter-spacing:var(--track);font-size:47px;line-height:1.08;text-wrap:pretty;animation:kFadeUp .5s ease-out .35s both">Assessing Financial Capacity</div>
+            <div style="flex:1"></div>
+            <div data-anim style="border-top:1px solid var(--rule);padding-top:16px;display:flex;justify-content:space-between;align-items:baseline;animation:kFade .5s ease-out .7s both">
+              <span style="font-size:14px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--dim)">Counselling for Australia</span>
+              <span style="font-family:var(--mono);font-size:11px;color:var(--dim)">03 / 08</span>
+            </div>
+          </div>
+          <button onClick="{{ replay }}" aria-label="Replay" style="position:absolute;top:12px;right:12px;z-index:6;width:36px;height:36px;border-radius:50%;border:1px solid var(--rule);background:transparent;color:var(--dim);font-size:15px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0">⟳</button>
+          <div data-safez style="position:absolute;left:0;right:0;bottom:0;height:96px;border-top:1px dashed var(--accent);pointer-events:none;z-index:5;display:flex;align-items:flex-start;justify-content:flex-end;padding:6px 12px"><span style="font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent)">caption safe · 15%</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 02 stat-card -->
+    <div style="flex:0 0 auto;display:flex;flex-direction:column;gap:10px">
+      <div style="font-family:var(--mono);font-size:11px;letter-spacing:.08em;color:var(--pdim)">02 · stat-card</div>
+      <div data-screen-label="02 stat-card" style="background:var(--frame);border-radius:40px;padding:10px;box-shadow:var(--shadow)">
+        <div data-card style="position:relative;width:360px;height:640px;border-radius:30px;overflow:hidden;background:var(--bg);color:var(--ink)">
+          <div style="position:absolute;inset:0;display:flex;flex-direction:column;padding:36px 30px 108px">
+            <div data-anim style="font-family:var(--mono);font-size:12px;letter-spacing:.22em;text-transform:uppercase;color:var(--dim);animation:kFade .5s ease-out .1s both">Global standing</div>
+            <div style="flex:1;display:flex;flex-direction:column;justify-content:center;gap:14px">
+              <div data-anim style="font-family:var(--disp);font-weight:var(--dw);text-transform:var(--case);letter-spacing:var(--track);font-size:108px;line-height:1;color:var(--accent);animation:kSettle .7s ease-out .2s both">Top 1%</div>
+              <div data-anim style="font-size:21px;color:var(--dim);max-width:220px;line-height:1.35;animation:kFadeUp .5s ease-out .7s both">of universities worldwide</div>
+            </div>
+            <div data-anim style="display:flex;align-items:center;gap:7px;animation:kFade .6s ease-out 1.25s both">
+              <span style="width:5px;height:5px;border-radius:50%;background:var(--accent)"></span>
+              <span style="font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim)">THE 2026</span>
+            </div>
+          </div>
+          <button onClick="{{ replay }}" aria-label="Replay" style="position:absolute;top:12px;right:12px;z-index:6;width:36px;height:36px;border-radius:50%;border:1px solid var(--rule);background:transparent;color:var(--dim);font-size:15px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0">⟳</button>
+          <div data-safez style="position:absolute;left:0;right:0;bottom:0;height:96px;border-top:1px dashed var(--accent);pointer-events:none;z-index:5;display:flex;align-items:flex-start;justify-content:flex-end;padding:6px 12px"><span style="font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent)">caption safe · 15%</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 03 list-reveal -->
+    <div style="flex:0 0 auto;display:flex;flex-direction:column;gap:10px">
+      <div style="font-family:var(--mono);font-size:11px;letter-spacing:.08em;color:var(--pdim)">03 · list-reveal</div>
+      <div data-screen-label="03 list-reveal" style="background:var(--frame);border-radius:40px;padding:10px;box-shadow:var(--shadow)">
+        <div data-card style="position:relative;width:360px;height:640px;border-radius:30px;overflow:hidden;background:var(--bg);color:var(--ink)">
+          <div style="position:absolute;inset:0;display:flex;flex-direction:column;padding:36px 30px 108px">
+            <div data-anim style="font-family:var(--disp);font-weight:var(--dw);text-transform:var(--case);letter-spacing:var(--track);font-size:34px;line-height:1.12;text-wrap:pretty;animation:kFadeUp .5s ease-out .1s both">Acceptable evidence of funds</div>
+            <div style="margin-top:34px;display:flex;flex-direction:column">
+              <div data-anim style="display:flex;gap:16px;align-items:baseline;padding:18px 0;border-top:1px solid var(--rule);animation:kFadeUp .45s ease-out .45s both"><span style="font-family:var(--mono);font-size:12px;color:var(--accent)">01</span><span style="font-size:19px;font-weight:600">Savings history</span></div>
+              <div data-anim style="display:flex;gap:16px;align-items:baseline;padding:18px 0;border-top:1px solid var(--rule);animation:kFadeUp .45s ease-out .65s both"><span style="font-family:var(--mono);font-size:12px;color:var(--accent)">02</span><span style="font-size:19px;font-weight:600">Education loan</span></div>
+              <div data-anim style="display:flex;gap:16px;align-items:baseline;padding:18px 0;border-top:1px solid var(--rule);animation:kFadeUp .45s ease-out .85s both"><span style="font-family:var(--mono);font-size:12px;color:var(--accent)">03</span><span style="font-size:19px;font-weight:600">Scholarship letter</span></div>
+              <div data-anim style="display:flex;gap:16px;align-items:baseline;padding:18px 0;border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);animation:kFadeUp .45s ease-out 1.05s both"><span style="font-family:var(--mono);font-size:12px;color:var(--accent)">04</span><span style="font-size:19px;font-weight:600">Government sponsorship</span></div>
+            </div>
+          </div>
+          <button onClick="{{ replay }}" aria-label="Replay" style="position:absolute;top:12px;right:12px;z-index:6;width:36px;height:36px;border-radius:50%;border:1px solid var(--rule);background:transparent;color:var(--dim);font-size:15px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0">⟳</button>
+          <div data-safez style="position:absolute;left:0;right:0;bottom:0;height:96px;border-top:1px dashed var(--accent);pointer-events:none;z-index:5;display:flex;align-items:flex-start;justify-content:flex-end;padding:6px 12px"><span style="font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent)">caption safe · 15%</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 04 comparison-split -->
+    <div style="flex:0 0 auto;display:flex;flex-direction:column;gap:10px">
+      <div style="font-family:var(--mono);font-size:11px;letter-spacing:.08em;color:var(--pdim)">04 · comparison-split</div>
+      <div data-screen-label="04 comparison-split" style="background:var(--frame);border-radius:40px;padding:10px;box-shadow:var(--shadow)">
+        <div data-card style="position:relative;width:360px;height:640px;border-radius:30px;overflow:hidden;background:var(--bg);color:var(--ink)">
+          <div style="position:absolute;inset:0;display:flex;flex-direction:column;padding:36px 30px 108px">
+            <div data-anim style="font-family:var(--mono);font-size:12px;letter-spacing:.22em;text-transform:uppercase;color:var(--dim);animation:kFade .5s ease-out .1s both">Rent, per week</div>
+            <div style="flex:1;display:flex;flex-direction:column;justify-content:center">
+              <div data-anim style="padding:26px 0;animation:kFadeUp .5s ease-out .3s both">
+                <div style="font-size:15px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--dim);margin-bottom:8px">Melbourne median</div>
+                <div style="font-family:var(--disp);font-weight:var(--dw);text-transform:var(--case);letter-spacing:var(--track);font-size:58px;line-height:1">A$560</div>
+              </div>
+              <div data-anim style="display:flex;align-items:center;gap:14px;animation:kFade .4s ease-out .6s both">
+                <span style="flex:1;height:1px;background:var(--rule)"></span>
+                <span style="font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)">vs</span>
+                <span style="flex:1;height:1px;background:var(--rule)"></span>
+              </div>
+              <div data-anim style="padding:26px 0;animation:kFadeUp .5s ease-out .75s both">
+                <div style="font-size:15px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--dim);margin-bottom:8px">On-campus · Bundoora</div>
+                <div style="font-family:var(--disp);font-weight:var(--dw);text-transform:var(--case);letter-spacing:var(--track);font-size:58px;line-height:1;color:var(--accent)">~A$280</div>
+                <div style="font-size:16px;color:var(--dim);margin-top:10px">about half the city median</div>
+              </div>
+            </div>
+            <div data-anim style="display:flex;align-items:center;gap:7px;animation:kFade .6s ease-out 1.2s both">
+              <span style="width:5px;height:5px;border-radius:50%;background:var(--accent)"></span>
+              <span style="font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim)">Median asking rents 2026 — verify current</span>
+            </div>
+          </div>
+          <button onClick="{{ replay }}" aria-label="Replay" style="position:absolute;top:12px;right:12px;z-index:6;width:36px;height:36px;border-radius:50%;border:1px solid var(--rule);background:transparent;color:var(--dim);font-size:15px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0">⟳</button>
+          <div data-safez style="position:absolute;left:0;right:0;bottom:0;height:96px;border-top:1px dashed var(--accent);pointer-events:none;z-index:5;display:flex;align-items:flex-start;justify-content:flex-end;padding:6px 12px"><span style="font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent)">caption safe · 15%</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 05 quote-card -->
+    <div style="flex:0 0 auto;display:flex;flex-direction:column;gap:10px">
+      <div style="font-family:var(--mono);font-size:11px;letter-spacing:.08em;color:var(--pdim)">05 · quote-card</div>
+      <div data-screen-label="05 quote-card" style="background:var(--frame);border-radius:40px;padding:10px;box-shadow:var(--shadow)">
+        <div data-card style="position:relative;width:360px;height:640px;border-radius:30px;overflow:hidden;background:var(--bg);color:var(--ink)">
+          <div style="position:absolute;inset:0;display:flex;flex-direction:column;padding:36px 30px 108px">
+            <div data-anim style="font-family:var(--disp);font-weight:var(--dw);font-size:88px;line-height:.6;color:var(--accent);animation:kFade .5s ease-out .1s both;padding-top:26px">&ldquo;</div>
+            <div data-anim style="margin-top:26px;font-family:var(--disp);font-weight:var(--dw);text-transform:var(--case);letter-spacing:var(--track);font-size:31px;line-height:1.28;text-wrap:pretty;animation:kFadeUp .55s ease-out .3s both">My placement year meant I graduated with a network, not just a degree.</div>
+            <div style="flex:1"></div>
+            <div data-anim style="border-top:1px solid var(--rule);padding-top:16px;animation:kFade .5s ease-out .85s both">
+              <div style="font-size:16px;font-weight:600">Priya S.</div>
+              <div style="font-size:14px;color:var(--dim);margin-top:3px">Master of Engineering · industry placement, 2025</div>
+            </div>
+          </div>
+          <button onClick="{{ replay }}" aria-label="Replay" style="position:absolute;top:12px;right:12px;z-index:6;width:36px;height:36px;border-radius:50%;border:1px solid var(--rule);background:transparent;color:var(--dim);font-size:15px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0">⟳</button>
+          <div data-safez style="position:absolute;left:0;right:0;bottom:0;height:96px;border-top:1px dashed var(--accent);pointer-events:none;z-index:5;display:flex;align-items:flex-start;justify-content:flex-end;padding:6px 12px"><span style="font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent)">caption safe · 15%</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 06 map-card -->
+    <div style="flex:0 0 auto;display:flex;flex-direction:column;gap:10px">
+      <div style="font-family:var(--mono);font-size:11px;letter-spacing:.08em;color:var(--pdim)">06 · map-card</div>
+      <div data-screen-label="06 map-card" style="background:var(--frame);border-radius:40px;padding:10px;box-shadow:var(--shadow)">
+        <div data-card style="position:relative;width:360px;height:640px;border-radius:30px;overflow:hidden;background:var(--bg);color:var(--ink)">
+          <div style="position:absolute;inset:0;display:flex;flex-direction:column;padding:36px 30px 108px">
+            <div data-anim style="font-family:var(--mono);font-size:12px;letter-spacing:.22em;text-transform:uppercase;color:var(--dim);animation:kFade .5s ease-out .1s both">Campus network</div>
+            <div data-anim style="font-family:var(--disp);font-weight:var(--dw);text-transform:var(--case);letter-spacing:var(--track);font-size:36px;line-height:1.1;margin-top:10px;animation:kFadeUp .5s ease-out .2s both">Victoria</div>
+            <div style="position:relative;flex:1;margin-top:18px">
+              <div data-anim style="position:absolute;inset:4% 2% 6% 2%;background:var(--chip);border:1px solid var(--rule);border-radius:58% 42% 55% 45% / 42% 52% 48% 58%;animation:kFade .7s ease-out .3s both"></div>
+              <div data-anim style="position:absolute;left:10%;top:14%;display:flex;align-items:center;gap:7px;animation:kPop .4s ease-out .55s both"><span style="width:9px;height:9px;border-radius:50%;background:var(--accent)"></span><span style="font-family:var(--mono);font-size:11px">Mildura</span></div>
+              <div data-anim style="position:absolute;left:48%;top:26%;display:flex;align-items:center;gap:7px;animation:kPop .4s ease-out .7s both"><span style="width:9px;height:9px;border-radius:50%;background:var(--accent)"></span><span style="font-family:var(--mono);font-size:11px">Shepparton</span></div>
+              <div data-anim style="position:absolute;left:60%;top:42%;display:flex;align-items:center;gap:7px;animation:kPop .4s ease-out .85s both"><span style="width:9px;height:9px;border-radius:50%;background:var(--accent)"></span><span style="font-family:var(--mono);font-size:11px">Albury-Wodonga</span></div>
+              <div data-anim style="position:absolute;left:30%;top:55%;display:flex;align-items:center;gap:7px;animation:kPop .4s ease-out 1s both"><span style="width:9px;height:9px;border-radius:50%;background:var(--accent)"></span><span style="font-family:var(--mono);font-size:11px">Bendigo</span></div>
+              <div data-anim style="position:absolute;left:42%;top:76%;display:flex;align-items:center;gap:8px;animation:kPop .45s ease-out 1.15s both"><span style="width:14px;height:14px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 4px var(--chip)"></span><span style="font-size:14px;font-weight:600">Melbourne</span></div>
+            </div>
+            <div data-anim style="font-size:15px;color:var(--dim);animation:kFade .5s ease-out 1.4s both">Five campuses, one state — metro and regional options.</div>
+          </div>
+          <button onClick="{{ replay }}" aria-label="Replay" style="position:absolute;top:12px;right:12px;z-index:6;width:36px;height:36px;border-radius:50%;border:1px solid var(--rule);background:transparent;color:var(--dim);font-size:15px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0">⟳</button>
+          <div data-safez style="position:absolute;left:0;right:0;bottom:0;height:96px;border-top:1px dashed var(--accent);pointer-events:none;z-index:5;display:flex;align-items:flex-start;justify-content:flex-end;padding:6px 12px"><span style="font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent)">caption safe · 15%</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 07 timeline-card -->
+    <div style="flex:0 0 auto;display:flex;flex-direction:column;gap:10px">
+      <div style="font-family:var(--mono);font-size:11px;letter-spacing:.08em;color:var(--pdim)">07 · timeline-card</div>
+      <div data-screen-label="07 timeline-card" style="background:var(--frame);border-radius:40px;padding:10px;box-shadow:var(--shadow)">
+        <div data-card style="position:relative;width:360px;height:640px;border-radius:30px;overflow:hidden;background:var(--bg);color:var(--ink)">
+          <div style="position:absolute;inset:0;display:flex;flex-direction:column;padding:36px 30px 108px">
+            <div data-anim style="font-family:var(--disp);font-weight:var(--dw);text-transform:var(--case);letter-spacing:var(--track);font-size:32px;line-height:1.12;text-wrap:pretty;animation:kFadeUp .5s ease-out .1s both">How student intent is assessed</div>
+            <div style="position:relative;margin-top:36px;padding-left:26px;display:flex;flex-direction:column;gap:34px">
+              <div data-anim style="position:absolute;left:5px;top:6px;bottom:6px;width:2px;background:var(--rule);transform-origin:top;animation:kGrowY 1.4s ease-out .3s both"></div>
+              <div data-anim style="position:relative;animation:kFadeUp .5s ease-out .4s both">
+                <span style="position:absolute;left:-26px;top:4px;width:12px;height:12px;border-radius:50%;background:var(--bg);border:3px solid var(--dim)"></span>
+                <div style="font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)">Pre-2024</div>
+                <div style="font-size:19px;font-weight:600;margin-top:5px">GTE statement</div>
+                <div style="font-size:14px;color:var(--dim);margin-top:3px">a free-form written essay</div>
+              </div>
+              <div data-anim style="position:relative;animation:kFadeUp .5s ease-out .75s both">
+                <span style="position:absolute;left:-26px;top:4px;width:12px;height:12px;border-radius:50%;background:var(--bg);border:3px solid var(--dim)"></span>
+                <div style="font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)">Mar 2024</div>
+                <div style="font-size:19px;font-weight:600;margin-top:5px">Genuine Student requirement</div>
+                <div style="font-size:14px;color:var(--dim);margin-top:3px">replaces the GTE test</div>
+              </div>
+              <div data-anim style="position:relative;animation:kFadeUp .5s ease-out 1.1s both">
+                <span style="position:absolute;left:-26px;top:4px;width:12px;height:12px;border-radius:50%;background:var(--accent);border:3px solid var(--accent)"></span>
+                <div style="font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent)">Today</div>
+                <div style="font-size:19px;font-weight:600;margin-top:5px">In-form targeted questions</div>
+                <div style="font-size:14px;color:var(--dim);margin-top:3px">answered inside the visa application</div>
+              </div>
+            </div>
+          </div>
+          <button onClick="{{ replay }}" aria-label="Replay" style="position:absolute;top:12px;right:12px;z-index:6;width:36px;height:36px;border-radius:50%;border:1px solid var(--rule);background:transparent;color:var(--dim);font-size:15px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0">⟳</button>
+          <div data-safez style="position:absolute;left:0;right:0;bottom:0;height:96px;border-top:1px dashed var(--accent);pointer-events:none;z-index:5;display:flex;align-items:flex-start;justify-content:flex-end;padding:6px 12px"><span style="font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent)">caption safe · 15%</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 08 document-callout -->
+    <div style="flex:0 0 auto;display:flex;flex-direction:column;gap:10px">
+      <div style="font-family:var(--mono);font-size:11px;letter-spacing:.08em;color:var(--pdim)">08 · document-callout</div>
+      <div data-screen-label="08 document-callout" style="background:var(--frame);border-radius:40px;padding:10px;box-shadow:var(--shadow)">
+        <div data-card style="position:relative;width:360px;height:640px;border-radius:30px;overflow:hidden;background:var(--bg);color:var(--ink)">
+          <div style="position:absolute;inset:0;display:flex;flex-direction:column;padding:36px 30px 108px">
+            <div data-anim style="font-family:var(--disp);font-weight:var(--dw);text-transform:var(--case);letter-spacing:var(--track);font-size:32px;line-height:1.1;animation:kFadeUp .5s ease-out .1s both">Spot the anomaly</div>
+            <div data-anim style="margin-top:24px;background:var(--paper);color:var(--paper-ink);border-radius:var(--rs);padding:18px 16px;font-family:var(--mono);animation:kFadeUp .5s ease-out .35s both;box-shadow:var(--shadow)">
+              <div style="display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px solid var(--paper-rule);padding-bottom:10px">
+                <span style="font-size:10px;letter-spacing:.14em;text-transform:uppercase">Statement of account</span>
+                <span style="font-size:10px;color:var(--paper-dim)">AC ····0412</span>
+              </div>
+              <div style="display:grid;grid-template-columns:52px 1fr auto;gap:6px 10px;font-size:12px;padding-top:12px;font-variant-numeric:tabular-nums">
+                <span style="color:var(--paper-dim)">03 FEB</span><span>Salary credit</span><span style="text-align:right">1,120.00</span>
+                <span style="color:var(--paper-dim)">17 FEB</span><span>Salary credit</span><span style="text-align:right">1,120.00</span>
+                <span style="color:var(--paper-dim)">28 FEB</span><span>Balance c/f</span><span style="text-align:right">4,335.20</span>
+              </div>
+              <div data-anim style="display:grid;grid-template-columns:52px 1fr auto;gap:6px 10px;font-size:12px;margin-top:8px;padding:8px 6px;outline:2px solid var(--accent);border-radius:2px;font-variant-numeric:tabular-nums;animation:kFade .4s ease-out .9s both">
+                <span style="color:var(--paper-dim)">12 MAR</span><span style="font-weight:500">Cash deposit</span><span style="text-align:right;font-weight:500">31,000.00</span>
+              </div>
+              <div style="display:grid;grid-template-columns:52px 1fr auto;gap:6px 10px;font-size:12px;padding-top:10px;font-variant-numeric:tabular-nums">
+                <span style="color:var(--paper-dim)">16 MAR</span><span>Visa lodgement date</span><span style="text-align:right;color:var(--paper-dim)">—</span>
+              </div>
+            </div>
+            <div data-anim style="margin-top:20px;padding-left:14px;border-left:3px solid var(--accent);animation:kFadeUp .5s ease-out 1.15s both">
+              <div style="font-size:17px;font-weight:600;color:var(--accent)">Cliff deposit — query the source</div>
+              <div style="font-size:14px;color:var(--dim);margin-top:4px">A$31,000 landed 4 days before lodgement</div>
+            </div>
+            <div style="flex:1"></div>
+            <div data-anim style="display:flex;align-items:center;gap:7px;animation:kFade .6s ease-out 1.4s both">
+              <span style="width:5px;height:5px;border-radius:50%;background:var(--accent)"></span>
+              <span style="font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim)">Synthetic document — training example</span>
+            </div>
+          </div>
+          <button onClick="{{ replay }}" aria-label="Replay" style="position:absolute;top:12px;right:12px;z-index:6;width:36px;height:36px;border-radius:50%;border:1px solid var(--rule);background:transparent;color:var(--dim);font-size:15px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0">⟳</button>
+          <div data-safez style="position:absolute;left:0;right:0;bottom:0;height:96px;border-top:1px dashed var(--accent);pointer-events:none;z-index:5;display:flex;align-items:flex-start;justify-content:flex-end;padding:6px 12px"><span style="font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent)">caption safe · 15%</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 09 photo-kenburns -->
+    <div style="flex:0 0 auto;display:flex;flex-direction:column;gap:10px">
+      <div style="font-family:var(--mono);font-size:11px;letter-spacing:.08em;color:var(--pdim)">09 · photo-kenburns</div>
+      <div data-screen-label="09 photo-kenburns" style="background:var(--frame);border-radius:40px;padding:10px;box-shadow:var(--shadow)">
+        <div data-card style="position:relative;width:360px;height:640px;border-radius:30px;overflow:hidden;background:var(--bg);color:var(--ink)">
+          <div style="position:absolute;inset:0;overflow:hidden">
+            <div data-anim style="position:absolute;left:-15%;top:-15%;width:130%;height:130%;background:repeating-linear-gradient(45deg, var(--phA) 0 16px, var(--phB) 16px 32px);filter:var(--imgf);display:flex;align-items:center;justify-content:center;animation:kPan 14s ease-out 0s both">
+              <span style="font-family:var(--mono);font-size:12px;letter-spacing:.1em;color:var(--dim);background:var(--bg);padding:8px 14px;border-radius:4px;opacity:.9">[ photo — bundoora campus aerial ]</span>
+            </div>
+            <div style="position:absolute;left:0;right:0;bottom:0;height:55%;background:linear-gradient(to top, var(--scrim), rgba(0,0,0,0))"></div>
+          </div>
+          <div style="position:absolute;left:30px;right:30px;bottom:108px;color:var(--photo-ink)">
+            <div data-anim style="font-family:var(--mono);font-size:11px;letter-spacing:.22em;text-transform:uppercase;opacity:.75;animation:kFade .6s ease-out .5s both">Bundoora, VIC</div>
+            <div data-anim style="font-family:var(--disp);font-weight:var(--dw);text-transform:var(--case);letter-spacing:var(--track);font-size:30px;line-height:1.18;margin-top:10px;text-wrap:pretty;animation:kFadeUp .6s ease-out .7s both">Bundoora campus — home of the Matildas&rsquo; training centre</div>
+          </div>
+          <button onClick="{{ replay }}" aria-label="Replay" style="position:absolute;top:12px;right:12px;z-index:6;width:36px;height:36px;border-radius:50%;border:1px solid var(--rule);background:var(--bg);color:var(--dim);font-size:15px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0">⟳</button>
+          <div data-safez style="position:absolute;left:0;right:0;bottom:0;height:96px;border-top:1px dashed var(--accent);pointer-events:none;z-index:5;display:flex;align-items:flex-start;justify-content:flex-end;padding:6px 12px"><span style="font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent)">caption safe · 15%</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 10 takeaway-card -->
+    <div style="flex:0 0 auto;display:flex;flex-direction:column;gap:10px">
+      <div style="font-family:var(--mono);font-size:11px;letter-spacing:.08em;color:var(--pdim)">10 · takeaway-card</div>
+      <div data-screen-label="10 takeaway-card" style="background:var(--frame);border-radius:40px;padding:10px;box-shadow:var(--shadow)">
+        <div data-card style="position:relative;width:360px;height:640px;border-radius:30px;overflow:hidden;background:var(--bg);color:var(--ink)">
+          <div style="position:absolute;inset:0;display:flex;flex-direction:column;padding:36px 30px 108px">
+            <div data-anim style="display:flex;align-items:center;gap:10px;animation:kFade .5s ease-out .1s both">
+              <span style="width:22px;height:3px;background:var(--accent)"></span>
+              <span style="font-family:var(--mono);font-size:12px;letter-spacing:.22em;text-transform:uppercase;color:var(--accent)">Takeaway</span>
+            </div>
+            <div style="flex:1;display:flex;align-items:center">
+              <div data-anim style="font-family:var(--disp);font-weight:var(--dw);text-transform:var(--case);letter-spacing:var(--track);font-size:33px;line-height:1.3;text-wrap:pretty;animation:kFadeUp .6s ease-out .3s both">Funds must be genuine, traceable, and held stable — a balance on screen is not evidence.</div>
+            </div>
+            <div data-anim style="align-self:flex-start;display:flex;align-items:center;gap:9px;border:1px solid var(--rule);border-radius:999px;padding:10px 18px;animation:kFadeUp .5s ease-out 1s both">
+              <span style="color:var(--accent);font-size:14px;line-height:1">✓</span>
+              <span style="font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim)">Saved to crib deck</span>
+            </div>
+          </div>
+          <button onClick="{{ replay }}" aria-label="Replay" style="position:absolute;top:12px;right:12px;z-index:6;width:36px;height:36px;border-radius:50%;border:1px solid var(--rule);background:transparent;color:var(--dim);font-size:15px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0">⟳</button>
+          <div data-safez style="position:absolute;left:0;right:0;bottom:0;height:96px;border-top:1px dashed var(--accent);pointer-events:none;z-index:5;display:flex;align-items:flex-start;justify-content:flex-end;padding:6px 12px"><span style="font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent)">caption safe · 15%</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 11 pathway-card -->
+    <div style="flex:0 0 auto;display:flex;flex-direction:column;gap:10px">
+      <div style="font-family:var(--mono);font-size:11px;letter-spacing:.08em;color:var(--pdim)">11 · pathway-card</div>
+      <div data-screen-label="11 pathway-card" style="background:var(--frame);border-radius:40px;padding:10px;box-shadow:var(--shadow)">
+        <div data-card style="position:relative;width:360px;height:640px;border-radius:30px;overflow:hidden;background:var(--bg);color:var(--ink)">
+          <div style="position:absolute;inset:0;display:flex;flex-direction:column;padding:36px 30px 108px">
+            <div data-anim style="font-family:var(--mono);font-size:12px;letter-spacing:.22em;text-transform:uppercase;color:var(--dim);animation:kFade .5s ease-out .1s both">Packaged offer</div>
+            <div data-anim style="font-family:var(--disp);font-weight:var(--dw);text-transform:var(--case);letter-spacing:var(--track);font-size:34px;line-height:1.1;margin-top:10px;animation:kFadeUp .5s ease-out .2s both">One pathway, three stages</div>
+            <div style="margin-top:30px;display:flex;flex-direction:column;align-items:stretch">
+              <div data-anim style="border:1px solid var(--rule);border-radius:var(--r);padding:16px 18px;display:flex;align-items:baseline;gap:14px;animation:kFadeUp .45s ease-out .45s both">
+                <span style="font-family:var(--mono);font-size:11px;color:var(--accent)">1</span>
+                <div><div style="font-size:19px;font-weight:600">ELICOS</div><div style="font-size:13px;color:var(--dim);margin-top:2px">20 weeks of English</div></div>
+              </div>
+              <div data-anim style="align-self:center;width:2px;height:22px;background:var(--accent);transform-origin:top;animation:kGrowY .3s ease-out .8s both"></div>
+              <div data-anim style="border:1px solid var(--rule);border-radius:var(--r);padding:16px 18px;display:flex;align-items:baseline;gap:14px;animation:kFadeUp .45s ease-out .95s both">
+                <span style="font-family:var(--mono);font-size:11px;color:var(--accent)">2</span>
+                <div><div style="font-size:19px;font-weight:600">Diploma</div><div style="font-size:13px;color:var(--dim);margin-top:2px">one year, credit-bearing</div></div>
+              </div>
+              <div data-anim style="align-self:center;width:2px;height:22px;background:var(--accent);transform-origin:top;animation:kGrowY .3s ease-out 1.3s both"></div>
+              <div data-anim style="border:2px solid var(--accent);border-radius:var(--r);padding:16px 18px;display:flex;align-items:baseline;gap:14px;animation:kFadeUp .45s ease-out 1.45s both">
+                <span style="font-family:var(--mono);font-size:11px;color:var(--accent)">3</span>
+                <div><div style="font-size:19px;font-weight:600">Bachelor</div><div style="font-size:13px;color:var(--dim);margin-top:2px">enters year two</div></div>
+              </div>
+            </div>
+            <div style="flex:1"></div>
+            <div data-anim style="font-size:15px;color:var(--dim);animation:kFade .5s ease-out 1.8s both">One visa application — CoEs packaged together.</div>
+          </div>
+          <button onClick="{{ replay }}" aria-label="Replay" style="position:absolute;top:12px;right:12px;z-index:6;width:36px;height:36px;border-radius:50%;border:1px solid var(--rule);background:transparent;color:var(--dim);font-size:15px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0">⟳</button>
+          <div data-safez style="position:absolute;left:0;right:0;bottom:0;height:96px;border-top:1px dashed var(--accent);pointer-events:none;z-index:5;display:flex;align-items:flex-start;justify-content:flex-end;padding:6px 12px"><span style="font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent)">caption safe · 15%</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 12 persona-card -->
+    <div style="flex:0 0 auto;display:flex;flex-direction:column;gap:10px">
+      <div style="font-family:var(--mono);font-size:11px;letter-spacing:.08em;color:var(--pdim)">12 · persona-card</div>
+      <div data-screen-label="12 persona-card" style="background:var(--frame);border-radius:40px;padding:10px;box-shadow:var(--shadow)">
+        <div data-card style="position:relative;width:360px;height:640px;border-radius:30px;overflow:hidden;background:var(--bg);color:var(--ink)">
+          <div style="position:absolute;inset:0;display:flex;flex-direction:column;padding:36px 30px 108px">
+            <div data-anim style="display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px solid var(--rule);padding-bottom:14px;animation:kFade .5s ease-out .1s both">
+              <span style="font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--dim)">Case file · 07</span>
+              <span style="font-family:var(--mono);font-size:11px;color:var(--accent)">SCENARIO</span>
+            </div>
+            <div data-anim style="display:flex;align-items:center;gap:18px;margin-top:28px;animation:kFadeUp .5s ease-out .3s both">
+              <div style="width:72px;height:72px;border-radius:50%;background:var(--chip);border:1px solid var(--rule);display:flex;align-items:center;justify-content:center;font-family:var(--disp);font-weight:var(--dw);font-size:30px;color:var(--accent);flex:0 0 auto">A</div>
+              <div>
+                <div style="font-family:var(--disp);font-weight:var(--dw);text-transform:var(--case);letter-spacing:var(--track);font-size:32px;line-height:1.05">Amara, 24</div>
+                <div style="font-size:15px;color:var(--dim);margin-top:5px">Lagos, Nigeria</div>
+              </div>
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:28px">
+              <span data-anim style="font-family:var(--mono);font-size:11.5px;border:1px solid var(--rule);border-radius:var(--rs);padding:8px 12px;color:var(--dim);animation:kFadeUp .4s ease-out .55s both">Master of Public Health</span>
+              <span data-anim style="font-family:var(--mono);font-size:11.5px;border:1px solid var(--rule);border-radius:var(--rs);padding:8px 12px;color:var(--dim);animation:kFadeUp .4s ease-out .7s both">Sponsor: uncle</span>
+              <span data-anim style="font-family:var(--mono);font-size:11.5px;border:1px solid var(--accent);border-radius:var(--rs);padding:8px 12px;color:var(--accent);animation:kFadeUp .4s ease-out .85s both">6-month employment gap</span>
+            </div>
+            <div style="flex:1"></div>
+            <div data-anim style="border-top:1px solid var(--rule);padding-top:18px;animation:kFadeUp .5s ease-out 1.1s both">
+              <div style="font-family:var(--disp);font-weight:var(--dw);text-transform:var(--case);letter-spacing:var(--track);font-size:25px;line-height:1.2">What do you ask first?</div>
+            </div>
+          </div>
+          <button onClick="{{ replay }}" aria-label="Replay" style="position:absolute;top:12px;right:12px;z-index:6;width:36px;height:36px;border-radius:50%;border:1px solid var(--rule);background:transparent;color:var(--dim);font-size:15px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0">⟳</button>
+          <div data-safez style="position:absolute;left:0;right:0;bottom:0;height:96px;border-top:1px dashed var(--accent);pointer-events:none;z-index:5;display:flex;align-items:flex-start;justify-content:flex-end;padding:6px 12px"><span style="font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent)">caption safe · 15%</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 13 alert-card -->
+    <div style="flex:0 0 auto;display:flex;flex-direction:column;gap:10px">
+      <div style="font-family:var(--mono);font-size:11px;letter-spacing:.08em;color:var(--pdim)">13 · alert-card</div>
+      <div data-screen-label="13 alert-card" style="background:var(--frame);border-radius:40px;padding:10px;box-shadow:var(--shadow)">
+        <div data-card style="position:relative;width:360px;height:640px;border-radius:30px;overflow:hidden;background:var(--bg);color:var(--ink)">
+          <div data-anim style="position:absolute;inset:0;border:7px solid var(--accent);border-radius:30px;pointer-events:none;z-index:4;animation:kFade .4s ease-out both"></div>
+          <div style="position:absolute;inset:0;display:flex;flex-direction:column;padding:44px 36px 112px">
+            <div data-anim style="animation:kPop .45s ease-out .25s both">
+              <svg width="46" height="42" viewBox="0 0 24 22" aria-hidden="true"><path d="M12 2 22.5 20.5 H1.5 Z" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round"></path><line x1="12" y1="9" x2="12" y2="14" stroke="var(--accent)" stroke-width="2"></line><circle cx="12" cy="17" r="1.3" fill="var(--accent)"></circle></svg>
+            </div>
+            <div data-anim style="font-family:var(--mono);font-size:12px;letter-spacing:.24em;text-transform:uppercase;color:var(--accent);margin-top:22px;animation:kFade .4s ease-out .45s both">Compliance</div>
+            <div style="flex:1;display:flex;flex-direction:column;justify-content:center;gap:22px">
+              <div data-anim style="font-family:var(--disp);font-weight:var(--dw);text-transform:var(--case);letter-spacing:var(--track);font-size:31px;line-height:1.28;text-wrap:pretty;animation:kFadeUp .5s ease-out .6s both">Never advise a student to alter, backdate, or &ldquo;tidy up&rdquo; financial documents.</div>
+              <div data-anim style="font-size:20px;font-weight:600;color:var(--accent);animation:kFadeUp .5s ease-out 1s both">This is document fraud.</div>
+            </div>
+          </div>
+          <button onClick="{{ replay }}" aria-label="Replay" style="position:absolute;top:16px;right:16px;z-index:6;width:36px;height:36px;border-radius:50%;border:1px solid var(--rule);background:transparent;color:var(--dim);font-size:15px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0">⟳</button>
+          <div data-safez style="position:absolute;left:0;right:0;bottom:0;height:96px;border-top:1px dashed var(--accent);pointer-events:none;z-index:5;display:flex;align-items:flex-start;justify-content:flex-end;padding:6px 12px"><span style="font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent)">caption safe · 15%</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 14 breakdown-card -->
+    <div style="flex:0 0 auto;display:flex;flex-direction:column;gap:10px">
+      <div style="font-family:var(--mono);font-size:11px;letter-spacing:.08em;color:var(--pdim)">14 · breakdown-card</div>
+      <div data-screen-label="14 breakdown-card" style="background:var(--frame);border-radius:40px;padding:10px;box-shadow:var(--shadow)">
+        <div data-card style="position:relative;width:360px;height:640px;border-radius:30px;overflow:hidden;background:var(--bg);color:var(--ink)">
+          <div style="position:absolute;inset:0;display:flex;flex-direction:column;padding:36px 30px 108px">
+            <div data-anim style="font-family:var(--disp);font-weight:var(--dw);text-transform:var(--case);letter-spacing:var(--track);font-size:31px;line-height:1.14;text-wrap:pretty;animation:kFadeUp .5s ease-out .1s both">What the visa officer needs to see</div>
+            <div style="margin-top:30px;display:flex;flex-direction:column;gap:14px;font-variant-numeric:tabular-nums">
+              <div data-anim style="display:flex;justify-content:space-between;align-items:baseline;animation:kFadeUp .4s ease-out .4s both"><span style="font-size:16px">Living costs</span><span style="font-family:var(--mono);font-size:14px">A$29,710</span></div>
+              <div data-anim style="display:flex;justify-content:space-between;align-items:baseline;animation:kFadeUp .4s ease-out .55s both"><span style="font-size:16px">First-year tuition</span><span style="font-family:var(--mono);font-size:14px">A$34,500</span></div>
+              <div data-anim style="display:flex;justify-content:space-between;align-items:baseline;animation:kFadeUp .4s ease-out .7s both"><span style="font-size:16px">Travel</span><span style="font-family:var(--mono);font-size:14px">A$2,500</span></div>
+              <div data-anim style="display:flex;justify-content:space-between;align-items:baseline;animation:kFadeUp .4s ease-out .85s both"><span style="font-size:16px">OSHC</span><span style="font-family:var(--mono);font-size:14px">A$650</span></div>
+            </div>
+            <div style="display:flex;height:16px;margin-top:24px;border-radius:3px;overflow:hidden;gap:2px">
+              <div style="width:44%"><div data-anim style="height:100%;background:var(--accent);opacity:.45;transform-origin:left;animation:kGrowX .5s ease-out .4s both"></div></div>
+              <div style="width:51%"><div data-anim style="height:100%;background:var(--accent);transform-origin:left;animation:kGrowX .5s ease-out .55s both"></div></div>
+              <div style="width:3.5%"><div data-anim style="height:100%;background:var(--accent);opacity:.7;transform-origin:left;animation:kGrowX .4s ease-out .7s both"></div></div>
+              <div style="width:1.5%"><div data-anim style="height:100%;background:var(--accent);opacity:.85;transform-origin:left;animation:kGrowX .4s ease-out .85s both"></div></div>
+            </div>
+            <div data-anim style="border-top:1px solid var(--rule);margin-top:24px;padding-top:16px;display:flex;justify-content:space-between;align-items:baseline;animation:kSettle .6s ease-out 1.2s both">
+              <span style="font-size:15px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--dim)">Funds to evidence</span>
+              <span style="font-family:var(--disp);font-weight:var(--dw);letter-spacing:var(--track);font-size:34px">A$67,360</span>
+            </div>
+            <div style="flex:1"></div>
+            <div data-anim style="display:flex;align-items:center;gap:7px;animation:kFade .6s ease-out 1.6s both">
+              <span style="width:5px;height:5px;border-radius:50%;background:var(--accent)"></span>
+              <span style="font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim)">Home Affairs benchmark — verify current figure</span>
+            </div>
+          </div>
+          <button onClick="{{ replay }}" aria-label="Replay" style="position:absolute;top:12px;right:12px;z-index:6;width:36px;height:36px;border-radius:50%;border:1px solid var(--rule);background:transparent;color:var(--dim);font-size:15px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0">⟳</button>
+          <div data-safez style="position:absolute;left:0;right:0;bottom:0;height:96px;border-top:1px dashed var(--accent);pointer-events:none;z-index:5;display:flex;align-items:flex-start;justify-content:flex-end;padding:6px 12px"><span style="font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent)">caption safe · 15%</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 15 myth-fact-card -->
+    <div style="flex:0 0 auto;display:flex;flex-direction:column;gap:10px">
+      <div style="font-family:var(--mono);font-size:11px;letter-spacing:.08em;color:var(--pdim)">15 · myth-fact-card</div>
+      <div data-screen-label="15 myth-fact-card" style="background:var(--frame);border-radius:40px;padding:10px;box-shadow:var(--shadow)">
+        <div data-card style="position:relative;width:360px;height:640px;border-radius:30px;overflow:hidden;background:var(--bg);color:var(--ink)">
+          <div style="position:absolute;inset:0;display:flex;flex-direction:column;padding:36px 30px 108px">
+            <div data-anim style="animation:kDim .5s ease-out 1s both">
+              <div data-anim style="position:relative;display:inline-block;animation:kFade .4s ease-out .1s both">
+                <span style="font-family:var(--mono);font-size:12px;letter-spacing:.24em;text-transform:uppercase;color:var(--dim)">Myth</span>
+                <span data-anim style="position:absolute;left:-4px;right:-4px;top:50%;height:2px;background:var(--accent);transform-origin:left;animation:kGrowX .35s ease-out 1s both"></span>
+              </div>
+              <div data-anim style="font-family:var(--disp);font-weight:var(--dw);text-transform:var(--case);letter-spacing:var(--track);font-size:29px;line-height:1.25;margin-top:14px;text-wrap:pretty;animation:kFadeUp .5s ease-out .25s both">&ldquo;Any English test result works for the visa.&rdquo;</div>
+            </div>
+            <div style="flex:1"></div>
+            <div>
+              <div data-anim style="display:inline-block;background:var(--accent);color:var(--acc-ink);font-family:var(--mono);font-size:12px;letter-spacing:.24em;text-transform:uppercase;padding:6px 12px;border-radius:var(--rs);animation:kFade .4s ease-out 1.35s both">Fact</div>
+              <div data-anim style="font-family:var(--disp);font-weight:var(--dw);text-transform:var(--case);letter-spacing:var(--track);font-size:29px;line-height:1.25;margin-top:16px;text-wrap:pretty;animation:kFadeUp .55s ease-out 1.5s both">Home Affairs accepts approved, in-person tests only — at-home variants are not accepted.</div>
+            </div>
+            <div style="height:36px"></div>
+            <div data-anim style="display:flex;align-items:center;gap:7px;animation:kFade .6s ease-out 2s both">
+              <span style="width:5px;height:5px;border-radius:50%;background:var(--accent)"></span>
+              <span style="font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim)">Home Affairs — verify current</span>
+            </div>
+          </div>
+          <button onClick="{{ replay }}" aria-label="Replay" style="position:absolute;top:12px;right:12px;z-index:6;width:36px;height:36px;border-radius:50%;border:1px solid var(--rule);background:transparent;color:var(--dim);font-size:15px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0">⟳</button>
+          <div data-safez style="position:absolute;left:0;right:0;bottom:0;height:96px;border-top:1px dashed var(--accent);pointer-events:none;z-index:5;display:flex;align-items:flex-start;justify-content:flex-end;padding:6px 12px"><span style="font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent)">caption safe · 15%</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 16 text-card -->
+    <div style="flex:0 0 auto;display:flex;flex-direction:column;gap:10px">
+      <div style="font-family:var(--mono);font-size:11px;letter-spacing:.08em;color:var(--pdim)">16 · text-card</div>
+      <div data-screen-label="16 text-card" style="background:var(--frame);border-radius:40px;padding:10px;box-shadow:var(--shadow)">
+        <div data-card style="position:relative;width:360px;height:640px;border-radius:30px;overflow:hidden;background:var(--bg);color:var(--ink)">
+          <div style="position:absolute;inset:0;display:flex;flex-direction:column;padding:36px 30px 108px">
+            <div data-anim style="font-family:var(--mono);font-size:12px;letter-spacing:.22em;text-transform:uppercase;color:var(--accent);animation:kFade .5s ease-out .1s both">Why it matters</div>
+            <div style="flex:1;display:flex;flex-direction:column;justify-content:center;gap:24px">
+              <div data-anim style="font-family:var(--disp);font-weight:var(--dw);text-transform:var(--case);letter-spacing:var(--track);font-size:33px;line-height:1.3;text-wrap:pretty;animation:kFadeUp .55s ease-out .3s both">Facilities are facts <span style="position:relative;white-space:nowrap">a student can verify<span data-anim style="position:absolute;left:0;right:0;bottom:3px;height:3px;background:var(--accent);transform-origin:left;animation:kGrowX .5s ease-out 1.05s both"></span></span>.</div>
+              <div data-anim style="font-size:19px;line-height:1.5;color:var(--dim);max-width:270px;animation:kFadeUp .5s ease-out .75s both">That makes them ideal material for a genuine student narrative.</div>
+            </div>
+          </div>
+          <button onClick="{{ replay }}" aria-label="Replay" style="position:absolute;top:12px;right:12px;z-index:6;width:36px;height:36px;border-radius:50%;border:1px solid var(--rule);background:transparent;color:var(--dim);font-size:15px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0">⟳</button>
+          <div data-safez style="position:absolute;left:0;right:0;bottom:0;height:96px;border-top:1px dashed var(--accent);pointer-events:none;z-index:5;display:flex;align-items:flex-start;justify-content:flex-end;padding:6px 12px"><span style="font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent)">caption safe · 15%</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 17 term-card -->
+    <div style="flex:0 0 auto;display:flex;flex-direction:column;gap:10px">
+      <div style="font-family:var(--mono);font-size:11px;letter-spacing:.08em;color:var(--pdim)">17 · term-card</div>
+      <div data-screen-label="17 term-card" style="background:var(--frame);border-radius:40px;padding:10px;box-shadow:var(--shadow)">
+        <div data-card style="position:relative;width:360px;height:640px;border-radius:30px;overflow:hidden;background:var(--bg);color:var(--ink)">
+          <div style="position:absolute;inset:0;display:flex;flex-direction:column;padding:36px 30px 108px">
+            <div data-anim style="font-family:var(--mono);font-size:12px;letter-spacing:.22em;text-transform:uppercase;color:var(--dim);animation:kFade .5s ease-out .1s both">Key term</div>
+            <div style="flex:1;display:flex;flex-direction:column;justify-content:center">
+              <div data-anim style="font-family:var(--disp);font-weight:var(--dw);text-transform:var(--case);letter-spacing:var(--track);font-size:92px;line-height:1;animation:kSettle .7s ease-out .2s both">OSHC</div>
+              <div data-anim style="width:44px;height:3px;background:var(--accent);margin:26px 0 24px;transform-origin:left;animation:kGrowX .5s ease-out .7s both"></div>
+              <div data-anim style="font-size:21px;font-weight:600;line-height:1.35;animation:kFadeUp .5s ease-out .85s both">Overseas Student Health Cover</div>
+              <div data-anim style="font-size:17px;color:var(--dim);line-height:1.5;margin-top:10px;max-width:270px;animation:kFadeUp .5s ease-out 1s both">Mandatory health insurance held for the full visa duration.</div>
+            </div>
+            <div data-anim style="align-self:flex-start;font-family:var(--mono);font-size:11.5px;letter-spacing:.06em;border:1px solid var(--accent);border-radius:var(--rs);padding:8px 12px;color:var(--accent);animation:kFadeUp .45s ease-out 1.35s both">Visa condition 8501</div>
+          </div>
+          <button onClick="{{ replay }}" aria-label="Replay" style="position:absolute;top:12px;right:12px;z-index:6;width:36px;height:36px;border-radius:50%;border:1px solid var(--rule);background:transparent;color:var(--dim);font-size:15px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0">⟳</button>
+          <div data-safez style="position:absolute;left:0;right:0;bottom:0;height:96px;border-top:1px dashed var(--accent);pointer-events:none;z-index:5;display:flex;align-items:flex-start;justify-content:flex-end;padding:6px 12px"><span style="font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent)">caption safe · 15%</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 18 image-text-card -->
+    <div style="flex:0 0 auto;display:flex;flex-direction:column;gap:10px">
+      <div style="font-family:var(--mono);font-size:11px;letter-spacing:.08em;color:var(--pdim)">18 · image-text-card</div>
+      <div data-screen-label="18 image-text-card" style="background:var(--frame);border-radius:40px;padding:10px;box-shadow:var(--shadow)">
+        <div data-card style="position:relative;width:360px;height:640px;border-radius:30px;overflow:hidden;background:var(--bg);color:var(--ink)">
+          <div style="position:absolute;left:0;right:0;top:0;height:46%;overflow:hidden">
+            <div data-anim style="position:absolute;inset:0;background:repeating-linear-gradient(45deg, var(--phA) 0 16px, var(--phB) 16px 32px);filter:var(--imgf);display:flex;align-items:center;justify-content:center;animation:kFade .7s ease-out both">
+              <span style="font-family:var(--mono);font-size:11px;letter-spacing:.1em;color:var(--dim);background:var(--bg);padding:8px 14px;border-radius:4px;opacity:.9">[ photo — bendigo campus ]</span>
+            </div>
+          </div>
+          <div style="position:absolute;left:0;right:0;top:46%;bottom:0;display:flex;flex-direction:column;padding:30px 30px 108px">
+            <div data-anim style="font-family:var(--mono);font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--dim);animation:kFade .5s ease-out .4s both">Regional campus</div>
+            <div data-anim style="font-family:var(--disp);font-weight:var(--dw);text-transform:var(--case);letter-spacing:var(--track);font-size:42px;line-height:1.05;margin-top:12px;animation:kFadeUp .55s ease-out .55s both">Bendigo</div>
+            <div data-anim style="font-size:18px;color:var(--dim);line-height:1.5;margin-top:14px;text-wrap:pretty;animation:kFadeUp .5s ease-out .8s both">La Trobe&rsquo;s largest regional campus — under two hours from Melbourne by train.</div>
+          </div>
+          <button onClick="{{ replay }}" aria-label="Replay" style="position:absolute;top:12px;right:12px;z-index:6;width:36px;height:36px;border-radius:50%;border:1px solid var(--rule);background:var(--bg);color:var(--dim);font-size:15px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0">⟳</button>
+          <div data-safez style="position:absolute;left:0;right:0;bottom:0;height:96px;border-top:1px dashed var(--accent);pointer-events:none;z-index:5;display:flex;align-items:flex-start;justify-content:flex-end;padding:6px 12px"><span style="font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent)">caption safe · 15%</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 19 chart-card -->
+    <div style="flex:0 0 auto;display:flex;flex-direction:column;gap:10px">
+      <div style="font-family:var(--mono);font-size:11px;letter-spacing:.08em;color:var(--pdim)">19 · chart-card</div>
+      <div data-screen-label="19 chart-card" style="background:var(--frame);border-radius:40px;padding:10px;box-shadow:var(--shadow)">
+        <div data-card style="position:relative;width:360px;height:640px;border-radius:30px;overflow:hidden;background:var(--bg);color:var(--ink)">
+          <div style="position:absolute;inset:0;display:flex;flex-direction:column;padding:36px 30px 108px">
+            <div data-anim style="font-family:var(--mono);font-size:12px;letter-spacing:.22em;text-transform:uppercase;color:var(--dim);animation:kFade .5s ease-out .1s both">Accommodation</div>
+            <div data-anim style="font-family:var(--disp);font-weight:var(--dw);text-transform:var(--case);letter-spacing:var(--track);font-size:34px;line-height:1.1;margin-top:10px;animation:kFadeUp .5s ease-out .2s both">Median weekly rent</div>
+            <div style="flex:1;display:flex;flex-direction:column;justify-content:center;gap:26px;border-left:1px solid var(--rule);padding-left:2px">
+              <div>
+                <div data-anim style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:9px;animation:kFade .4s ease-out .5s both"><span style="font-size:15px;font-weight:600">Melbourne</span><span style="font-family:var(--mono);font-size:13px;font-variant-numeric:tabular-nums">A$560</span></div>
+                <div data-anim style="height:22px;width:100%;background:var(--ink);opacity:.32;transform-origin:left;animation:kGrowX .6s ease-out .6s both"></div>
+              </div>
+              <div>
+                <div data-anim style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:9px;animation:kFade .4s ease-out .8s both"><span style="font-size:15px;font-weight:600">Regional Victoria</span><span style="font-family:var(--mono);font-size:13px;font-variant-numeric:tabular-nums">A$455</span></div>
+                <div data-anim style="height:22px;width:81%;background:var(--ink);opacity:.32;transform-origin:left;animation:kGrowX .6s ease-out .9s both"></div>
+              </div>
+              <div>
+                <div data-anim style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:9px;animation:kFade .4s ease-out 1.1s both"><span style="font-size:15px;font-weight:600;color:var(--accent)">On-campus · Bundoora</span><span style="font-family:var(--mono);font-size:13px;color:var(--accent);font-variant-numeric:tabular-nums">A$280</span></div>
+                <div data-anim style="height:22px;width:50%;background:var(--accent);transform-origin:left;animation:kGrowX .6s ease-out 1.2s both"></div>
+              </div>
+            </div>
+            <div data-anim style="display:flex;align-items:center;gap:7px;animation:kFade .6s ease-out 1.7s both">
+              <span style="width:5px;height:5px;border-radius:50%;background:var(--accent)"></span>
+              <span style="font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim)">La Trobe Study Guide 2025</span>
+            </div>
+          </div>
+          <button onClick="{{ replay }}" aria-label="Replay" style="position:absolute;top:12px;right:12px;z-index:6;width:36px;height:36px;border-radius:50%;border:1px solid var(--rule);background:transparent;color:var(--dim);font-size:15px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0">⟳</button>
+          <div data-safez style="position:absolute;left:0;right:0;bottom:0;height:96px;border-top:1px dashed var(--accent);pointer-events:none;z-index:5;display:flex;align-items:flex-start;justify-content:flex-end;padding:6px 12px"><span style="font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent)">caption safe · 15%</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 20 date-card -->
+    <div style="flex:0 0 auto;display:flex;flex-direction:column;gap:10px">
+      <div style="font-family:var(--mono);font-size:11px;letter-spacing:.08em;color:var(--pdim)">20 · date-card</div>
+      <div data-screen-label="20 date-card" style="background:var(--frame);border-radius:40px;padding:10px;box-shadow:var(--shadow)">
+        <div data-card style="position:relative;width:360px;height:640px;border-radius:30px;overflow:hidden;background:var(--bg);color:var(--ink)">
+          <div style="position:absolute;inset:0;display:flex;flex-direction:column;padding:36px 30px 108px">
+            <div data-anim style="font-family:var(--mono);font-size:12px;letter-spacing:.22em;text-transform:uppercase;color:var(--dim);animation:kFade .5s ease-out .1s both">Key dates</div>
+            <div data-anim style="font-family:var(--disp);font-weight:var(--dw);text-transform:var(--case);letter-spacing:var(--track);font-size:40px;line-height:1.05;margin-top:10px;animation:kFadeUp .5s ease-out .2s both">February 2026 intake</div>
+            <div style="margin-top:34px;display:flex;flex-direction:column">
+              <div data-anim style="display:flex;align-items:center;gap:18px;padding:16px 0;border-top:1px solid var(--rule);animation:kFadeUp .45s ease-out .5s both">
+                <div style="flex:0 0 auto;width:60px;border:1px solid var(--accent);border-radius:var(--rs);overflow:hidden;text-align:center">
+                  <div style="font-family:var(--mono);font-size:9px;letter-spacing:.18em;padding:4px 0 3px;background:var(--accent);color:var(--acc-ink)">NOV</div>
+                  <div style="font-family:var(--disp);font-weight:var(--dw);font-size:26px;line-height:1;padding:8px 0 9px">28</div>
+                </div>
+                <div><div style="font-size:18px;font-weight:600">Applications close</div><div style="font-size:13px;color:var(--dim);margin-top:2px">no late lodgements</div></div>
+              </div>
+              <div data-anim style="display:flex;align-items:center;gap:18px;padding:16px 0;border-top:1px solid var(--rule);animation:kFadeUp .45s ease-out .75s both">
+                <div style="flex:0 0 auto;width:60px;border:1px solid var(--rule);border-radius:var(--rs);overflow:hidden;text-align:center">
+                  <div style="font-family:var(--mono);font-size:9px;letter-spacing:.18em;padding:4px 0 3px;background:var(--chip);color:var(--dim)">DEC</div>
+                  <div style="font-family:var(--disp);font-weight:var(--dw);font-size:26px;line-height:1;padding:8px 0 9px">19</div>
+                </div>
+                <div><div style="font-size:18px;font-weight:600">CoE issued by</div><div style="font-size:13px;color:var(--dim);margin-top:2px">visa lodgement can begin</div></div>
+              </div>
+              <div data-anim style="display:flex;align-items:center;gap:18px;padding:16px 0;border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);animation:kFadeUp .45s ease-out 1s both">
+                <div style="flex:0 0 auto;width:60px;border:1px solid var(--rule);border-radius:var(--rs);overflow:hidden;text-align:center">
+                  <div style="font-family:var(--mono);font-size:9px;letter-spacing:.18em;padding:4px 0 3px;background:var(--chip);color:var(--dim)">MAR</div>
+                  <div style="font-family:var(--disp);font-weight:var(--dw);font-size:26px;line-height:1;padding:8px 0 9px">31</div>
+                </div>
+                <div><div style="font-size:18px;font-weight:600">Census date</div><div style="font-size:13px;color:var(--dim);margin-top:2px">last day to withdraw without penalty</div></div>
+              </div>
+            </div>
+            <div style="flex:1"></div>
+            <div data-anim style="display:flex;align-items:center;gap:7px;animation:kFade .6s ease-out 1.4s both">
+              <span style="width:5px;height:5px;border-radius:50%;background:var(--accent)"></span>
+              <span style="font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim)">La Trobe key dates 2026 — verify current</span>
+            </div>
+          </div>
+          <button onClick="{{ replay }}" aria-label="Replay" style="position:absolute;top:12px;right:12px;z-index:6;width:36px;height:36px;border-radius:50%;border:1px solid var(--rule);background:transparent;color:var(--dim);font-size:15px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0">⟳</button>
+          <div data-safez style="position:absolute;left:0;right:0;bottom:0;height:96px;border-top:1px dashed var(--accent);pointer-events:none;z-index:5;display:flex;align-items:flex-start;justify-content:flex-end;padding:6px 12px"><span style="font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent)">caption safe · 15%</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 21 checklist-card -->
+    <div style="flex:0 0 auto;display:flex;flex-direction:column;gap:10px">
+      <div style="font-family:var(--mono);font-size:11px;letter-spacing:.08em;color:var(--pdim)">21 · checklist-card</div>
+      <div data-screen-label="21 checklist-card" style="background:var(--frame);border-radius:40px;padding:10px;box-shadow:var(--shadow)">
+        <div data-card style="position:relative;width:360px;height:640px;border-radius:30px;overflow:hidden;background:var(--bg);color:var(--ink)">
+          <div style="position:absolute;inset:0;display:flex;flex-direction:column;padding:36px 30px 108px">
+            <div data-anim style="font-family:var(--mono);font-size:12px;letter-spacing:.22em;text-transform:uppercase;color:var(--dim);animation:kFade .5s ease-out .1s both">Financial evidence</div>
+            <div data-anim style="font-family:var(--disp);font-weight:var(--dw);text-transform:var(--case);letter-spacing:var(--track);font-size:33px;line-height:1.12;margin-top:10px;text-wrap:pretty;animation:kFadeUp .5s ease-out .2s both">A complete evidence pack</div>
+            <div style="margin-top:32px;display:flex;flex-direction:column;gap:22px">
+              <div data-anim style="display:flex;align-items:center;gap:16px;animation:kFadeUp .45s ease-out .5s both">
+                <span style="flex:0 0 auto;width:28px;height:28px;border-radius:50%;border:2px solid var(--accent);display:flex;align-items:center;justify-content:center"><span data-anim style="color:var(--accent);font-size:14px;line-height:1;animation:kPop .35s ease-out .7s both">✓</span></span>
+                <span style="font-size:18px;font-weight:600">Bank statements, 6 months</span>
+              </div>
+              <div data-anim style="display:flex;align-items:center;gap:16px;animation:kFadeUp .45s ease-out .85s both">
+                <span style="flex:0 0 auto;width:28px;height:28px;border-radius:50%;border:2px solid var(--accent);display:flex;align-items:center;justify-content:center"><span data-anim style="color:var(--accent);font-size:14px;line-height:1;animation:kPop .35s ease-out 1.05s both">✓</span></span>
+                <span style="font-size:18px;font-weight:600">Source of funds letter</span>
+              </div>
+              <div data-anim style="display:flex;align-items:center;gap:16px;animation:kFadeUp .45s ease-out 1.2s both">
+                <span style="flex:0 0 auto;width:28px;height:28px;border-radius:50%;border:2px solid var(--accent);display:flex;align-items:center;justify-content:center"><span data-anim style="color:var(--accent);font-size:14px;line-height:1;animation:kPop .35s ease-out 1.4s both">✓</span></span>
+                <span style="font-size:18px;font-weight:600">Sponsor declaration</span>
+              </div>
+            </div>
+            <div style="flex:1"></div>
+            <div data-anim style="border-top:1px solid var(--rule);padding-top:22px;display:flex;align-items:flex-start;gap:16px;animation:kFadeUp .5s ease-out 1.8s both">
+              <span style="flex:0 0 auto;width:28px;height:28px;border-radius:50%;border:2px dashed var(--dim);margin-top:3px"></span>
+              <div>
+                <div style="font-size:14px;color:var(--dim)">&hellip;and the one most applications miss</div>
+                <div style="font-family:var(--disp);font-weight:var(--dw);text-transform:var(--case);letter-spacing:var(--track);font-size:24px;line-height:1.2;margin-top:6px;color:var(--accent)">Translation certification</div>
+              </div>
+            </div>
+          </div>
+          <button onClick="{{ replay }}" aria-label="Replay" style="position:absolute;top:12px;right:12px;z-index:6;width:36px;height:36px;border-radius:50%;border:1px solid var(--rule);background:transparent;color:var(--dim);font-size:15px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0">⟳</button>
+          <div data-safez style="position:absolute;left:0;right:0;bottom:0;height:96px;border-top:1px dashed var(--accent);pointer-events:none;z-index:5;display:flex;align-items:flex-start;justify-content:flex-end;padding:6px 12px"><span style="font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent)">caption safe · 15%</span></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{
+  &quot;theme&quot;: {&quot;editor&quot;: &quot;enum&quot;, &quot;options&quot;: [&quot;counseliq&quot;, &quot;latrobe&quot;], &quot;default&quot;: &quot;counseliq&quot;, &quot;tsType&quot;: &quot;'counseliq' | 'latrobe'&quot;, &quot;section&quot;: &quot;Branding&quot;},
+  &quot;showSafeZone&quot;: {&quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: false, &quot;tsType&quot;: &quot;boolean&quot;, &quot;section&quot;: &quot;Overlays&quot;}
+}">
+class Component extends DCLogic {
+  state = { theme: null, safe: null };
+
+  renderVals() {
+    const theme = this.state.theme ?? this.props.theme ?? 'counseliq';
+    const safe = this.state.safe ?? this.props.showSafeZone ?? false;
+    return {
+      clsExtra: (theme === 'latrobe' ? 'tB ' : '') + (safe ? 'safeon' : ''),
+      setA: () => this.setState({ theme: 'counseliq' }),
+      setB: () => this.setState({ theme: 'latrobe' }),
+      toggleSafe: () => {
+        const cur = this.state.safe ?? this.props.showSafeZone ?? false;
+        this.setState({ safe: !cur });
+      },
+      replay: (e) => {
+        const card = e.currentTarget.closest('[data-card]');
+        if (!card) return;
+        const els = card.querySelectorAll('[data-anim]');
+        els.forEach((el) => {
+          if (!el.dataset.animOrig) el.dataset.animOrig = el.style.animation || '';
+          el.style.animation = 'none';
+        });
+        void card.offsetWidth;
+        els.forEach((el) => { el.style.animation = el.dataset.animOrig; });
+      }
+    };
+  }
+}
+</script>
+</body>
+</html>
