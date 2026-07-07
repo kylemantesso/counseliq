@@ -34,6 +34,7 @@ export const recordLlmCall = internalMutation({
 });
 
 export interface RunCostBreakdown {
+  /** LLM-only totals (pre-M5 shape, kept for walkthrough/eval compat). */
   totalUsd: number;
   totalCalls: number;
   totalTokensIn: number;
@@ -46,6 +47,21 @@ export interface RunCostBreakdown {
     tokensOut: number;
     costUsd: number;
   }>;
+  /** TTS totals (M5). costUsd here is estimated, not provider-reported. */
+  tts: {
+    totalUsd: number;
+    totalCalls: number;
+    totalCharacters: number;
+    byStage: Array<{
+      stage: string;
+      model: string;
+      calls: number;
+      characters: number;
+      costUsd: number;
+    }>;
+  };
+  /** LLM + TTS. */
+  grandTotalUsd: number;
 }
 
 async function computeRunCost(
@@ -81,6 +97,33 @@ async function computeRunCost(
     totalTokensOut += call.tokensOut;
   }
 
+  const ttsCalls = await ctx.db
+    .query("ttsCalls")
+    .withIndex("by_run", (q) => q.eq("runId", runId))
+    .take(5000);
+  const ttsByKey = new Map<
+    string,
+    RunCostBreakdown["tts"]["byStage"][number]
+  >();
+  let ttsUsd = 0;
+  let ttsCharacters = 0;
+  for (const call of ttsCalls) {
+    const key = `${call.stage}\u0000${call.model}`;
+    const entry = ttsByKey.get(key) ?? {
+      stage: call.stage,
+      model: call.model,
+      calls: 0,
+      characters: 0,
+      costUsd: 0,
+    };
+    entry.calls += 1;
+    entry.characters += call.characters;
+    entry.costUsd += call.costUsd;
+    ttsByKey.set(key, entry);
+    ttsUsd += call.costUsd;
+    ttsCharacters += call.characters;
+  }
+
   return {
     totalUsd,
     totalCalls: calls.length,
@@ -89,6 +132,15 @@ async function computeRunCost(
     byStage: [...byKey.values()].sort((a, b) =>
       a.stage.localeCompare(b.stage)
     ),
+    tts: {
+      totalUsd: ttsUsd,
+      totalCalls: ttsCalls.length,
+      totalCharacters: ttsCharacters,
+      byStage: [...ttsByKey.values()].sort((a, b) =>
+        a.stage.localeCompare(b.stage)
+      ),
+    },
+    grandTotalUsd: totalUsd + ttsUsd,
   };
 }
 

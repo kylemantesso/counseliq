@@ -240,16 +240,41 @@ export const generateAssets = workflow
         `${scripts.blocked} blocked, ${scripts.unchanged} unchanged`,
     });
 
-    await step.runAction(internal.pipeline.steps.runNoopStage, {
-      runId,
-      stage: "generate-assets",
-    });
+    const assets: {
+      status: string;
+      cause?: string;
+      synthesized: number;
+      cached: number;
+      blockedSkipped: number;
+      failed: Array<{ unitKey: string; cause: string }>;
+      characters: number;
+      costUsd: number;
+    } = await step.runAction(
+      internal.pipeline.tts.synthesize.runAssetGeneration,
+      { runId }
+    );
+    if (assets.status === "failed") {
+      await step.runMutation(internal.pipeline.transitions.transitionRun, {
+        runId,
+        toState: "FAILED",
+        actor: ACTOR,
+        detail: "generateAssets: TTS synthesis failed",
+        error: {
+          retryable: true,
+          cause: assets.cause ?? "TTS synthesis failed",
+        },
+      });
+      return;
+    }
     await step.runMutation(internal.pipeline.transitions.transitionRun, {
       runId,
       toState: "GATE_3_PREVIEW",
       actor: ACTOR,
       detail:
-        "generateAssets: assets generated (no-op until M5 C2), awaiting preview review",
+        `generateAssets: generate-assets — ${assets.synthesized} synthesized, ` +
+        `${assets.cached} cached, ${assets.failed.length} failed, ` +
+        `${assets.blockedSkipped} blocked; ${assets.characters} character(s), ` +
+        `~$${assets.costUsd.toFixed(4)} (estimated)`,
     });
     await step.runMutation(internal.pipeline.reviewItems.createGateReviewItems, {
       runId,

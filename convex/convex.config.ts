@@ -10,6 +10,7 @@ app.use(resend);
 app.use(workpool, { name: "notificationPool" });
 app.use(workpool, { name: "extractionPool" });
 app.use(workpool, { name: "compilePool" });
+app.use(workpool, { name: "ttsPool" });
 app.use(workflow);
 
 export default app;

@@ -160,6 +160,45 @@ export async function replaceGate3BlockedUnitItems(
   }
 }
 
+/** Payload of a gate-3 `failed_unit` review item (created by GENERATING_ASSETS). */
+export interface FailedUnitItem {
+  unitKey: string;
+  moduleKey: string;
+  concept: string;
+  cause: string;
+  retryable: boolean;
+}
+
+/**
+ * Gate 3 (M5): one review item per unit whose synthesis failed. Idempotent:
+ * existing gate-3 failed_unit items for the run are replaced, not
+ * duplicated; other gate-3 item kinds (e.g. blocked_unit) are left alone.
+ */
+export async function replaceGate3FailedUnitItems(
+  ctx: MutationCtx,
+  runId: Id<"runs">,
+  items: FailedUnitItem[]
+): Promise<void> {
+  const existing = await ctx.db
+    .query("reviewItems")
+    .withIndex("by_run_and_gate", (q) => q.eq("runId", runId).eq("gate", 3))
+    .take(1000);
+  for (const item of existing) {
+    if (item.kind === "failed_unit") {
+      await ctx.db.delete(item._id);
+    }
+  }
+  for (const item of items) {
+    await ctx.db.insert("reviewItems", {
+      runId,
+      gate: 3,
+      kind: "failed_unit",
+      payload: item,
+      status: "pending",
+    });
+  }
+}
+
 export const createGateReviewItems = internalMutation({
   args: {
     runId: v.id("runs"),
