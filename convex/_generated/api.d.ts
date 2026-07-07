@@ -36,6 +36,7 @@ import type * as notificationQueries from "../notificationQueries.js";
 import type * as pipeline_hmac from "../pipeline/hmac.js";
 import type * as pipeline_ingestion from "../pipeline/ingestion.js";
 import type * as pipeline_objectStore from "../pipeline/objectStore.js";
+import type * as pipeline_prompts_index from "../pipeline/prompts/index.js";
 import type * as pipeline_queries from "../pipeline/queries.js";
 import type * as pipeline_reviewItems from "../pipeline/reviewItems.js";
 import type * as pipeline_runs from "../pipeline/runs.js";
@@ -83,6 +84,7 @@ declare const fullApi: ApiFromModules<{
   "pipeline/hmac": typeof pipeline_hmac;
   "pipeline/ingestion": typeof pipeline_ingestion;
   "pipeline/objectStore": typeof pipeline_objectStore;
+  "pipeline/prompts/index": typeof pipeline_prompts_index;
   "pipeline/queries": typeof pipeline_queries;
   "pipeline/reviewItems": typeof pipeline_reviewItems;
   "pipeline/runs": typeof pipeline_runs;

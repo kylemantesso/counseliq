@@ -25,6 +25,7 @@
     "init": "node scripts/init.mjs",
     "init:existing": "node scripts/init.mjs --use-existing",
     "lint": "turbo run lint",
+    "prompts:build": "node scripts/build-prompts.mjs",
     "test": "turbo run test && npm run test:convex",
     "test:convex": "vitest run --config vitest.config.convex.ts",
     "typecheck": "turbo run typecheck",
