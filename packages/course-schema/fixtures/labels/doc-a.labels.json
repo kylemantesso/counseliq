@@ -1,0 +1,61 @@
+{
+  "doc": "doc-a",
+  "confirmed": false,
+  "concepts": [
+    { "key": "university-history", "title": "University history", "pages": [4] },
+    { "key": "university-rankings", "title": "University rankings", "pages": [6, 7] },
+    { "key": "schools-and-disciplines", "title": "Schools and disciplines", "pages": [8, 40] },
+    { "key": "strategic-plan", "title": "Strategic plan and vision", "pages": [9, 10] },
+    { "key": "health-strengths", "title": "Health rankings and clinical training", "pages": [12] },
+    { "key": "health-workforce-investment", "title": "Health workforce investment", "pages": [13] },
+    { "key": "ai-technology-partnerships", "title": "AI and technology partnerships", "pages": [14, 15] },
+    { "key": "digital-health-programs", "title": "Digital health programs", "pages": [16] },
+    { "key": "medical-ai-innovation", "title": "Artificial intelligence in medical innovation", "pages": [17] },
+    { "key": "health-partnerships", "title": "Health partnerships and virtual care", "pages": [18] },
+    { "key": "data-analytics", "title": "Business analytics and data science", "pages": [19, 20] },
+    { "key": "global-footprint", "title": "Global footprint and international partnerships", "pages": [24] },
+    { "key": "university-city", "title": "University City vision", "pages": [26, 27] },
+    { "key": "sustainability-net-zero", "title": "Sustainability and net zero campuses", "pages": [30, 31, 36] },
+    { "key": "sustainable-agriculture", "title": "Sustainable agriculture and food security", "pages": [32, 33] },
+    { "key": "womens-sport", "title": "Women's sport", "pages": [38] },
+    { "key": "australian-ballet", "title": "Australian Ballet partnership", "pages": [39] }
+  ],
+  "knownDirtyStatistics": [
+    {
+      "id": "students-worldwide",
+      "description": "35,000+ students from 140+ countries — no source or year printed",
+      "pages": [4, 24],
+      "match": ["35,000", "140"]
+    },
+    {
+      "id": "clinical-teaching-building",
+      "description": "$82 million clinical teaching building at Bundoora — no source or year printed",
+      "pages": [13],
+      "match": ["82 million"]
+    },
+    {
+      "id": "care-economy-crc-funding",
+      "description": "$35 million federal funding boost to lead the Care Economy CRC — no source or year printed",
+      "pages": [13],
+      "match": ["35 million"]
+    },
+    {
+      "id": "university-city-investment",
+      "description": "$5 billion investment for the University City vision — no source or year printed",
+      "pages": [27],
+      "match": ["5 billion"]
+    },
+    {
+      "id": "solar-farm-panels",
+      "description": "Largest urban solar farm in Victoria with 4,300 panels / 2.9 MW — no source or year printed",
+      "pages": [31],
+      "match": ["4,300"]
+    }
+  ],
+  "mustExtractEntities": [
+    { "kind": "org", "value": "La Trobe" },
+    { "kind": "org", "value": "BioNTech" },
+    { "kind": "org", "value": "NVIDIA" },
+    { "kind": "campus", "value": "Bundoora" }
+  ]
+}
