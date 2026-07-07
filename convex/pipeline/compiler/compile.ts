@@ -535,11 +535,15 @@ async function runCompilationInner(
     );
     // completeStructured already feeds validator errors back once; providers
     // occasionally truncate output mid-JSON on BOTH attempts, so re-issue
-    // the whole (single, cheap) structure call a couple of times.
+    // the whole (single, cheap) structure call a couple of times. Failures
+    // carry into the next attempt as feedback — the model systematically
+    // over-plans units without seeing the violation.
     const STRUCTURE_ATTEMPTS = 3;
     let structure: LlmCompileStructure | undefined;
+    let structureFeedback: string | undefined;
     for (let attempt = 1; attempt <= STRUCTURE_ATTEMPTS; attempt++) {
       try {
+        const baseText = buildStructureUserText(inventory, unitRange, moduleRange);
         const { value, usages } = await completeStructured(
           client,
           "compile-structure",
@@ -548,7 +552,9 @@ async function runCompilationInner(
             user: [
               {
                 type: "text",
-                text: buildStructureUserText(inventory, unitRange, moduleRange),
+                text: structureFeedback
+                  ? `${baseText}\n\nYour previous plan failed a code-enforced rule — fix it and output the corrected full plan:\n- ${structureFeedback}`
+                  : baseText,
               },
             ],
             schemaName: "compile_structure",
@@ -572,8 +578,10 @@ async function runCompilationInner(
         structure = value;
         break;
       } catch (error) {
+        structureFeedback =
+          error instanceof Error ? error.message : String(error);
         console.warn(
-          `[pipeline] run ${runId}: structure pass attempt ${attempt}/${STRUCTURE_ATTEMPTS} failed — ${error instanceof Error ? error.message : String(error)}`
+          `[pipeline] run ${runId}: structure pass attempt ${attempt}/${STRUCTURE_ATTEMPTS} failed — ${structureFeedback}`
         );
         if (attempt === STRUCTURE_ATTEMPTS) throw error;
       }
