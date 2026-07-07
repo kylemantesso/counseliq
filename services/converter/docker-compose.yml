@@ -1,0 +1,60 @@
+# Local end-to-end stack: converter + MinIO (S3-compatible store).
+# Run from the repo root:
+#   docker compose -f services/converter/docker-compose.yml up --build
+#
+# MinIO console: http://localhost:9001 (minioadmin / minioadmin)
+# Converter:     http://localhost:8080
+services:
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  createbucket:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 minioadmin minioadmin &&
+      mc mb --ignore-existing local/counseliq-ingestion &&
+      exit 0
+      "
+
+  converter:
+    build:
+      context: ../..
+      dockerfile: services/converter/Dockerfile
+    ports:
+      - "8080:8080"
+    depends_on:
+      createbucket:
+        condition: service_completed_successfully
+    environment:
+      PORT: "8080"
+      OBJECT_STORE_ENDPOINT: http://minio:9000
+      OBJECT_STORE_REGION: us-east-1
+      OBJECT_STORE_BUCKET: counseliq-ingestion
+      OBJECT_STORE_ACCESS_KEY_ID: minioadmin
+      OBJECT_STORE_SECRET_ACCESS_KEY: minioadmin
+      CONVERTER_CALLBACK_SECRET: ${CONVERTER_CALLBACK_SECRET:-local-dev-secret}
+    extra_hosts:
+      # Lets the converter reach a Convex dev deployment's HTTP actions
+      # running on the host (http://host.docker.internal:...).
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  minio-data:

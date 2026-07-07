@@ -1,0 +1,32 @@
+# Deploy from the REPO ROOT so the Docker build context includes the
+# course-schema workspace package:
+#   fly deploy --config services/converter/fly.toml --dockerfile services/converter/Dockerfile .
+#
+# Required secrets (fly secrets set ...):
+#   OBJECT_STORE_ENDPOINT, OBJECT_STORE_REGION, OBJECT_STORE_BUCKET,
+#   OBJECT_STORE_ACCESS_KEY_ID, OBJECT_STORE_SECRET_ACCESS_KEY,
+#   CONVERTER_CALLBACK_SECRET, CONVEX_CALLBACK_URL
+app = "counseliq-converter"
+primary_region = "syd"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[vm]]
+  # LibreOffice needs headroom; 2GB keeps large decks converting.
+  memory = "2gb"
+  cpu_kind = "shared"
+  cpus = 2
+
+[checks]
+  [checks.health]
+    type = "http"
+    port = 8080
+    path = "/health"
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "20s"
