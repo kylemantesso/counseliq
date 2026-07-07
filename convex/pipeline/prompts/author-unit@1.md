@@ -105,5 +105,7 @@ narration, cards, a hook question, retrieve questions, and an anchor.
 
 - One card (usually `takeaway-card`) whose `text` is a single takeaway
   sentence — the one thing the counsellor must retain.
+- Keep it punchy: at most 160 characters. State the single memorable
+  point, never a summary of the whole unit (longer text is rejected).
 
 Output ONLY valid JSON matching the schema.

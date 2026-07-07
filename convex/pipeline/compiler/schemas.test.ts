@@ -93,6 +93,29 @@ describe("llmAuthoredUnitSchema card-prop enforcement", () => {
     }
   });
 
+  test("over-long anchor takeaway text is rejected with rewrite guidance", () => {
+    const unit = makeUnit({
+      anchor: {
+        template: "takeaway-card",
+        props: {
+          text:
+            "La Trobe University's Acknowledgement of Country recognises " +
+            "Traditional Custodians and commits to providing opportunities " +
+            "for Aboriginal and Torres Strait Islander students across all " +
+            "of its campuses in Victoria and beyond.",
+        },
+      },
+    });
+    const result = llmAuthoredUnitSchema.safeParse(unit);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const issue = result.error.issues.find(
+        (entry) => entry.path.join(".") === "anchor.props.text"
+      );
+      expect(issue?.message).toContain("160 characters");
+    }
+  });
+
   test("unknown card template is rejected", () => {
     const unit = makeUnit();
     (unit.cards as Array<{ template: string }>)[0].template = "hologram-card";

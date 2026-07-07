@@ -2,7 +2,7 @@ import type { CSSProperties, FC } from "react";
 import type { CardPropsFor } from "@counseliq/course-schema";
 import type { CardComponentProps } from "../timing";
 import { fade, fadeUp, msWindow } from "../interpolate";
-import { fitDisplayFontSize } from "../fit";
+import { fitBlockFontSize } from "../fit";
 import { cssVar } from "../theme/brand-theme-provider";
 
 /**
@@ -28,6 +28,7 @@ export const TakeawayCard: FC<CardComponentProps<CardPropsFor<"takeaway-card">>>
         display: "flex",
         flexDirection: "column",
         padding: "36px 30px 108px",
+        overflow: "hidden",
         background: cssVar("bg"),
         color: cssVar("ink"),
         fontFamily: cssVar("fontText"),
@@ -58,7 +59,8 @@ export const TakeawayCard: FC<CardComponentProps<CardPropsFor<"takeaway-card">>>
         <div
           style={{
             ...display,
-            fontSize: fitDisplayFontSize(props.text, 33),
+            // Height budget: 496px column minus badge row and "saved" chip.
+            fontSize: fitBlockFontSize(props.text, 33, { maxHeightPx: 400 }),
             overflowWrap: "break-word",
             lineHeight: 1.3,
             ...fadeUp(msWindow(timing, 300, 600)),

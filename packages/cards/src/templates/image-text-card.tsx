@@ -45,6 +45,7 @@ export function ImageTextCard({ props, timing }: CardComponentProps<CardPropsFor
           display: "flex",
           flexDirection: "column",
           padding: "30px 30px 108px",
+          overflow: "hidden",
         }}
       >
         {kicker ? (
@@ -68,7 +69,7 @@ export function ImageTextCard({ props, timing }: CardComponentProps<CardPropsFor
               fontWeight: cssVar("displayWeight") as never,
               textTransform: cssVar("titleCase") as never,
               letterSpacing: cssVar("tracking"),
-              fontSize: fitDisplayFontSize(props.text, 42),
+              fontSize: fitDisplayFontSize(title, 42),
               overflowWrap: "break-word",
               lineHeight: 1.05,
               marginTop: 12,

@@ -2,7 +2,7 @@ import type { CSSProperties, FC } from "react";
 import type { CardPropsFor } from "@counseliq/course-schema";
 import type { CardComponentProps } from "../timing";
 import { fade, fadeUp, msWindow } from "../interpolate";
-import { fitDisplayFontSize } from "../fit";
+import { fitBlockFontSize } from "../fit";
 import { cssVar } from "../theme/brand-theme-provider";
 
 /**
@@ -27,6 +27,7 @@ export const TextCard: FC<CardComponentProps<CardPropsFor<"text-card">>> = ({ pr
         display: "flex",
         flexDirection: "column",
         padding: "36px 30px 108px",
+        overflow: "hidden",
         background: cssVar("bg"),
         color: cssVar("ink"),
         fontFamily: cssVar("fontText"),
@@ -50,7 +51,7 @@ export const TextCard: FC<CardComponentProps<CardPropsFor<"text-card">>> = ({ pr
         <div
           style={{
             ...display,
-            fontSize: fitDisplayFontSize(props.body, 33),
+            fontSize: fitBlockFontSize(props.body, 33, { maxHeightPx: 440 }),
             overflowWrap: "break-word",
             lineHeight: 1.3,
             ...fadeUp(msWindow(timing, 300, 550)),

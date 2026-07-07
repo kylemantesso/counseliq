@@ -138,6 +138,51 @@ describe("fitDisplayFontSize", () => {
   });
 });
 
+// --- fitBlockFontSize (width + height aware block sizing) ---
+import { fitBlockFontSize } from "../src/fit";
+
+describe("fitBlockFontSize", () => {
+  const LONG_TAKEAWAY =
+    "Banksia University's Acknowledgement of Country recognises Traditional " +
+    "Custodians and commits to providing opportunities for Aboriginal and " +
+    "Torres Strait Islander students across all campuses";
+
+  test("short text keeps the width-fit size", () => {
+    expect(fitBlockFontSize("Book early", 33, { maxHeightPx: 400 })).toBe(33);
+  });
+
+  test("a long takeaway shrinks until the wrapped block fits the budget", () => {
+    const size = fitBlockFontSize(LONG_TAKEAWAY, 33, { maxHeightPx: 400 });
+    // Must shrink below the pure width fit ("Acknowledgement" alone allows 33).
+    expect(size).toBeLessThan(33);
+    expect(size).toBeGreaterThanOrEqual(18);
+    // Verify the greedy-wrap estimate actually fits at the chosen size.
+    const capacity = 300 / (0.58 * size);
+    let lines = 1;
+    let current = 0;
+    for (const word of LONG_TAKEAWAY.split(/\s+/)) {
+      const needed = current > 0 ? word.length + 1 : word.length;
+      if (current > 0 && current + needed > capacity) {
+        lines += 1;
+        current = word.length;
+      } else {
+        current += needed;
+      }
+    }
+    expect(lines * size * 1.3).toBeLessThanOrEqual(400);
+  });
+
+  test("pathological text clamps at the block floor", () => {
+    expect(
+      fitBlockFontSize("word ".repeat(400), 33, { maxHeightPx: 200 })
+    ).toBe(18);
+  });
+
+  test("empty text keeps the max", () => {
+    expect(fitBlockFontSize(undefined, 31, { maxHeightPx: 300 })).toBe(31);
+  });
+});
+
 // --- visibleSourceLabels (provenance-class markers hidden) ---
 import { visibleSourceLabels } from "../src/source-labels";
 

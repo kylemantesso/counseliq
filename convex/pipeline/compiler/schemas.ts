@@ -214,6 +214,17 @@ export const llmAuthoredUnitSchema = z
     unit.retrieveQuestions.forEach((question, qIndex) =>
       checkQuestion(question, ["retrieveQuestions", qIndex])
     );
+
+    // The anchor renders full-screen display type; past ~160 characters no
+    // fittable font size keeps it on the card.
+    const anchorText = (unit.anchor.props as Record<string, unknown>).text;
+    if (typeof anchorText === "string" && anchorText.length > 160) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["anchor", "props", "text"],
+        message: `anchor takeaway text is ${anchorText.length} characters; rewrite it as one punchy sentence of at most 160 characters — state the single memorable point, not a summary of the unit`,
+      });
+    }
   });
 
 export type LlmDraftQuestion = z.infer<typeof llmDraftQuestionSchema>;

@@ -2,6 +2,7 @@ import type { CSSProperties, FC } from "react";
 import type { CardPropsFor } from "@counseliq/course-schema";
 import type { CardComponentProps } from "../timing";
 import { fade, fadeUp, msWindow } from "../interpolate";
+import { fitBlockFontSize } from "../fit";
 import { cssVar } from "../theme/brand-theme-provider";
 
 /**
@@ -27,6 +28,7 @@ export const QuoteCard: FC<CardComponentProps<CardPropsFor<"quote-card">>> = ({ 
         display: "flex",
         flexDirection: "column",
         padding: "36px 30px 108px",
+        overflow: "hidden",
         background: cssVar("bg"),
         color: cssVar("ink"),
         fontFamily: cssVar("fontText"),
@@ -50,7 +52,12 @@ export const QuoteCard: FC<CardComponentProps<CardPropsFor<"quote-card">>> = ({ 
         style={{
           marginTop: 26,
           ...display,
-          fontSize: 31,
+          // 496px column minus quote mark and attribution footer.
+          fontSize: fitBlockFontSize(props.quote, 31, {
+            maxHeightPx: 300,
+            lineHeight: 1.28,
+          }),
+          overflowWrap: "break-word",
           lineHeight: 1.28,
           ...fadeUp(msWindow(timing, 300, 550)),
         }}

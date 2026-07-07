@@ -1,7 +1,7 @@
 import type { CardPropsFor } from "@counseliq/course-schema";
 import { CardImage } from "../assets";
 import { fadeUp, msWindow, pan, type PanDirection } from "../interpolate";
-import { fitDisplayFontSize } from "../fit";
+import { fitBlockFontSize } from "../fit";
 import { cssVar } from "../theme/brand-theme-provider";
 import type { CardComponentProps } from "../timing";
 
@@ -67,7 +67,11 @@ export function PhotoKenburnsCard({ props, timing }: CardComponentProps<CardProp
               fontWeight: cssVar("displayWeight") as never,
               textTransform: cssVar("titleCase") as never,
               letterSpacing: cssVar("tracking"),
-              fontSize: fitDisplayFontSize(props.overlayText, 30),
+              // Overlay grows upward from the scrim zone; keep it inside it.
+              fontSize: fitBlockFontSize(props.overlayText, 30, {
+                maxHeightPx: 240,
+                lineHeight: 1.18,
+              }),
               overflowWrap: "break-word",
               lineHeight: 1.18,
               ...fadeUp(msWindow(timing, 700, 600)),

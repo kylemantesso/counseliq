@@ -2,7 +2,7 @@ import type { CSSProperties, FC } from "react";
 import type { CardPropsFor } from "@counseliq/course-schema";
 import type { CardComponentProps } from "../timing";
 import { fade, fadeUp, growX, interpolate, msWindow } from "../interpolate";
-import { fitDisplayFontSize } from "../fit";
+import { fitBlockFontSize } from "../fit";
 import { cssVar } from "../theme/brand-theme-provider";
 
 /**
@@ -31,6 +31,7 @@ export const MythFactCard: FC<CardComponentProps<CardPropsFor<"myth-fact-card">>
         display: "flex",
         flexDirection: "column",
         padding: "36px 30px 108px",
+        overflow: "hidden",
         background: cssVar("bg"),
         color: cssVar("ink"),
         fontFamily: cssVar("fontText"),
@@ -65,7 +66,11 @@ export const MythFactCard: FC<CardComponentProps<CardPropsFor<"myth-fact-card">>
         <div
           style={{
             ...display,
-            fontSize: fitDisplayFontSize(props.myth, 29),
+            // Each half of the two-beat layout gets ~half the column.
+            fontSize: fitBlockFontSize(props.myth, 29, {
+              maxHeightPx: 175,
+              lineHeight: 1.25,
+            }),
             overflowWrap: "break-word",
             lineHeight: 1.25,
             marginTop: 14,
@@ -96,7 +101,10 @@ export const MythFactCard: FC<CardComponentProps<CardPropsFor<"myth-fact-card">>
         <div
           style={{
             ...display,
-            fontSize: fitDisplayFontSize(props.fact, 29),
+            fontSize: fitBlockFontSize(props.fact, 29, {
+              maxHeightPx: 175,
+              lineHeight: 1.25,
+            }),
             overflowWrap: "break-word",
             lineHeight: 1.25,
             marginTop: 16,

@@ -590,7 +590,7 @@ characters, TTS cost vs estimate, and the publish specHash.
 | `publishedCourses.ts` | `finalizePublish`, `getPublishedCourse`, `courseVersions` snapshots |
 | `prompts/` | Versioned prompt `.md` files + generated `index.ts` |
 | `queries.ts` | `getRun`, `listRunsByState`, `gateQueue`, `listSourceDocs`, `getSourceDoc` (admin) + internals |
-| `seed.ts` | Seeds "Example University" for the walkthrough (optional `voiceConfig`) |
+| `seed.ts` | Seeds the fictional "Banksia University" for the walkthrough (optional `voiceConfig`) |
 | `../http.ts` | `POST /converter/callback` http action |
 
 Tests: [`../pipeline.test.ts`](../pipeline.test.ts) (transitions/gates,

@@ -2,7 +2,7 @@ import type { CSSProperties, FC } from "react";
 import type { CardPropsFor } from "@counseliq/course-schema";
 import type { CardComponentProps } from "../timing";
 import { fade, fadeUp, msWindow, pop } from "../interpolate";
-import { fitDisplayFontSize } from "../fit";
+import { fitBlockFontSize } from "../fit";
 import { cssVar } from "../theme/brand-theme-provider";
 
 /**
@@ -48,6 +48,7 @@ export const AlertCard: FC<CardComponentProps<CardPropsFor<"alert-card">>> = ({ 
           display: "flex",
           flexDirection: "column",
           padding: "44px 36px 112px",
+          overflow: "hidden",
         }}
       >
         <div style={{ ...pop(msWindow(timing, 250, 450)) }}>
@@ -80,7 +81,12 @@ export const AlertCard: FC<CardComponentProps<CardPropsFor<"alert-card">>> = ({ 
           <div
             style={{
               ...display,
-              fontSize: fitDisplayFontSize(props.message, 31),
+              // 484px column minus icon + kicker rows.
+              fontSize: fitBlockFontSize(props.message, 31, {
+                maxHeightPx: 360,
+                lineHeight: 1.28,
+                columnPx: 288,
+              }),
               overflowWrap: "break-word",
               lineHeight: 1.28,
               ...fadeUp(msWindow(timing, 600, 500)),

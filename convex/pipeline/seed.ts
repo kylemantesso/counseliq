@@ -4,7 +4,9 @@ import { internalMutation } from "../_generated/server";
 /**
  * Seed an institution to hang walkthrough/eval runs off. Idempotent per
  * name — returns the existing institution if already seeded. Defaults to
- * the M1 placeholder "Example University"; eval:compile passes the real
+ * "Banksia University", a deliberately fictional AU institution (the name
+ * appears verbatim in authored narration and cards, so it must read like a
+ * real university without colliding with one); eval:compile passes the real
  * institution of the fixture material so authored courses and the QA judge
  * see a consistent brand.
  */
@@ -21,7 +23,7 @@ export const seed = internalMutation({
     ),
   },
   handler: async (ctx, args) => {
-    const name = args.name ?? "Example University";
+    const name = args.name ?? "Banksia University";
     const existing = await ctx.db.query("institutions").take(100);
     const match = existing.find((institution) => institution.name === name);
     if (match) {
