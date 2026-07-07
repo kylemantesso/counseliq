@@ -557,6 +557,18 @@ async function runCompilationInner(
           llmCompileStructureSchema
         );
         await recordUsages(ctx, runId, "compile-structure", usages);
+        // Code-enforce the unit budget the prompt only asks for: a 27-unit
+        // plan triples the course's narration/TTS cost. Throwing re-issues
+        // the (single, cheap) structure call via this loop.
+        const totalUnits = value.modules.reduce(
+          (sum, m) => sum + m.units.length,
+          0
+        );
+        if (totalUnits > unitRange[1]) {
+          throw new Error(
+            `structure pass planned ${totalUnits} units; the plan allows at most ${unitRange[1]} — consolidate to the ${unitRange[0]}-${unitRange[1]} most important concepts`
+          );
+        }
         structure = value;
         break;
       } catch (error) {
