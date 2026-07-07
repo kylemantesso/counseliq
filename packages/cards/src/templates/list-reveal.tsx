@@ -19,6 +19,12 @@ const display: CSSProperties = {
 
 export const ListReveal: FC<CardComponentProps<CardPropsFor<"list-reveal">>> = ({ props, timing }) => {
   const items = Array.isArray(props.items) ? props.items : [];
+  // Density adapts to content: compiled items run longer than the mockup's
+  // two-word examples, and 5+ rows must still clear the caption-safe zone.
+  const longestText = items.reduce((max, item) => Math.max(max, item.text?.length ?? 0), 0);
+  const dense = items.length >= 5 || longestText > 48;
+  const itemFontSize = dense ? 16 : 19;
+  const rowPadding = dense ? "12px 0" : "18px 0";
   return (
     <div
       style={{
@@ -27,6 +33,7 @@ export const ListReveal: FC<CardComponentProps<CardPropsFor<"list-reveal">>> = (
         display: "flex",
         flexDirection: "column",
         padding: "36px 30px 108px",
+        overflow: "hidden",
         color: cssVar("ink"),
         fontFamily: cssVar("fontText"),
       }}
@@ -43,7 +50,7 @@ export const ListReveal: FC<CardComponentProps<CardPropsFor<"list-reveal">>> = (
           {props.heading}
         </div>
       ) : null}
-      <div style={{ marginTop: 34, display: "flex", flexDirection: "column" }}>
+      <div style={{ marginTop: dense ? 22 : 34, display: "flex", flexDirection: "column" }}>
         {items.map((item, i) => (
           <div
             key={i}
@@ -52,7 +59,7 @@ export const ListReveal: FC<CardComponentProps<CardPropsFor<"list-reveal">>> = (
               display: "flex",
               gap: 16,
               alignItems: "baseline",
-              padding: "18px 0",
+              padding: rowPadding,
               borderTop: `1px solid ${cssVar("rule")}`,
               borderBottom: i === items.length - 1 ? `1px solid ${cssVar("rule")}` : undefined,
               ...fadeUp(beatProgress(timing, i)),
@@ -61,18 +68,26 @@ export const ListReveal: FC<CardComponentProps<CardPropsFor<"list-reveal">>> = (
             <span style={{ fontFamily: cssVar("fontMono"), fontSize: 12, color: cssVar("accent") }}>
               {String(i + 1).padStart(2, "0")}
             </span>
-            <span style={{ flex: 1, fontSize: 19, fontWeight: 600 }}>{item.text}</span>
+            <span style={{ flex: "1 1 0", minWidth: 0, fontSize: itemFontSize, fontWeight: 600, lineHeight: 1.25 }}>
+              {item.text}
+            </span>
             {item.sourceLabel ? (
               <span
                 data-ciq-source-label=""
                 style={{
+                  flex: "0 1 auto",
+                  maxWidth: "34%",
                   fontFamily: cssVar("fontMono"),
                   fontSize: 9,
                   letterSpacing: "0.1em",
                   textTransform: "uppercase",
                   color: cssVar("dim"),
                   whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  textAlign: "right",
                 }}
+                title={item.sourceLabel}
               >
                 {item.sourceLabel}
               </span>

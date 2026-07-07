@@ -21,8 +21,15 @@ const display: CSSProperties = {
 
 export const StatCard: FC<CardComponentProps<CardPropsFor<"stat-card">>> = ({ props, timing }) => {
   const headline = String(props.headline ?? "");
-  // Long headlines (sentence-like stats) scale down from the mockup's 108px.
-  const headlineSize = headline.length <= 8 ? 108 : headline.length <= 16 ? 72 : 48;
+  // Width-aware sizing: the inner column is 300px (360 − 2×30 padding) and
+  // display digits/caps run ~0.62em wide, so size from the character count
+  // rather than fixed length buckets — "70,000" at the mockup's 108px would
+  // bleed past the card edge. Clamped to [40, 108]; long sentence-like
+  // headlines wrap at the floor size.
+  const headlineSize = Math.max(
+    40,
+    Math.min(108, Math.floor(300 / (0.62 * Math.max(1, headline.length))))
+  );
   return (
     <div
       style={{
@@ -31,6 +38,7 @@ export const StatCard: FC<CardComponentProps<CardPropsFor<"stat-card">>> = ({ pr
         display: "flex",
         flexDirection: "column",
         padding: "36px 30px 108px",
+        overflow: "hidden",
         color: cssVar("ink"),
         fontFamily: cssVar("fontText"),
       }}
@@ -54,7 +62,8 @@ export const StatCard: FC<CardComponentProps<CardPropsFor<"stat-card">>> = ({ pr
           style={{
             ...display,
             fontSize: headlineSize,
-            lineHeight: 1,
+            lineHeight: 1.05,
+            overflowWrap: "break-word",
             color: cssVar("accent"),
             ...settle(msWindow(timing, 200, 700)),
           }}
