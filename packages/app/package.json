@@ -26,6 +26,7 @@
     "solito": "^4.0.0"
   },
   "dependencies": {
+    "@counseliq/cards": "*",
     "@counseliq/ui": "*",
     "@clerk/clerk-expo": "^2.19.31",
     "@clerk/nextjs": "^7.4.0",

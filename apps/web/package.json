@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@counseliq/app": "*",
+    "@counseliq/cards": "*",
     "@counseliq/ui": "*",
     "@clerk/nextjs": "^7.4.0",
     "@sentry/nextjs": "^10.63.0",

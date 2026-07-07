@@ -14,6 +14,7 @@ const nextConfig = {
   outputFileTracingRoot: monorepoRoot,
   transpilePackages: [
     '@counseliq/app',
+    '@counseliq/cards',
     '@counseliq/ui',
     'react-native',
     'react-native-web',
