@@ -14,6 +14,7 @@ import {
   cardText,
   findBannedClaimsInText,
   findRedundantCards,
+  longestFragmentTokens,
   textHasAttribution,
   textHasNegation,
   validateCardProvenance,
@@ -241,6 +242,12 @@ export function unitComplianceViolations(
     if (candidate.overlap < TRANSCRIPT_OVERLAP_THRESHOLD) continue;
     if (candidate.coverage < TRANSCRIPT_COVERAGE_THRESHOLD) continue;
     const card = authored.cards[candidate.cardIndex];
+    // A card built entirely from short label fragments (e.g. a list-reveal
+    // mirroring an enumeration sentence) is the intended signaling pattern,
+    // not prose transcription — leave it to the judge as review material.
+    if (longestFragmentTokens(card.props) <= LABEL_FRAGMENT_MAX_TOKENS) {
+      continue;
+    }
     const sentence = narrationById.get(card.enterAt.narration) ?? "";
     violations.push(
       `card ${candidate.cardIndex + 1} (${candidate.template}) is a transcript of its narration sentence "${sentence.slice(0, 120)}" (${Math.round(candidate.overlap * 100)}% overlap, ${Math.round(candidate.coverage * 100)}% coverage) — put a short compressed fragment on the card (a number, a 2-4 word label), not the sentence itself`
@@ -258,6 +265,13 @@ export const TRANSCRIPT_OVERLAP_THRESHOLD = 0.9;
  * this share of the sentence's distinct tokens to count as a transcript.
  */
 export const TRANSCRIPT_COVERAGE_THRESHOLD = 0.7;
+
+/**
+ * Cards whose longest text fragment is at most this many content tokens are
+ * label-built (list items, chips) and exempt from the transcript hard
+ * reject; the judge still reviews them for redundancy.
+ */
+export const LABEL_FRAGMENT_MAX_TOKENS = 6;
 
 // --- Assembly ---
 

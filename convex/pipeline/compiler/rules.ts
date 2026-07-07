@@ -322,6 +322,26 @@ export function tokenOverlapRatio(card: string, narration: string): number {
 }
 
 /**
+ * Longest single text fragment on the card, in content tokens. Transcription
+ * means contiguous prose: a card whose every leaf string is a short label
+ * ("regional campuses", "health innovation") is signaling, not a transcript,
+ * even when those labels jointly cover an enumeration sentence.
+ */
+export function longestFragmentTokens(props: Record<string, unknown>): number {
+  let longest = 0;
+  const walk = (value: unknown) => {
+    if (typeof value === "string") {
+      longest = Math.max(longest, contentTokens(value).length);
+    } else if (Array.isArray(value)) value.forEach(walk);
+    else if (value !== null && typeof value === "object") {
+      Object.values(value as Record<string, unknown>).forEach(walk);
+    }
+  };
+  walk(props);
+  return longest;
+}
+
+/**
  * Share of the narration sentence's distinct content tokens that the card
  * reproduces. A transcript covers (nearly) the whole sentence; a compressed
  * extract covers a small slice of it.

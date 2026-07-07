@@ -214,6 +214,35 @@ describe("unitComplianceViolations", () => {
     expect(violations.filter((v) => v.includes("transcript"))).toEqual([]);
   });
 
+  test("a label-list mirroring an enumeration sentence is NOT a transcript", () => {
+    const unit = makeAuthoredUnit({
+      narration: [
+        {
+          id: "n1",
+          text: "These include health innovation, regional campuses, education innovation, and online short courses.",
+        },
+        { id: "n2", text: "Its Burwood campus is the largest by enrolment." },
+      ],
+    });
+    // High overlap AND high coverage, but every fragment is a short label —
+    // the intended narrate-the-list-while-revealing-it pattern.
+    unit.cards[0] = {
+      ...unit.cards[0],
+      template: "list-reveal",
+      props: {
+        heading: "Focus areas",
+        items: [
+          { text: "health innovation" },
+          { text: "regional campuses" },
+          { text: "education innovation" },
+          { text: "online short courses" },
+        ],
+      },
+    };
+    const violations = unitComplianceViolations(unit, KNOWN_PROVENANCE);
+    expect(violations.filter((v) => v.includes("transcript"))).toEqual([]);
+  });
+
   test("a myth-fact card debunking a banned promise is legal", () => {
     const unit = makeAuthoredUnit();
     unit.cards[0] = {
