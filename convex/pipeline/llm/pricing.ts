@@ -22,6 +22,12 @@ export const PRICING: Record<string, ModelPricing> = {
     outputPerMTokUsd: 2.5,
     verifiedAt: "2026-07-07",
   },
+  // QA judge (M4) — different family than the authoring tasks.
+  "anthropic/claude-sonnet-4.5": {
+    inputPerMTokUsd: 3,
+    outputPerMTokUsd: 15,
+    verifiedAt: "2026-07-07",
+  },
 };
 
 export interface CostEstimateInput {

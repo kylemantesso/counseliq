@@ -1,30 +1,51 @@
 /**
- * Per-task model routing for the extraction pipeline.
+ * Per-task model routing for the extraction + compilation pipeline.
  *
  * Changing the model for a task is a one-line change here (or an env var on
  * the Convex deployment — env always wins). Eval runs record model + prompt
  * version together, so swaps are measurable.
  *
  * Task requirements:
- * - extract-page:    vision (page PNG input), structured output. Moderate
- *                    context (one page + preamble).
- * - merge-inventory: structured output, long context (all candidate concepts
- *                    from every page of every doc in the run).
- * - infer-theme:     vision (2-3 page renders), structured output.
+ * - extract-page:      vision (page PNG input), structured output. Moderate
+ *                      context (one page + preamble).
+ * - merge-inventory:   structured output, long context (all candidate
+ *                      concepts from every page of every doc in the run).
+ * - infer-theme:       vision (2-3 page renders), structured output.
+ * - compile-structure: structured output, long context (the whole reviewed
+ *                      inventory).
+ * - author-unit:       structured output; drafts narration, cards, and
+ *                      questions for one micro-unit.
+ * - judge-course:      structured output, long context (full compiled
+ *                      course + inventory). MUST be routed to a different
+ *                      model family than the authoring tasks — self-review
+ *                      by sibling models is weaker adversarial pressure.
  */
 
-export type LlmTask = "extract-page" | "merge-inventory" | "infer-theme";
+export type LlmTask =
+  | "extract-page"
+  | "merge-inventory"
+  | "infer-theme"
+  | "compile-structure"
+  | "author-unit"
+  | "judge-course";
 
 const DEFAULT_MODELS: Record<LlmTask, string> = {
   "extract-page": "google/gemini-2.5-flash",
   "merge-inventory": "google/gemini-2.5-flash",
   "infer-theme": "google/gemini-2.5-flash",
+  "compile-structure": "google/gemini-2.5-flash",
+  "author-unit": "google/gemini-2.5-flash",
+  // Different family than the Gemini authoring tasks, deliberately.
+  "judge-course": "anthropic/claude-sonnet-4.5",
 };
 
 const ENV_OVERRIDES: Record<LlmTask, string> = {
   "extract-page": "MODEL_EXTRACT_PAGE",
   "merge-inventory": "MODEL_MERGE_INVENTORY",
   "infer-theme": "MODEL_INFER_THEME",
+  "compile-structure": "MODEL_COMPILE_STRUCTURE",
+  "author-unit": "MODEL_AUTHOR_UNIT",
+  "judge-course": "MODEL_JUDGE_COURSE",
 };
 
 /**
@@ -37,6 +58,9 @@ const MAX_OUTPUT_TOKENS: Record<LlmTask, number> = {
   "extract-page": 4096,
   "merge-inventory": 16384,
   "infer-theme": 2048,
+  "compile-structure": 8192,
+  "author-unit": 16384,
+  "judge-course": 16384,
 };
 
 /** OpenRouter model string for a task (env override > default). */
@@ -58,5 +82,8 @@ export function currentModelRouting(): Record<LlmTask, string> {
     "extract-page": modelForTask("extract-page"),
     "merge-inventory": modelForTask("merge-inventory"),
     "infer-theme": modelForTask("infer-theme"),
+    "compile-structure": modelForTask("compile-structure"),
+    "author-unit": modelForTask("author-unit"),
+    "judge-course": modelForTask("judge-course"),
   };
 }
