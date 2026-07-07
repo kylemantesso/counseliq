@@ -9,7 +9,6 @@ import { AppErrorCode, appError } from "../errors";
 import { requireAdmin } from "../admin";
 import { GATE_STATES, type ReviewGate } from "./states";
 import { applyRunTransition } from "./transitions";
-import { insertGateReviewItems } from "./reviewItems";
 
 const decisionValidator = v.union(v.literal("approve"), v.literal("reject"));
 type GateDecision = "approve" | "reject";
@@ -42,7 +41,7 @@ async function startRunHelper(
     await ctx.db.patch(sourceDocId, { runId });
   }
 
-  await start(ctx, internal.pipeline.workflows.ingestAndCompile, { runId });
+  await start(ctx, internal.pipeline.workflows.ingestAndExtract, { runId });
 
   return runId;
 }
@@ -107,13 +106,14 @@ async function decideGateHelper(
 
   switch (args.gate) {
     case 1: {
+      // M4 resequencing: knowledge review feeds the compiler.
       await applyRunTransition(ctx, {
         runId: args.runId,
-        toState: "GENERATING_SCRIPT",
+        toState: "COMPILING",
         actor: args.reviewer,
-        detail: "gate 1 approved: starting asset generation",
+        detail: "gate 1 approved: compiling course from reviewed inventory",
       });
-      await start(ctx, internal.pipeline.workflows.generateAssets, {
+      await start(ctx, internal.pipeline.workflows.compileAndJudge, {
         runId: args.runId,
       });
       break;
@@ -121,11 +121,13 @@ async function decideGateHelper(
     case 2: {
       await applyRunTransition(ctx, {
         runId: args.runId,
-        toState: "GATE_3_PREVIEW",
+        toState: "GENERATING_SCRIPT",
         actor: args.reviewer,
-        detail: "gate 2 approved: awaiting preview review",
+        detail: "gate 2 approved: starting asset generation",
       });
-      await insertGateReviewItems(ctx, args.runId, 3);
+      await start(ctx, internal.pipeline.workflows.generateAssets, {
+        runId: args.runId,
+      });
       break;
     }
     case 3: {

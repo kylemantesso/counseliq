@@ -7,12 +7,12 @@ export const workflow = new WorkflowManager(components.workflow);
 const ACTOR = "workflow";
 
 /**
- * Phase 1: UPLOADED -> CONVERTING -> CONVERTED -> EXTRACTING -> EXTRACTED ->
- * COMPILING -> COMPILED, then park the run at gate 1 with placeholder review
- * items. Conversion is real (dispatched to services/converter); EXTRACTING
- * onward remains stubbed until M3.
+ * Phase 1: UPLOADED -> CONVERTING -> CONVERTED -> EXTRACTING -> EXTRACTED,
+ * then park the run at gate 1 with one review item per flagged fact. The
+ * compiler runs AFTER gate 1 (M4 resequencing) so it only ever consumes the
+ * reviewed inventory.
  */
-export const ingestAndCompile = workflow
+export const ingestAndExtract = workflow
   .define({
     args: { runId: v.id("runs") },
   })
@@ -37,14 +37,14 @@ export const ingestAndCompile = workflow
         runId,
         toState: "CONVERTED",
         actor: ACTOR,
-        detail: "ingestAndCompile: no source docs to convert",
+        detail: "ingestAndExtract: no source docs to convert",
       });
     } else if (conversion.status === "timeout") {
       await step.runMutation(internal.pipeline.transitions.transitionRun, {
         runId,
         toState: "FAILED",
         actor: ACTOR,
-        detail: "ingestAndCompile: conversion timed out",
+        detail: "ingestAndExtract: conversion timed out",
         error: {
           retryable: true,
           cause: conversion.cause ?? "conversion timed out",
@@ -59,7 +59,7 @@ export const ingestAndCompile = workflow
       runId,
       toState: "EXTRACTING",
       actor: ACTOR,
-      detail: "ingestAndCompile: starting extraction",
+      detail: "ingestAndExtract: starting extraction",
     });
     const extraction: {
       status: string;
@@ -81,7 +81,7 @@ export const ingestAndCompile = workflow
         runId,
         toState: "FAILED",
         actor: ACTOR,
-        detail: "ingestAndCompile: extraction failed",
+        detail: "ingestAndExtract: extraction failed",
         error: {
           retryable: true,
           cause: extraction.cause ?? "extraction failed",
@@ -95,33 +95,16 @@ export const ingestAndCompile = workflow
       toState: "EXTRACTED",
       actor: ACTOR,
       detail:
-        `ingestAndCompile: extraction complete — ${counts?.total ?? 0} inventory items ` +
+        `ingestAndExtract: extraction complete — ${counts?.total ?? 0} inventory items ` +
         `(${counts?.concepts ?? 0} concepts, ${counts?.facts ?? 0} facts, ` +
         `${counts?.flaggedFacts ?? 0} flagged) from ${extraction.pages ?? 0} page(s)`,
     });
 
     await step.runMutation(internal.pipeline.transitions.transitionRun, {
       runId,
-      toState: "COMPILING",
-      actor: ACTOR,
-      detail: "ingestAndCompile: starting compilation",
-    });
-    await step.runAction(internal.pipeline.steps.runNoopStage, {
-      runId,
-      stage: "compile",
-    });
-    await step.runMutation(internal.pipeline.transitions.transitionRun, {
-      runId,
-      toState: "COMPILED",
-      actor: ACTOR,
-      detail: "ingestAndCompile: compilation complete (no-op)",
-    });
-
-    await step.runMutation(internal.pipeline.transitions.transitionRun, {
-      runId,
       toState: "GATE_1_KNOWLEDGE_REVIEW",
       actor: ACTOR,
-      detail: "ingestAndCompile: awaiting knowledge review",
+      detail: "ingestAndExtract: awaiting knowledge review",
     });
     await step.runMutation(internal.pipeline.reviewItems.createGateReviewItems, {
       runId,
@@ -130,9 +113,63 @@ export const ingestAndCompile = workflow
   });
 
 /**
- * Phase 2: GENERATING_SCRIPT -> GENERATING_ASSETS -> QA_RUNNING -> QA_PASSED,
- * then park the run at gate 2 with placeholder review items. Started by
- * decideGate(1), which has already transitioned the run to GENERATING_SCRIPT.
+ * Phase 2: COMPILING -> COMPILED -> QA_RUNNING -> QA_PASSED | QA_FLAGGED,
+ * then park the run at gate 2 (course review). Started by decideGate(1)
+ * approval (full compile) or by adminSendBackForReauthoring (partial
+ * re-authoring of flagged units) — both transition the run to COMPILING
+ * before starting this workflow.
+ */
+export const compileAndJudge = workflow
+  .define({
+    args: {
+      runId: v.id("runs"),
+      reAuthorUnitIds: v.optional(v.array(v.id("microUnits"))),
+    },
+  })
+  .handler(async (step, args): Promise<void> => {
+    const { runId } = args;
+
+    // D1 stub: replaced by the real compiler (D3) and judge (D4).
+    await step.runAction(internal.pipeline.steps.runNoopStage, {
+      runId,
+      stage: "compile",
+    });
+    await step.runMutation(internal.pipeline.transitions.transitionRun, {
+      runId,
+      toState: "COMPILED",
+      actor: ACTOR,
+      detail: "compileAndJudge: compilation complete (no-op)",
+    });
+
+    await step.runMutation(internal.pipeline.transitions.transitionRun, {
+      runId,
+      toState: "QA_RUNNING",
+      actor: ACTOR,
+      detail: "compileAndJudge: running QA judge",
+    });
+    await step.runAction(internal.pipeline.steps.runNoopStage, {
+      runId,
+      stage: "qa-judge",
+    });
+    await step.runMutation(internal.pipeline.transitions.transitionRun, {
+      runId,
+      toState: "QA_PASSED",
+      actor: ACTOR,
+      detail: "compileAndJudge: QA judge passed the course (no-op)",
+    });
+
+    await step.runMutation(internal.pipeline.transitions.transitionRun, {
+      runId,
+      toState: "GATE_2_COURSE_REVIEW",
+      actor: ACTOR,
+      detail: "compileAndJudge: awaiting course review",
+    });
+  });
+
+/**
+ * Phase 3: GENERATING_SCRIPT -> GENERATING_ASSETS (both no-op stubs until
+ * M5), then park the run at gate 3 with placeholder review items. Started by
+ * decideGate(2), which has already transitioned the run to GENERATING_SCRIPT.
  */
 export const generateAssets = workflow
   .define({
@@ -158,31 +195,13 @@ export const generateAssets = workflow
     });
     await step.runMutation(internal.pipeline.transitions.transitionRun, {
       runId,
-      toState: "QA_RUNNING",
+      toState: "GATE_3_PREVIEW",
       actor: ACTOR,
-      detail: "generateAssets: assets generated (no-op), running QA",
-    });
-
-    await step.runAction(internal.pipeline.steps.runNoopStage, {
-      runId,
-      stage: "qa",
-    });
-    await step.runMutation(internal.pipeline.transitions.transitionRun, {
-      runId,
-      toState: "QA_PASSED",
-      actor: ACTOR,
-      detail: "generateAssets: QA passed (no-op)",
-    });
-
-    await step.runMutation(internal.pipeline.transitions.transitionRun, {
-      runId,
-      toState: "GATE_2_QUIZ_REVIEW",
-      actor: ACTOR,
-      detail: "generateAssets: awaiting quiz review",
+      detail: "generateAssets: assets generated (no-op), awaiting preview review",
     });
     await step.runMutation(internal.pipeline.reviewItems.createGateReviewItems, {
       runId,
-      gate: 2,
+      gate: 3,
     });
   });
 

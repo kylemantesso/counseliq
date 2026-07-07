@@ -15,15 +15,9 @@ const PLACEHOLDER_ITEMS: Record<
   // Gate 1 items are real as of M3 (generated from flagged facts); this
   // entry is unused but kept for the exhaustive type.
   1: [],
-  2: [
-    {
-      kind: "quiz_question",
-      payload: {
-        placeholder: true,
-        note: "M1 stub — generated quiz questions arrive with the generation milestone.",
-      },
-    },
-  ],
+  // Gate 2 (M4): the compiled course itself — with per-unit judge flags on
+  // microUnits.qa — is the review surface; no reviewItems rows are needed.
+  2: [],
   3: [
     {
       kind: "preview_unit",

@@ -16,10 +16,13 @@ remains stubbed.
 
 ```
 UPLOADED → CONVERTING → CONVERTED
-  → EXTRACTING → EXTRACTED → COMPILING → COMPILED
+  → EXTRACTING → EXTRACTED
   → GATE_1_KNOWLEDGE_REVIEW   (waits for decideGate(1))
-  → GENERATING_SCRIPT → GENERATING_ASSETS → QA_RUNNING → QA_PASSED
-  → GATE_2_QUIZ_REVIEW        (waits for decideGate(2))
+  → COMPILING → COMPILED
+  → QA_RUNNING → QA_PASSED | QA_FLAGGED
+  → GATE_2_COURSE_REVIEW      (waits for decideGate(2);
+                               may send back to COMPILING for re-authoring)
+  → GENERATING_SCRIPT → GENERATING_ASSETS   (stubs until M5)
   → GATE_3_PREVIEW            (waits for decideGate(3))
   → PUBLISHED
 
@@ -27,6 +30,17 @@ UPLOADED → CONVERTING → CONVERTED
 ```
 
 The full map lives in [`states.ts`](./states.ts) (`ALLOWED_TRANSITIONS`).
+
+**M4 resequencing rationale** (one-time sanctioned contract change): the old
+order compiled before knowledge review, which meant the compiler consumed
+unreviewed facts. Now gate 1 feeds the compiler — the compiler only ever
+sees the reviewed inventory (approved facts with confirmed sources; excluded
+facts filtered out in code). The QA judge runs on the compiled course
+*before* any money is spent on TTS/assets, and `QA_FLAGGED` routes to gate 2
+with the flags attached so a human decides: send flagged units back to
+COMPILING for re-authoring, or approve. Gate 2 (renamed from
+`GATE_2_QUIZ_REVIEW`) reviews the compiled course as a whole — narration
+provenance, cards, questions, and judge flags — in the course viewer.
 
 ## Converter architecture
 
