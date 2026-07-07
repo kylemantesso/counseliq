@@ -62,6 +62,21 @@ export type {
 } from "./src/timing";
 
 export {
+  PUBLISH_MANIFEST_SCHEMA_REF,
+  PublishManifestParseError,
+  manifestAudioSentenceSchema,
+  manifestUnitSchema,
+  parsePublishManifest,
+  publishManifestSchema,
+} from "./src/publish-manifest";
+
+export type {
+  ManifestAudioSentence,
+  ManifestUnit,
+  PublishManifest,
+} from "./src/publish-manifest";
+
+export {
   OBJECT_KEY_PATTERN,
   candidateThemeSchema,
   contentAddressedKeySchema,

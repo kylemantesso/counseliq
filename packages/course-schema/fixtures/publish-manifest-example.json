@@ -1,0 +1,91 @@
+{
+  "$schema": "counseliq://publish-manifest/v1",
+  "courseId": "latrobe-health-innovation-101",
+  "courseVersion": 2,
+  "specHash": "3f1a2b4c5d6e7f8091a2b3c4d5e6f70123456789abcdef0123456789abcdef01",
+  "exportKey": "sha256/3f1a2b4c5d6e7f8091a2b3c4d5e6f70123456789abcdef0123456789abcdef01.json",
+  "runId": "kh7877z5natfma15sajp61mevs8a3jsg",
+  "institution": {
+    "name": "La Trobe University",
+    "brandRef": "latrobe"
+  },
+  "theme": {
+    "source": "institution",
+    "tokens": {
+      "primaryColor": "#e2231a",
+      "secondaryColor": "#1a1a1a",
+      "fontFamily": "Barlow Condensed"
+    }
+  },
+  "voice": {
+    "provider": "elevenlabs",
+    "voiceRef": "latrobe-narrator-01",
+    "pronunciationLexicon": {
+      "Bundoora": "bun-DOOR-ah",
+      "ACAMI": "ah-KAH-mee"
+    }
+  },
+  "language": "en-AU",
+  "versions": {
+    "promptVersions": {
+      "author-unit": "author-unit@1",
+      "judge-course": "judge-course@1",
+      "models": {
+        "author-unit": "google/gemini-2.5-flash",
+        "judge-course": "anthropic/claude-sonnet-4.5"
+      }
+    },
+    "courseSchemaRef": "counseliq://course-definition/v1"
+  },
+  "publishedAt": "2026-07-07T12:00:00.000Z",
+  "units": [
+    {
+      "unitId": "mu-101",
+      "moduleId": "m1",
+      "contentHash": "aa11bb22cc33dd44ee55ff660718293a4b5c6d7e8f9012345678901234567890",
+      "audio": {
+        "sentences": [
+          {
+            "sentenceId": "n1",
+            "audioKey": "sha256/0101010101010101010101010101010101010101010101010101010101010101.mp3",
+            "characters": 92,
+            "durationMs": 4600
+          },
+          {
+            "sentenceId": "n2",
+            "audioKey": "sha256/0202020202020202020202020202020202020202020202020202020202020202.mp3",
+            "characters": 118,
+            "durationMs": 5900
+          }
+        ]
+      },
+      "timingKey": "sha256/1111111111111111111111111111111111111111111111111111111111111111.json",
+      "timingSchemaVersion": 1
+    },
+    {
+      "unitId": "mu-102",
+      "moduleId": "m1",
+      "contentHash": "bb22cc33dd44ee55ff6607182934a4b5c6d7e8f901234567890123456789aa11",
+      "audio": {
+        "sentences": [
+          {
+            "sentenceId": "n1",
+            "audioKey": "sha256/0303030303030303030303030303030303030303030303030303030303030303.mp3",
+            "characters": 104,
+            "durationMs": 5200
+          }
+        ]
+      },
+      "timingKey": "sha256/2222222222222222222222222222222222222222222222222222222222222222.json",
+      "timingSchemaVersion": 1
+    }
+  ],
+  "artifactKeys": [
+    "sha256/3f1a2b4c5d6e7f8091a2b3c4d5e6f70123456789abcdef0123456789abcdef01.json",
+    "sha256/0101010101010101010101010101010101010101010101010101010101010101.mp3",
+    "sha256/0202020202020202020202020202020202020202020202020202020202020202.mp3",
+    "sha256/0303030303030303030303030303030303030303030303030303030303030303.mp3",
+    "sha256/1111111111111111111111111111111111111111111111111111111111111111.json",
+    "sha256/2222222222222222222222222222222222222222222222222222222222222222.json"
+  ]
+}
