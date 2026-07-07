@@ -17,6 +17,7 @@ export { AdminRunDetailScreen } from "./src/screens/admin-run-detail-screen";
 export { AdminGateOneReviewScreen } from "./src/screens/admin-gate-one-review-screen";
 export { AdminGateTwoReviewScreen } from "./src/screens/admin-gate-two-review-screen";
 export { ForceUpgradeScreen } from "./src/screens/force-upgrade-screen";
+export { CardsGalleryScreen } from "./src/screens/cards-gallery-screen";
 
 export { AppErrorBoundary } from "./src/components/app-error-boundary";
 export { AuthGuard } from "./src/components/auth-guard";
