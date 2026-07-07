@@ -19,6 +19,19 @@ export { AdminGateTwoReviewScreen } from "./src/screens/admin-gate-two-review-sc
 export { ForceUpgradeScreen } from "./src/screens/force-upgrade-screen";
 export { CardsGalleryScreen } from "./src/screens/cards-gallery-screen";
 
+export { CoursePlayer } from "./src/components/course-player/course-player";
+export type {
+  RunPreviewData,
+  PreviewModule,
+  PreviewUnit,
+  PreviewCard,
+  PreviewAnchor,
+  PreviewQuestion,
+  PreviewNarrationSentence,
+  PreviewUnitState,
+  UnitPhase,
+} from "./src/components/course-player/types";
+
 export { AppErrorBoundary } from "./src/components/app-error-boundary";
 export { AuthGuard } from "./src/components/auth-guard";
 export { AdminGuard } from "./src/components/admin-guard";

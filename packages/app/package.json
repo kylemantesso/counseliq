@@ -12,7 +12,8 @@
     "./analytics/posthog-init": "./src/analytics/initialize-posthog.web.ts"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "peerDependencies": {
     "@counseliq/ui": "*",
@@ -41,6 +42,7 @@
   "devDependencies": {
     "@types/react": "~19.1.0",
     "next": "15.5.20",
-    "typescript": "~5.9.3"
+    "typescript": "~5.9.3",
+    "vitest": "^3.2.4"
   }
 }
