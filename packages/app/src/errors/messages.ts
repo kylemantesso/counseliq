@@ -18,4 +18,11 @@ export const APP_ERROR_MESSAGES: Record<AppErrorCodeType, string> = {
   [AppErrorCode.SOURCE_DOC_NOT_FOUND]: "That source document could not be found.",
   [AppErrorCode.OBJECT_STORE_NOT_CONFIGURED]:
     "File storage is not configured. Contact an administrator.",
+  [AppErrorCode.GATE_ITEMS_UNRESOLVED]:
+    "Resolve every flagged fact (approve with a source, or exclude) before approving this gate.",
+  [AppErrorCode.REVIEW_ITEM_NOT_FOUND]: "That review item could not be found.",
+  [AppErrorCode.REVIEW_ITEM_ALREADY_RESOLVED]:
+    "That review item has already been resolved.",
+  [AppErrorCode.REVIEW_ITEM_SOURCE_REQUIRED]:
+    "Enter a source label and year to approve this fact.",
 };

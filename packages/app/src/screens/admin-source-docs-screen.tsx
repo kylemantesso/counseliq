@@ -63,6 +63,15 @@ function AdminSourceDocsContent() {
                     {doc._id}
                     {doc.themeExtracted ? " · theme extracted" : ""}
                   </Text>
+                  {doc.runId ? (
+                    <Pressable
+                      onPress={() => router.push(`/admin/runs/${doc.runId}`)}
+                    >
+                      <Text className="text-primary text-xs">
+                        View run {doc.runId} →
+                      </Text>
+                    </Pressable>
+                  ) : null}
                 </Box>
               </Pressable>
             ))
