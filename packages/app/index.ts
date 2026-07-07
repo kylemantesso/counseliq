@@ -16,6 +16,7 @@ export { AdminSourceDocDetailScreen } from "./src/screens/admin-source-doc-detai
 export { AdminRunDetailScreen } from "./src/screens/admin-run-detail-screen";
 export { AdminGateOneReviewScreen } from "./src/screens/admin-gate-one-review-screen";
 export { AdminGateTwoReviewScreen } from "./src/screens/admin-gate-two-review-screen";
+export { AdminGateThreeReviewScreen } from "./src/screens/admin-gate-three-review-screen";
 export { ForceUpgradeScreen } from "./src/screens/force-upgrade-screen";
 export { CardsGalleryScreen } from "./src/screens/cards-gallery-screen";
 

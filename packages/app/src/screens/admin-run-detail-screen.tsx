@@ -145,6 +145,25 @@ function AdminRunDetailContent() {
                     </Text>
                   </Link>
                 ) : null}
+                {runId &&
+                (run.state === "GATE_3_PREVIEW" ||
+                  (run.courseId &&
+                    (
+                      [
+                        "GENERATING_SCRIPT",
+                        "GENERATING_ASSETS",
+                        "PUBLISHING",
+                        "PUBLISHED",
+                      ] as string[]
+                    ).includes(run.state))) ? (
+                  <Link href={`/admin/runs/${runId}/gate-3`}>
+                    <Text className="text-primary font-semibold">
+                      {run.state === "GATE_3_PREVIEW"
+                        ? "Open gate-3 preview studio →"
+                        : "View course preview →"}
+                    </Text>
+                  </Link>
+                ) : null}
               </Box>
 
               {cost && cost.totalCalls > 0 ? (
