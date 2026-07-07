@@ -1,4 +1,4 @@
-# CounselIQ pipeline (Milestone 4 — course compiler + QA judge)
+# CounselIQ pipeline (Milestone 5 — voice, timing, the playable preview & publish)
 
 Durable state machine that walks a course-generation "run" from upload to
 publication, pausing at three human review gates. As of M2, **ingestion is
@@ -14,8 +14,15 @@ and the flagged facts become real gate-1 review items. As of M4,
 inventory into a schema-valid Course Definition, an adversarial QA judge on
 a different model family traces every narration sentence back to provenance,
 and gate 2 reviews the compiled course (judge flags attached) in a dedicated
-course viewer with send-back-for-re-authoring. Script/asset generation
-remains stubbed for M5.
+course viewer with send-back-for-re-authoring. As of M5, **the last stages
+are real**: GENERATING_SCRIPT deterministically normalises narration into a
+speakable script (unresolved pronunciations *block* their unit),
+GENERATING_ASSETS synthesises per-sentence audio with word-level timestamps
+(ElevenLabs; mocked in tests/CI) into a versioned per-unit **timing
+artifact**, gate 3 reviews the course in a **playable studio** (real audio,
+cards firing on their word anchors, per-sentence editing with single-sentence
+re-synthesis), and approval assembles the canonical Course Definition export
++ publish manifest into an immutable published version.
 
 ## State diagram
 
@@ -27,9 +34,14 @@ UPLOADED → CONVERTING → CONVERTED
   → QA_RUNNING → QA_PASSED | QA_FLAGGED
   → GATE_2_COURSE_REVIEW      (waits for decideGate(2);
                                may send back to COMPILING for re-authoring)
-  → GENERATING_SCRIPT → GENERATING_ASSETS   (stubs until M5)
-  → GATE_3_PREVIEW            (waits for decideGate(3))
-  → PUBLISHED
+  → GENERATING_SCRIPT         (narration normalisation; unresolved
+                               pronunciations block their unit)
+  → GENERATING_ASSETS         (per-sentence TTS + timing artifacts)
+  → GATE_3_PREVIEW            (playable studio; approve refuses while any
+                               unit is blocked/failed; reject →
+                               GATE_2_COURSE_REVIEW with reviewer notes)
+  → PUBLISHING → PUBLISHED    (export + manifest assembled and verified;
+                               published courses are immutable)
 
 (any state) → FAILED with { retryable, cause }   FAILED is terminal.
 ```
@@ -206,7 +218,186 @@ hook/retrieve questions with answers + explanations (inline edit +
 single-question regenerate), anchor. Actions: `adminDecideGate(2, approve)`
 → GENERATING_SCRIPT; `adminSendBackForReauthoring(runId, unitIds)` →
 COMPILING (re-runs compileAndJudge for just those units, feeding judge
-flags back into the authoring prompt).
+flags back into the authoring prompt). Cards render through the real
+`@counseliq/cards` components (settled state) with per-template prop
+validation chips.
+
+## Script normalisation (M5)
+
+`tts/script.ts` (`generateScripts`, deterministic — no LLM) runs at
+GENERATING_SCRIPT. Every narration sentence passes through the pure rules
+module `tts/normalize.ts` (tokenize → ordered matchers → en-AU expanders):
+
+| Narration | speakText |
+|-----------|-----------|
+| `A$82M` | `eighty-two million Australian dollars` |
+| `12.5%` | `twelve point five per cent` |
+| `70,000+ nurses` | `more than seventy thousand nurses` |
+| `2019–2023` | `twenty nineteen to twenty twenty-three` |
+| `3 March 2024` | `the third of March twenty twenty-four` |
+
+Three text layers per sentence, with persisted character-span alignment
+between the first two and a recomputable substitution map to the third:
+
+```
+sourceText   the narration as authored (human-readable, what gate 2 reviews)
+  ↓ alignment (persisted on microUnits.script)
+speakText    normalised speech text (numbers as words; still human-readable)
+  ↓ lexicon substitution (pure function of speakText + pronunciationLexicon)
+spokenText   what is actually sent to the TTS provider at request time
+```
+
+Pronunciation respellings (`{"Bundoora": "bun-DOOR-ah"}`) are applied at
+**request time** in the provider adapter — never stored in narration or
+speakText. A lexicon entry whose value is the sentinel
+`CONFIRM_WITH_INSTITUTION` and whose key appears in a unit's narration
+**blocks that unit** (state `blocked` + a gate-3 `blocked_unit` review
+item): the run proceeds for every other unit, but gate 3 cannot be approved
+while any blocked unit exists. That is correct behaviour, not a failure —
+the operator resolves the pronunciation (or the institution confirms it)
+and the unit re-synthesises.
+
+## Timing artifact contract
+
+`unitTimingSchema` in `packages/course-schema/src/timing.ts` — the single
+clock every downstream consumer reads. **Versioned**: the artifact carries
+`version` (`TIMING_VERSION`, currently 1); any field change bumps it and
+consumers must check it before reading. Shape (all times integer ms on the
+**unit clock** — t=0 at the start of the unit's first sentence):
+
+```
+{ version, unitKey, provider, voiceRef, model, interSentenceGapMs,
+  totalDurationMs,
+  sentences: [{ narrationId, speakText, audioKey,      // per-sentence mp3
+                startMs, durationMs,
+                words: [{ text, startMs, endMs }] }],   // word timestamps
+  cardBeats: [{ cardIndex, atMs }],                     // enterAt resolved
+  generatedAt }
+```
+
+Card beats resolve each card's `enterAt {narration, word}` anchor through
+the alignment chain (original word span → speakText span → overlapping
+spoken words → ms). Consumers today: the gate-3 player (drives card reveals,
+captions with current-word emphasis, controls). Consumer next: the Remotion
+renderer (M6) — frame → unit-clock ms → identical derivations. Stored inline
+on `microUnits.timing` (validated on every write) and serialized to the
+object store at publish (`manifest.units[].timingKey`).
+
+## TTS synthesis (M5)
+
+`tts/synthesize.ts` runs at GENERATING_ASSETS: per-unit `synthesizeUnit`
+actions fan out through the `ttsPool` workpool (`TTS_PARALLELISM`, default 2
+— ElevenLabs concurrency caps are low; `TTS_MODE=sequential` for tests;
+`TTS_TIMEOUT_MS` default 10 min). Each unit synthesises **per narration
+sentence** (neighbouring sentences passed as `previous_text`/`next_text`
+prosody conditioning) via `TtsProvider` — ElevenLabs
+`/v1/text-to-speech/{voice}/with-timestamps` (`tts/elevenlabs.ts`, native
+fetch, retry-after-honouring backoff) or the deterministic mock
+(`TTS_PROVIDER=mock` — all tests/CI; never calls ElevenLabs).
+
+Two invalidation layers, both content-addressed:
+
+- **`ttsSentences` cache** — `sentenceHash = sha256(spokenText | voiceId |
+  model | outputFormat)`. An edited sentence re-synthesises *alone*; every
+  other sentence is a cache hit (audio reused across runs and courses).
+- **`microUnits.contentHash`** — hash of (speakTexts, lexicon, cards,
+  voiceId, model, format, gap). An unchanged unit is skipped entirely on
+  re-runs — test-proven.
+
+Audio artifacts are content-addressed mp3s (`sha256/{hash}.mp3`) in the
+object store; word timestamps derive from the provider's character
+alignment. Voice resolution: `ELEVENLABS_VOICE_ID` env (dev override) >
+`institutions.voiceConfig.voiceId` > `TTS_NOT_CONFIGURED`. Failure
+semantics: a failed unit carries `microUnits.error` + a gate-3 `failed_unit`
+item (retryable from the studio) and the run still parks at GATE_3_PREVIEW;
+the run only goes FAILED when *zero* units succeeded (systemic cause).
+
+Every synthesis writes a `ttsCalls` row (runId, stage, voice, model,
+characters, costUsd, latencyMs). **`ttsCalls.costUsd` is estimated from
+`tts/pricing.ts`** — ElevenLabs returns no per-request cost; this is the one
+sanctioned deviation from the llmCalls provider-reported invariant. Keep the
+price sheet's tier rate and `verifiedAt` honest.
+
+## Player architecture (M5)
+
+The gate-3 studio (`/admin/runs/[id]/gate-3`) embeds the course player from
+`@counseliq/app` driving `@counseliq/cards`:
+
+- **Cards are pure functions of `(props, timing, theme)`** — the timing
+  contract is `{ localMs, progress, beatsRevealed, reducedMotion }` and a
+  mechanical no-timer test bans timers, rAF, wall-clocks, hooks and CSS
+  animation strings inside card components. Rationale: the same components
+  must render deterministically in the browser player *and* under Remotion's
+  frame-by-frame capture in M6 (frame → progress → identical pixels).
+- **The audio element is the only clock.** Per-sentence mp3s play through an
+  A/B pair of HTMLAudioElements (next sentence preloaded); the unit clock is
+  strictly `sentence.startMs + audioEl.currentTime`, artifact gaps are
+  waited out, and every derivation (active card, `beatsRevealed`, caption
+  word emphasis) is a pure function of that clock over the timing artifact.
+  None of the design mockup's speechSynthesis/setTimeout estimation
+  survives.
+- **Studio navigation**: module rail (state chips, blocked/failed badges),
+  click any unit, click any phase (hook → content → retrieve → anchor),
+  scrub within content, inspect card props, edit narration sentences —
+  a save re-normalises the sentence and re-synthesises exactly that
+  sentence, and the player reflects the new audio reactively.
+- **Reduced motion** is honoured end-to-end: cards settle instantly, no
+  autoplaying pan, captions still track words.
+
+## Publish (M5)
+
+Gate-3 approval transitions to **PUBLISHING** and runs `publish.ts
+runPublish`:
+
+1. Preconditions (`publishCore.ts`, pure): every unit `assets_ready` with a
+   versioned timing artifact and per-sentence audio coverage; no blocked or
+   errored units.
+2. `reconstructCourseDefinition` over the normalised tables →
+   `parseCourseDefinition` (the canonical export must be schema-valid,
+   cross-refs included).
+3. Content-addressed artifacts: `export.json` (key = `sha256/{specHash}`),
+   one timing JSON per unit, and `manifest.json` — validated by
+   `publishManifestSchema` (`packages/course-schema/src/publish-manifest.ts`):
+   per-unit audio keys + timingKey, theme tokens, the voice actually used
+   for synthesis, prompt/model versions, specHash, course version, and a
+   deduped `artifactKeys` integrity list.
+4. Audio keys are HEAD-checked against the store before anything is written
+   (skipped under `TTS_PROVIDER=mock`, which never uploads audio bytes).
+5. `finalizePublish` (transactional): one immutable `courseVersions` row +
+   `courses.status = "published"` + every unit frozen. Idempotent — a
+   crash-retry with the same specHash lands on the existing row; a
+   *different* specHash at the same version is `PUBLISH_VERSION_CONFLICT`,
+   never an overwrite. **Published courses are immutable**: every
+   content-editing mutation refuses with `COURSE_PUBLISHED`. A re-publish is
+   a new compile → new `courses.version` → new snapshot row.
+
+Serving today: `getPublishedCourse` (admin query) returns the snapshot;
+artifact keys presign through the existing `adminPresignGetBatch`. A
+service-token HTTP endpoint for the learner app and Remotion render workers
+is the M6 follow-up. Round-trip verification: `verifyPublishedArtifacts`
+re-parses the stored manifest and HEADs every `artifactKeys` entry — the
+walkthrough and `eval:assets` both run it.
+
+## Demo script (10-minute pilot demo)
+
+1. `TTS_PROVIDER=mock npm run dev:stack` for a free rehearsal, or set
+   `ELEVENLABS_API_KEY` (+ voice, see Operator setup) and drop the env var
+   for real voice.
+2. In another terminal: `npm run walkthrough:local -- --yes --pause-at-gate-3`.
+   The script prints the cost estimate (LLM + TTS characters/$), uploads the
+   fixture docs, and drives conversion → extraction → gate 1 (auto-resolved)
+   → compile → QA → the TTS estimate → gate 2 → synthesis.
+3. While it runs, open `/admin/runs/{id}/gate-1` and `gate-2` to show the
+   human gates (the script auto-approves them).
+4. At gate 3 the script pauses and prints the player URL. Open it: **watch a
+   unit play** — real voice, cards firing on their word anchors, captions
+   with current-word emphasis, hook and retrieve questions inline.
+5. Edit one narration sentence in the studio → the unit re-synthesises just
+   that sentence → replay it.
+6. Approve gate 3 in the studio (or `npm run walkthrough:local -- --yes
+   --resume <runId>`): the run publishes, and the script prints the version,
+   specHash, artifact verification, per-stage timings, and the LLM/TTS cost
+   split.
 
 ### Model routing + swap procedure
 
@@ -249,11 +440,16 @@ so bumping a prompt invalidates cached page extractions.
 ### Cost + observability
 
 Every LLM call writes an `llmCalls` row (runId, stage, promptVersion, model,
-tokensIn/Out, provider-reported costUsd, latencyMs). `getRunCost(runId)`
-(admin) / `getRunCostInternal` return totals itemized by stage and model.
-[`llm/pricing.ts`](./llm/pricing.ts) is an operator-verified price sheet used
-only for pre-run estimates in `npm run eval` / `npm run eval:compile`;
-actual cost always comes from OpenRouter usage accounting.
+tokensIn/Out, provider-reported costUsd, latencyMs). Every TTS synthesis
+writes a `ttsCalls` row (runId, stage, voice, model, characters, costUsd,
+latencyMs) — TTS costUsd is **estimated** from [`tts/pricing.ts`](./tts/pricing.ts)
+because ElevenLabs reports no per-request cost. `getRunCost(runId)` (admin)
+/ `getRunCostInternal` return LLM totals itemized by stage and model plus a
+`tts` block and `grandTotalUsd` (LLM + TTS); the walkthrough prints the
+split. [`llm/pricing.ts`](./llm/pricing.ts) is an operator-verified price
+sheet used only for pre-run estimates in `npm run eval` /
+`npm run eval:compile`; actual LLM cost always comes from OpenRouter usage
+accounting.
 
 ### Eval workflow (on-demand, costs real money)
 
@@ -310,6 +506,24 @@ three known-bad courses (hallucinated fact, provenance-stripped card,
 redundant card) via `compiler/judgeEval.ts`, runs `runQaJudge` on each, and
 asserts every defect is caught.
 
+### Assets eval (`npm run eval:assets`) — the M5 exit test
+
+```bash
+npm run eval:compile -- --yes            # first: park a run at gate 2
+npm run eval:assets -- --yes             # then: TTS + publish on that run
+npm run eval:assets -- --yes --run <id>  # target a specific gate-2 run
+```
+
+Chains off a compiled run so you never pay for compile twice. Prints the TTS
+character/cost estimate and requires `--yes`, approves gate 2, waits for
+synthesis, and scores: every non-blocked unit `assets_ready` with a
+versioned timing artifact, every narration sentence has a per-sentence audio
+artifact, card beats resolved for every card; blocked/failed units fail the
+eval. Then approves gate 3, waits for PUBLISHED, and verifies the round-trip
+(`courseVersions` snapshot + every manifest artifact key HEAD-checked in the
+store). Appends a `kind:"assets"` row to `eval-history.jsonl` with
+characters, TTS cost vs estimate, and the publish specHash.
+
 ## Invariants
 
 - **All `runs.state` writes go through `transitionRun`** (well,
@@ -319,7 +533,17 @@ asserts every defect is caught.
   `startRun` inserts the run already in `UPLOADED`.
 - Gates only advance via `decideGate` (human/admin action) — workflows park
   runs at gate states and stop.
-- Rejecting a gate transitions the run to `FAILED { retryable: true }`.
+- Rejecting gate 1 or 2 transitions the run to `FAILED { retryable: true }`.
+  Rejecting gate 3 routes back to `GATE_2_COURSE_REVIEW` with the reviewer's
+  notes journaled and a pending `gate3_rejection` review item.
+- Gate 3 cannot be approved while any unit is `blocked` (unresolved
+  pronunciation) or carries a TTS `error` (`UNITS_BLOCKED`).
+- **Published courses are immutable** — every content-editing mutation
+  refuses with `COURSE_PUBLISHED`; each publish is one immutable
+  `courseVersions` row plus content-addressed artifacts; a re-publish is a
+  new version, never an overwrite.
+- The timing artifact is versioned (`TIMING_VERSION`) — consumers check
+  `version` before reading; any shape change bumps it.
 - Multiple sourceDocs per run are legal — never assume one-doc-one-course.
 
 ## Files
@@ -350,10 +574,23 @@ asserts every defect is caught.
 | `llm/models.ts` | Task → model routing, env overrides, per-task `max_tokens` |
 | `llm/pricing.ts` | Operator-verified price sheet for pre-run estimates |
 | `llm/schemas.ts` | JSON schemas (from Zod) for structured outputs |
-| `llmCalls.ts` | `recordLlmCall`, `getRunCost`, `estimateExtractionCost` |
+| `llmCalls.ts` | `recordLlmCall`, `getRunCost` (LLM + TTS split, `grandTotalUsd`), cost estimators |
+| `tts/normalize.ts` | Pure narration → speakText normaliser (en-AU rules + alignment) |
+| `tts/lexicon.ts` | Pronunciation substitution map, sentinel detection, span projection |
+| `tts/script.ts` | `generateScripts` — the GENERATING_SCRIPT stage (blocked units) |
+| `tts/provider.ts` / `tts/elevenlabs.ts` / `tts/mock.ts` | `TtsProvider` contract + ElevenLabs with-timestamps adapter + deterministic mock |
+| `tts/models.ts` / `tts/pricing.ts` | TTS env routing (`TTS_*`) + estimated price sheet |
+| `tts/beats.ts` | Word timestamps, unit-clock assembly, card-beat resolution |
+| `tts/synthesize.ts` | `synthesizeUnit` + `runAssetGeneration` via the `ttsPool` workpool |
+| `tts/data.ts` / `tts/calls.ts` | Synthesis data layer, `ttsSentences` cache, `recordTtsCall`, `estimateTtsCostForRun` |
+| `tts/preview.ts` | `adminGetRunPreview` — the gate-3 studio's data source |
+| `tts/edit.ts` | `adminUpdateNarrationSentence` (single-sentence re-synthesis) + `adminRetryUnitTts` |
+| `publishCore.ts` | Pure publish builders: spec hash, preconditions, manifest assembly |
+| `publish.ts` | `runPublish` + `verifyPublishedArtifacts` (`"use node"`, object store) |
+| `publishedCourses.ts` | `finalizePublish`, `getPublishedCourse`, `courseVersions` snapshots |
 | `prompts/` | Versioned prompt `.md` files + generated `index.ts` |
 | `queries.ts` | `getRun`, `listRunsByState`, `gateQueue`, `listSourceDocs`, `getSourceDoc` (admin) + internals |
-| `seed.ts` | Seeds "Example University" for the walkthrough |
+| `seed.ts` | Seeds "Example University" for the walkthrough (optional `voiceConfig`) |
 | `../http.ts` | `POST /converter/callback` http action |
 
 Tests: [`../pipeline.test.ts`](../pipeline.test.ts) (transitions/gates,
@@ -371,15 +608,30 @@ merge provenance), [`compiler/rules.test.ts`](./compiler/rules.test.ts)
 (every code-enforced rule),
 [`compiler/assemble.test.ts`](./compiler/assemble.test.ts) (assembly +
 compliance), and [`compiler/judge.test.ts`](./compiler/judge.test.ts)
-(mechanical pre-pass, verdict derivation — mocked LLM).
+(mechanical pre-pass, verdict derivation — mocked LLM). M5 adds
+[`tts/normalize.test.ts`](./tts/normalize.test.ts) /
+[`tts/lexicon.test.ts`](./tts/lexicon.test.ts) (rule table, alignment
+invariants, substitution), [`tts/elevenlabs.test.ts`](./tts/elevenlabs.test.ts)
+/ [`tts/beats.test.ts`](./tts/beats.test.ts) (adapter retries — mocked
+fetch; word/beat derivation), [`../tts.test.ts`](../tts.test.ts) (script
+stage, blocked units), [`../ttsSynthesis.test.ts`](../ttsSynthesis.test.ts)
+(synthesis e2e with the mock provider — **hash-skip and single-sentence
+invalidation are test-proven here**), [`../gate3.test.ts`](../gate3.test.ts)
+(gate-3 approval blocking, reject-with-notes, edit loop),
+[`publishCore.test.ts`](./publishCore.test.ts) and
+[`../publish.test.ts`](../publish.test.ts) (manifest determinism,
+preconditions, finalize idempotency, immutability guards, export
+round-trip).
 
 Admin UI: `/admin/source-docs` (list → per-doc page grid with PNG, text,
 notes, provenance ID, theme candidates), `/admin/runs/[id]` (state, events,
 itemized LLM cost, inventory browser with claim-class chips and flagged
 filter), `/admin/runs/[id]/gate-1` (flagged-fact review queue with
 approve-with-source / exclude; the gate decision unlocks once every item is
-resolved), and `/admin/runs/[id]/gate-2` (course viewer — see "Gate-2
-course viewer" above).
+resolved), `/admin/runs/[id]/gate-2` (course viewer — see "Gate-2
+course viewer" above), `/admin/runs/[id]/gate-3` (the playable studio —
+see "Player architecture" above), and `/ui/cards` (dev gallery: all 21 card
+templates, theme/reduced-motion toggles, timing scrubber).
 
 ## Operator setup
 
@@ -410,7 +662,17 @@ course viewer" above).
    `EXTRACTION_MODE=sequential`, `EXTRACTION_TIMEOUT_MS` (default 8 min).
    `dev:stack` forwards these to the local deployment automatically from the
    shell env or the repo-root `.env.local`.
-5. **Fixture docs** — place two real source documents at
+5. **TTS env (M5)**: `ELEVENLABS_API_KEY` (required for live voice), and
+   optionally `ELEVENLABS_VOICE_ID` (dev override; production voice IDs
+   belong on `institutions.voiceConfig` — seed one with
+   `npx convex run pipeline/seed:seed '{"name": "…", "voiceConfig": {"provider": "elevenlabs", "voiceRef": "…", "voiceId": "…"}}'`),
+   `TTS_MODEL` (default `eleven_multilingual_v2`), `TTS_PARALLELISM`
+   (default 2 — mind your plan's concurrency cap), `TTS_MODE=sequential`,
+   `TTS_TIMEOUT_MS` (default 10 min), and `TTS_PROVIDER=mock` for free
+   deterministic synthesis (tests/CI/rehearsals). `dev:stack` forwards all
+   of these too. Keep the tier rate in `tts/pricing.ts` honest — TTS costs
+   are estimated, not provider-reported.
+6. **Fixture docs** — place two real source documents at
    `packages/course-schema/fixtures/ingestion/doc-a.(pptx|pdf)` and
    `doc-b.(pptx|pdf)`.
 
@@ -436,9 +698,12 @@ on the local deployment so `/admin/source-docs` works).
 ### Against your cloud dev deployment
 
 ```bash
-npm run walkthrough                # upload fixtures → real conversion → gates → PUBLISHED
+npm run walkthrough -- --yes       # upload fixtures → conversion → extraction →
+                                   # compile+QA → TTS → gate 3 → PUBLISHED
+npm run walkthrough -- --yes --pause-at-gate-3   # stop at the playable studio
+npm run walkthrough -- --yes --resume <runId>    # continue a parked run
 npm run walkthrough -- --skip-docs # M1-style run, conversion phase no-ops through
-npm test                           # course-schema + converter + convex-test suites
+npm test                           # course-schema + cards + converter + convex suites
 ```
 
 Requires a converter the cloud deployment can reach (e.g. Fly.io) and the env
@@ -446,15 +711,19 @@ vars from "Operator setup" set on that deployment.
 
 ## What is stubbed, and which milestone makes it real
 
-| Stub | Today (M4) | Becomes real in |
+| Stub | Today (M5) | Becomes real in |
 |------|------------|-----------------|
 | `convert` stage | **real** (services/converter) | — |
 | `extract` stage | **real** (per-page LLM extraction → knowledge inventory) | — |
 | `compile` stage | **real** (two-pass compiler → Course Definition, code-enforced rules) | — |
 | `qa` stage | **real** (adversarial judge, provenance tracing, `QA_FLAGGED` routing) | — |
-| `generate-script` / `generate-assets` stages | sleep 1s | M5 — script generation, TTS, asset rendering |
+| `generate-script` / `generate-assets` stages | **real** (normalisation, per-sentence TTS, timing artifacts) | — |
 | Gate-1 review items | **real** (one per flagged fact, per-item resolution) | — |
-| Gate-2 review | **real** (course viewer + send-back re-authoring) | — |
-| Gate-3 review items | hard-coded placeholders | M5 — course preview |
-| Card rendering in gate-2 | structured-props view | when `@counseliq/cards` exists (tracked TODO) |
-| `llmCalls` table | **real** (every call recorded; `getRunCost` itemized) | — |
+| Gate-2 review | **real** (course viewer + send-back re-authoring, real card renders) | — |
+| Gate-3 review | **real** (playable studio, blocked/failed enforcement, sentence editing) | — |
+| Publish | **real** (export + manifest + immutable `courseVersions`) | — |
+| `llmCalls` / `ttsCalls` tables | **real** (every call recorded; LLM/TTS cost split) | — |
+| Video rendering | none — the player is live-DOM only | M6 — Remotion consumes the timing artifacts + publish manifest |
+| Learner-facing serving | admin query + presign only | M6 — service-token HTTP endpoint for the learner app / render workers |
+| Roleplay assessment | schema field only (`assessment`) | later milestone |
+| Adaptive scheduler / credential pulses | not started | later milestone |

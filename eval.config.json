@@ -4,5 +4,6 @@
   "maxConceptRatio": 3,
   "avgTokensInPerPage": 2000,
   "avgTokensOutPerPage": 700,
-  "timeoutMs": 900000
+  "timeoutMs": 900000,
+  "assetsTimeoutMs": 1800000
 }

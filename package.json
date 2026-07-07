@@ -23,6 +23,7 @@
     "dev:web": "npm run dev --workspace=web",
     "env:sync:convex-email": "node scripts/sync-convex-email-env.mjs",
     "eval": "node scripts/eval.mjs",
+    "eval:assets": "node scripts/eval-assets.mjs",
     "eval:compile": "node scripts/eval-compile.mjs",
     "init": "node scripts/init.mjs",
     "init:existing": "node scripts/init.mjs --use-existing",

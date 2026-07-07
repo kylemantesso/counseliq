@@ -149,6 +149,13 @@ function setConvexEnvVars() {
     "MODEL_INFER_THEME",
     "EXTRACTION_PARALLELISM",
     "EXTRACTION_MODE",
+    // TTS synthesis (M5). Same precedence: shell env wins over .env.local.
+    "ELEVENLABS_API_KEY",
+    "ELEVENLABS_VOICE_ID",
+    "TTS_PROVIDER",
+    "TTS_MODEL",
+    "TTS_PARALLELISM",
+    "TTS_MODE",
   ]) {
     const value = process.env[key] ?? rootEnvLocalValue(key);
     if (value) {
@@ -158,6 +165,11 @@ function setConvexEnvVars() {
   if (!vars.OPENROUTER_API_KEY) {
     console.warn(
       "! OPENROUTER_API_KEY not found in the shell env or .env.local — EXTRACTING will fail until it is set on the local deployment."
+    );
+  }
+  if (!vars.ELEVENLABS_API_KEY && vars.TTS_PROVIDER !== "mock") {
+    console.warn(
+      "! ELEVENLABS_API_KEY not found and TTS_PROVIDER is not 'mock' — GENERATING_ASSETS will fail until one is set (tip: TTS_PROVIDER=mock npm run dev:stack for a free rehearsal)."
     );
   }
 

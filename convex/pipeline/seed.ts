@@ -9,16 +9,32 @@ import { internalMutation } from "../_generated/server";
  * see a consistent brand.
  */
 export const seed = internalMutation({
-  args: { name: v.optional(v.string()) },
+  args: {
+    name: v.optional(v.string()),
+    /** M5: brand narrator voice — operator-picked provider voice ID. */
+    voiceConfig: v.optional(
+      v.object({
+        provider: v.string(),
+        voiceRef: v.string(),
+        voiceId: v.string(),
+      })
+    ),
+  },
   handler: async (ctx, args) => {
     const name = args.name ?? "Example University";
     const existing = await ctx.db.query("institutions").take(100);
     const match = existing.find((institution) => institution.name === name);
     if (match) {
+      // Idempotent voice update: operators can attach/replace the voice on
+      // an already-seeded institution.
+      if (args.voiceConfig) {
+        await ctx.db.patch(match._id, { voiceConfig: args.voiceConfig });
+      }
       return match._id;
     }
 
     return await ctx.db.insert("institutions", {
+      ...(args.voiceConfig ? { voiceConfig: args.voiceConfig } : {}),
       name,
       brandTokens: {
         placeholder: true,

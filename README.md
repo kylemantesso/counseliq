@@ -170,6 +170,22 @@ npm install
 npm run init   # or manual setup — see above
 ```
 
+## Demo (10-minute pilot)
+
+The course-generation pipeline can be demoed end-to-end — upload source
+documents, review three human gates, **watch the course play** (real voice,
+cards animating on word anchors, captions), and publish:
+
+```bash
+TTS_PROVIDER=mock npm run dev:stack                     # free rehearsal (or set ELEVENLABS_API_KEY)
+npm run walkthrough:local -- --yes --pause-at-gate-3    # in another terminal
+# …open the printed player URL, watch a unit, edit a sentence, approve gate 3
+```
+
+The full numbered demo script, operator setup (ElevenLabs key, brand voice,
+pronunciation lexicon), and pipeline architecture live in
+[`convex/pipeline/README.md`](convex/pipeline/README.md).
+
 ## Project Structure
 
 ```
