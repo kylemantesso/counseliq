@@ -138,6 +138,8 @@ catch (error) {
 - Web: `NEXT_PUBLIC_CONVEX_URL` in `apps/web/.env.local` (see `apps/web/.env.example`)
 - Mobile: `EXPO_PUBLIC_CONVEX_URL` in `apps/mobile/.env` (see `apps/mobile/.env.example`)
 - Use the **same** Convex deployment URL for both apps
+- Ingestion (Convex deployment, `npx convex env set`): `OBJECT_STORE_ENDPOINT`, `OBJECT_STORE_REGION`, `OBJECT_STORE_BUCKET`, `OBJECT_STORE_ACCESS_KEY_ID`, `OBJECT_STORE_SECRET_ACCESS_KEY`, `CONVERTER_URL`, `CONVERTER_CALLBACK_SECRET`, optional `CONVERTER_TIMEOUT_MS` / `CONVERTER_CALLBACK_URL`
+- Converter (Fly secrets / docker env): same `OBJECT_STORE_*` set plus `CONVERTER_CALLBACK_SECRET` and `CONVEX_CALLBACK_URL` — see `convex/pipeline/README.md` for setup steps
 
 ## Gluestack v5 styling reference
 

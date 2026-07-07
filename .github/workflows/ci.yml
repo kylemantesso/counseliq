@@ -31,3 +31,13 @@ jobs:
         env:
           NEXT_PUBLIC_CONVEX_URL: https://placeholder.convex.cloud
           NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_placeholder_for_ci_build
+
+  converter-docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Converter typecheck/tests run in the main job via turbo; this job
+      # proves the deployable image still builds (LibreOffice + poppler).
+      - name: Build converter image
+        run: docker build -f services/converter/Dockerfile .
