@@ -39,7 +39,8 @@ services:
       context: ../..
       dockerfile: services/converter/Dockerfile
     ports:
-      - "8080:8080"
+      # Host port configurable in case 8080 is taken: CONVERTER_PORT=8090
+      - "${CONVERTER_PORT:-8080}:8080"
     depends_on:
       createbucket:
         condition: service_completed_successfully
