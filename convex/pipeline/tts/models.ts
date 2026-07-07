@@ -26,11 +26,13 @@ export const OUTPUT_FORMAT = "mp3_44100_128";
 export const INTER_SENTENCE_GAP_MS = 250;
 
 /**
- * Default narrator when neither ELEVENLABS_VOICE_ID nor the institution's
- * voiceConfig names a voice: ElevenLabs' premade "Rachel"
- * (21m00Tcm4TlvDq8ikWAM), a stable premade voice available to every
- * account. Override per deployment with TTS_DEFAULT_VOICE_ID; brands get
- * their own narrator via institutions.voiceConfig.
+ * STATIC default narrator fallback: ElevenLabs' premade "Matilda —
+ * Knowledgable, Professional" (XrExE9yKIg1WjnnlVkGX), part of every
+ * account's default premade set. The primary default is discovered from
+ * the account's own voice list at synthesis time (free tiers 402 on
+ * voices outside their list — see fetchAccountDefaultVoice); this static
+ * value covers env override and listing failures. Brands get their own
+ * narrator via institutions.voiceConfig.
  */
 export function defaultVoice(): { voiceId: string; voiceRef: string } {
   const override = process.env.TTS_DEFAULT_VOICE_ID;
@@ -38,7 +40,7 @@ export function defaultVoice(): { voiceId: string; voiceRef: string } {
     voiceId:
       override && override.trim() !== ""
         ? override.trim()
-        : "21m00Tcm4TlvDq8ikWAM",
+        : "XrExE9yKIg1WjnnlVkGX",
     voiceRef: "counseliq-default",
   };
 }

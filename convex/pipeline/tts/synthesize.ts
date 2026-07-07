@@ -26,6 +26,7 @@ import {
   INTER_SENTENCE_GAP_MS,
   OUTPUT_FORMAT,
 } from "./models";
+import { fetchAccountDefaultVoice } from "./elevenlabs";
 import type { RunVoiceContext } from "./data";
 
 /**
@@ -58,15 +59,17 @@ function plannedModel(): string {
 
 /**
  * Resolve the provider voice ID: dev env override > institution voiceConfig
- * > the platform default narrator (an institution without a configured
- * voice still synthesises — the manifest records the default voiceRef so
- * the fallback is visible at review/publish). The mock provider gets a
- * stable default so tests need no configuration.
+ * > the account's own default narrator (free-tier accounts can only
+ * synthesise voices in their list, so the platform default is discovered
+ * via /v1/voices) > static premade fallback. An institution without a
+ * configured voice still synthesises — the manifest records the
+ * counseliq-default voiceRef so the fallback is visible at review/publish.
+ * The mock provider gets a stable default so tests need no configuration.
  */
-function resolveVoice(voice: RunVoiceContext): {
+async function resolveVoice(voice: RunVoiceContext): Promise<{
   voiceId: string;
   voiceRef: string;
-} {
+}> {
   const voiceRef = voice.voiceConfig?.voiceRef ?? voice.voiceRef ?? "unknown";
   const envOverride = process.env.ELEVENLABS_VOICE_ID;
   if (envOverride && envOverride.trim() !== "") {
@@ -77,6 +80,10 @@ function resolveVoice(voice: RunVoiceContext): {
   }
   if (ttsProviderName() === "mock") {
     return { voiceId: "mock-voice", voiceRef };
+  }
+  const account = await fetchAccountDefaultVoice();
+  if (account) {
+    return { voiceId: account.voiceId, voiceRef: "counseliq-default" };
   }
   return defaultVoice();
 }
@@ -124,7 +131,7 @@ async function synthesizeUnitInner(
 
   const model = plannedModel();
   const providerName = ttsProviderName();
-  const { voiceId, voiceRef } = resolveVoice(voice);
+  const { voiceId, voiceRef } = await resolveVoice(voice);
   const lexicon = voice.lexicon;
   const cards = (unit.cards ?? []) as Array<{
     enterAt: { narration: string; word: string };
@@ -348,7 +355,7 @@ export const runAssetGeneration = internalAction({
         };
       }
       try {
-        resolveVoice(overview.voice);
+        await resolveVoice(overview.voice);
       } catch (error) {
         return {
           ...empty,

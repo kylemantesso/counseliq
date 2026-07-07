@@ -27,6 +27,62 @@ import type {
 import { TtsError } from "./provider";
 
 const ELEVENLABS_BASE_URL = "https://api.elevenlabs.io/v1/text-to-speech";
+const ELEVENLABS_VOICES_URL = "https://api.elevenlabs.io/v1/voices";
+
+/**
+ * Narrator preference order for the account-derived default voice —
+ * professional/educator profiles first. Names match ElevenLabs' premade
+ * set ("Matilda - Knowledgable, Professional" etc.).
+ */
+const DEFAULT_VOICE_PREFERENCES = ["matilda", "alice", "sarah", "george"];
+
+let cachedAccountVoice: { voiceId: string; name: string } | null = null;
+
+/** Test hook: clear the module-level account-voice cache. */
+export function resetAccountVoiceCache(): void {
+  cachedAccountVoice = null;
+}
+
+/**
+ * Pick a default narrator from the ACCOUNT's own voice list. Free-tier
+ * accounts can only synthesise voices present in their list (arbitrary
+ * library-voice IDs 402), so the platform default must be discovered, not
+ * hardcoded. Prefers professional premade narrators; returns null when the
+ * list can't be fetched (caller falls back to the static default).
+ */
+export async function fetchAccountDefaultVoice(options?: {
+  apiKey?: string;
+  fetchImpl?: typeof fetch;
+}): Promise<{ voiceId: string; name: string } | null> {
+  if (cachedAccountVoice) return cachedAccountVoice;
+  const apiKey = options?.apiKey ?? process.env.ELEVENLABS_API_KEY;
+  const fetchImpl = options?.fetchImpl ?? fetch;
+  if (!apiKey) return null;
+  try {
+    const response = await fetchImpl(ELEVENLABS_VOICES_URL, {
+      headers: { "xi-api-key": apiKey },
+    });
+    if (!response.ok) return null;
+    const body = (await response.json()) as {
+      voices?: Array<{ voice_id?: string; name?: string; category?: string }>;
+    };
+    const voices = (body.voices ?? []).filter((v) => v.voice_id);
+    if (voices.length === 0) return null;
+    const premade = voices.filter((v) => v.category === "premade");
+    const pool = premade.length > 0 ? premade : voices;
+    const preferred = DEFAULT_VOICE_PREFERENCES.map((name) =>
+      pool.find((v) => (v.name ?? "").toLowerCase().startsWith(name))
+    ).find((v) => v !== undefined);
+    const chosen = preferred ?? pool[0];
+    cachedAccountVoice = {
+      voiceId: chosen.voice_id as string,
+      name: chosen.name ?? "unknown",
+    };
+    return cachedAccountVoice;
+  } catch {
+    return null;
+  }
+}
 const MAX_TRANSPORT_ATTEMPTS = 4;
 const BASE_BACKOFF_MS = 2_000;
 const MAX_RETRY_AFTER_MS = 60_000;

@@ -198,3 +198,56 @@ describe("createMockTtsProvider", () => {
     ).rejects.toMatchObject({ name: "TtsError" });
   });
 });
+
+// --- fetchAccountDefaultVoice (account-derived default narrator) ---
+import { fetchAccountDefaultVoice, resetAccountVoiceCache } from "./elevenlabs";
+import { beforeEach } from "vitest";
+
+function voicesResponse(voices: Array<Record<string, string>>): typeof fetch {
+  return (async () =>
+    new Response(JSON.stringify({ voices }), { status: 200 })) as typeof fetch;
+}
+
+describe("fetchAccountDefaultVoice", () => {
+  beforeEach(() => resetAccountVoiceCache());
+
+  test("prefers professional premade narrators by name", async () => {
+    const result = await fetchAccountDefaultVoice({
+      apiKey: "k",
+      fetchImpl: voicesResponse([
+        { voice_id: "v-roger", name: "Roger - Casual", category: "premade" },
+        { voice_id: "v-matilda", name: "Matilda - Knowledgable, Professional", category: "premade" },
+        { voice_id: "v-cloned", name: "My clone", category: "cloned" },
+      ]),
+    });
+    expect(result).toEqual({ voiceId: "v-matilda", name: "Matilda - Knowledgable, Professional" });
+  });
+
+  test("falls back to the first premade voice when no preference matches", async () => {
+    const result = await fetchAccountDefaultVoice({
+      apiKey: "k",
+      fetchImpl: voicesResponse([
+        { voice_id: "v-x", name: "Xeno", category: "premade" },
+        { voice_id: "v-y", name: "Ymir", category: "premade" },
+      ]),
+    });
+    expect(result?.voiceId).toBe("v-x");
+  });
+
+  test("returns null on HTTP failure or missing key (caller uses static default)", async () => {
+    const failing = (async () => new Response("nope", { status: 500 })) as typeof fetch;
+    expect(await fetchAccountDefaultVoice({ apiKey: "k", fetchImpl: failing })).toBeNull();
+    expect(await fetchAccountDefaultVoice({ apiKey: "", fetchImpl: failing })).toBeNull();
+  });
+
+  test("caches the discovered voice", async () => {
+    let calls = 0;
+    const counting = (async () => {
+      calls += 1;
+      return new Response(JSON.stringify({ voices: [{ voice_id: "v1", name: "A", category: "premade" }] }), { status: 200 });
+    }) as typeof fetch;
+    await fetchAccountDefaultVoice({ apiKey: "k", fetchImpl: counting });
+    await fetchAccountDefaultVoice({ apiKey: "k", fetchImpl: counting });
+    expect(calls).toBe(1);
+  });
+});
