@@ -61,9 +61,29 @@ const MIGRATION_PROMISE_PATTERNS: BannedClaimPattern[] = [
 const SUPERLATIVE_PATTERN =
   /\b(?:the\s+)?(world'?s|australia'?s|nation'?s|country'?s|globe'?s)\s+(first|best|largest|leading|top|greatest|finest|number\s+one)\b/i;
 
-/** Attribution markers that make a superlative legal in the same sentence. */
+/**
+ * Attribution markers that make a superlative legal in the same sentence.
+ * Ranking verbs count: "ranked in the world's top 1% by QS" attributes the
+ * claim to an external ranking body.
+ */
 const ATTRIBUTION_PATTERN =
-  /\b(describe[sd]?|described as|according to|claims?|says|states?|calls?|billed as|reports?|institution claim|the university)\b/i;
+  /\b(describe[sd]?|described as|according to|claims?|says|states?|calls?|billed as|reports?|institution claim|the university|rank(?:ed|s|ing)?|rated?|rating)\b/i;
+
+/**
+ * Whether a text carries an attribution marker anywhere (used to judge a
+ * whole question — prompt + options + explanation — as one claim context).
+ */
+export function textHasAttribution(text: string): boolean {
+  return ATTRIBUTION_PATTERN.test(text);
+}
+
+/**
+ * Whether a text carries a negation/warning marker anywhere (used to judge
+ * a whole myth-fact/alert card or question as one debunking context).
+ */
+export function textHasNegation(text: string): boolean {
+  return NEGATION_PATTERN.test(text);
+}
 
 function splitSentences(text: string): string[] {
   return text
@@ -73,19 +93,30 @@ function splitSentences(text: string): string[] {
 }
 
 /**
- * Scans text for banned claims: migration-outcome promises anywhere, and
- * superlatives ("world's first", "Australia's largest") in sentences that
- * carry no attribution marker.
+ * Negation/warning markers that make a promise-pattern sentence legal:
+ * compliance training legitimately SAYS "never promise guaranteed
+ * employment" or debunks "Myth: guaranteed employment".
+ */
+const NEGATION_PATTERN =
+  /\b(never|not|no|don'?t|avoid|cannot|can'?t|myths?|misconceptions?|false|wrong|illegal|banned|prohibited|misconduct|warning|red flags?)\b/i;
+
+/**
+ * Scans text for banned claims: migration-outcome/employment promises in
+ * sentences without a negation marker (warnings and myth-debunks are
+ * legal), and superlatives ("world's first", "Australia's largest") in
+ * sentences that carry no attribution marker.
  */
 export function findBannedClaimsInText(text: string): BannedClaimHit[] {
   const hits: BannedClaimHit[] = [];
-  for (const { code, pattern, description } of MIGRATION_PROMISE_PATTERNS) {
-    const match = text.match(pattern);
-    if (match) {
-      hits.push({ code, excerpt: match[0], description });
-    }
-  }
   for (const sentence of splitSentences(text)) {
+    if (!NEGATION_PATTERN.test(sentence)) {
+      for (const { code, pattern, description } of MIGRATION_PROMISE_PATTERNS) {
+        const match = sentence.match(pattern);
+        if (match) {
+          hits.push({ code, excerpt: match[0], description });
+        }
+      }
+    }
     const superlative = sentence.match(SUPERLATIVE_PATTERN);
     if (superlative && !ATTRIBUTION_PATTERN.test(sentence)) {
       hits.push({

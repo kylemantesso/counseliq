@@ -181,6 +181,55 @@ export const adminStartRun = mutation({
   },
 });
 
+async function sendBackForReauthoringHelper(
+  ctx: MutationCtx,
+  args: { runId: Id<"runs">; unitIds: Id<"microUnits">[]; actor: string }
+): Promise<void> {
+  const run = await ctx.db.get(args.runId);
+  if (!run) {
+    appError(AppErrorCode.RUN_NOT_FOUND);
+  }
+  if (run.state !== GATE_STATES[2]) {
+    appError(AppErrorCode.RUN_NOT_AT_GATE);
+  }
+  if (args.unitIds.length === 0) {
+    appError(AppErrorCode.UNITS_REQUIRED);
+  }
+  for (const unitId of args.unitIds) {
+    const unit = await ctx.db.get(unitId);
+    if (!unit || !run.courseId || unit.courseId !== run.courseId) {
+      appError(AppErrorCode.UNITS_REQUIRED);
+    }
+  }
+  await applyRunTransition(ctx, {
+    runId: args.runId,
+    toState: "COMPILING",
+    actor: args.actor,
+    detail: `gate 2 send-back: re-authoring ${args.unitIds.length} unit(s)`,
+  });
+  await start(ctx, internal.pipeline.workflows.compileAndJudge, {
+    runId: args.runId,
+    reAuthorUnitIds: args.unitIds,
+  });
+}
+
+/** Gate-2 send-back for scripts/walkthroughs (mirrors decideGate). */
+export const sendBackForReauthoring = internalMutation({
+  args: {
+    runId: v.id("runs"),
+    unitIds: v.array(v.id("microUnits")),
+    reviewer: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    await sendBackForReauthoringHelper(ctx, {
+      runId: args.runId,
+      unitIds: args.unitIds,
+      actor: args.reviewer ?? "system",
+    });
+    return null;
+  },
+});
+
 /**
  * Gate-2 send-back: re-author the selected units with the judge's flags as
  * feedback. Preserved units pass through the recompile unchanged; the
@@ -194,31 +243,10 @@ export const adminSendBackForReauthoring = mutation({
   },
   handler: async (ctx, args) => {
     const admin = await requireAdmin(ctx);
-    const run = await ctx.db.get(args.runId);
-    if (!run) {
-      appError(AppErrorCode.RUN_NOT_FOUND);
-    }
-    if (run.state !== GATE_STATES[2]) {
-      appError(AppErrorCode.RUN_NOT_AT_GATE);
-    }
-    if (args.unitIds.length === 0) {
-      appError(AppErrorCode.UNITS_REQUIRED);
-    }
-    for (const unitId of args.unitIds) {
-      const unit = await ctx.db.get(unitId);
-      if (!unit || !run.courseId || unit.courseId !== run.courseId) {
-        appError(AppErrorCode.UNITS_REQUIRED);
-      }
-    }
-    await applyRunTransition(ctx, {
+    await sendBackForReauthoringHelper(ctx, {
       runId: args.runId,
-      toState: "COMPILING",
+      unitIds: args.unitIds,
       actor: admin.email,
-      detail: `gate 2 send-back: re-authoring ${args.unitIds.length} unit(s)`,
-    });
-    await start(ctx, internal.pipeline.workflows.compileAndJudge, {
-      runId: args.runId,
-      reAuthorUnitIds: args.unitIds,
     });
     return null;
   },

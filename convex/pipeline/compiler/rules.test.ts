@@ -35,6 +35,19 @@ describe("banned-claims lexicon", () => {
     expect(hits.some((h) => h.code === "employment-guarantee")).toBe(true);
   });
 
+  test("warning against promises is legal (negation context)", () => {
+    expect(
+      findBannedClaimsInText(
+        "Never tell a student that permanent residency is guaranteed."
+      )
+    ).toEqual([]);
+    expect(
+      findBannedClaimsInText(
+        "It is misconduct to say a job is guaranteed after graduation."
+      )
+    ).toEqual([]);
+  });
+
   test("stating current visa settings is legal", () => {
     expect(
       findBannedClaimsInText(
@@ -54,6 +67,14 @@ describe("banned-claims lexicon", () => {
     expect(
       findBannedClaimsInText(
         "The university describes itself as Australia's largest provider of online education."
+      )
+    ).toEqual([]);
+  });
+
+  test("ranking attributions are legal", () => {
+    expect(
+      findBannedClaimsInText(
+        "It is ranked in the world's top one percent of universities by ShanghaiRanking."
       )
     ).toEqual([]);
   });

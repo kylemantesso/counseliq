@@ -186,12 +186,14 @@ export function createOpenRouterClient(options?: {
 
         if (!response.ok) {
           const errorText = (await response.text()).slice(0, 500);
-          // Some models reject response_format: json_schema; fall back to a
-          // plain request once — the Zod parse downstream is the enforcement.
+          // Some models reject response_format: json_schema (or choke on
+          // parts of the generated schema, e.g. "reference to undefined
+          // schema"); fall back to a plain request once — the Zod parse
+          // downstream is the enforcement.
           if (
             useJsonSchema &&
             response.status === 400 &&
-            /response_format|json_schema|structured/i.test(errorText)
+            /response_format|json_schema|structured|schema/i.test(errorText)
           ) {
             useJsonSchema = false;
             continue;
@@ -258,7 +260,8 @@ export async function completeStructured<T>(
   client: LlmClient,
   task: LlmTask,
   input: LlmCompleteInput,
-  zodSchema: z.ZodType<T>
+  // Input type is deliberately unknown: wire schemas may preprocess/coerce.
+  zodSchema: z.ZodType<T, z.ZodTypeDef, unknown>
 ): Promise<StructuredCompletion<T>> {
   const usages: LlmUsage[] = [];
 

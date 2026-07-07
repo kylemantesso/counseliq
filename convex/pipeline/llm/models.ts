@@ -58,7 +58,9 @@ const MAX_OUTPUT_TOKENS: Record<LlmTask, number> = {
   "extract-page": 4096,
   "merge-inventory": 16384,
   "infer-theme": 2048,
-  "compile-structure": 8192,
+  // Reasoning models (Gemini 2.5) spend thinking tokens from the same
+  // budget; a tight cap starves the JSON itself and truncates mid-string.
+  "compile-structure": 16384,
   "author-unit": 16384,
   "judge-course": 16384,
 };

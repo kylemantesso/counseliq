@@ -113,6 +113,55 @@ export const getRunCostInternal = internalQuery({
  * Pre-run cost estimate for `npm run eval`, from the operator-confirmed
  * price sheet in llm/pricing.ts. Actual cost is always provider-reported.
  */
+/**
+ * Pre-run cost estimate for `npm run eval:compile`: extraction is assumed
+ * cached (page cache), so the dominant costs are the structure pass, one
+ * author-unit call per planned unit (plus compliance retries), and one
+ * judge pass over the whole course.
+ */
+export const estimateCompileCost = internalQuery({
+  args: {
+    units: v.number(),
+    avgTokensInPerUnit: v.number(),
+    avgTokensOutPerUnit: v.number(),
+  },
+  handler: async (_ctx, args) => {
+    const structureModel = modelForTask("compile-structure");
+    const authorModel = modelForTask("author-unit");
+    const judgeModel = modelForTask("judge-course");
+    const structureEstimate = estimateCostUsd({
+      model: structureModel,
+      calls: 1,
+      avgTokensInPerCall: args.units * 900,
+      avgTokensOutPerCall: args.units * 80,
+    });
+    // ~1.3 calls/unit budgets for the one compliance-feedback retry.
+    const authorEstimate = estimateCostUsd({
+      model: authorModel,
+      calls: Math.ceil(args.units * 1.3),
+      avgTokensInPerCall: args.avgTokensInPerUnit,
+      avgTokensOutPerCall: args.avgTokensOutPerUnit,
+    });
+    const judgeEstimate = estimateCostUsd({
+      model: judgeModel,
+      calls: 1,
+      avgTokensInPerCall: args.units * (args.avgTokensOutPerUnit + 600),
+      avgTokensOutPerCall: args.units * 350,
+    });
+    const known =
+      structureEstimate !== null &&
+      authorEstimate !== null &&
+      judgeEstimate !== null;
+    return {
+      models: currentModelRouting(),
+      priceSheetVerifiedAt: PRICING[authorModel]?.verifiedAt ?? null,
+      estimateUsd: known
+        ? (structureEstimate ?? 0) + (authorEstimate ?? 0) + (judgeEstimate ?? 0)
+        : null,
+    };
+  },
+});
+
 export const estimateExtractionCost = internalQuery({
   args: {
     pages: v.number(),

@@ -21,6 +21,7 @@
  *
  * Options (env vars):
  *   CONVERTER_PORT=8090   host port for the converter (default 8090)
+ *   CONVERTER_REBUILD=1   rebuild converter image (default: reuse existing image)
  *   WEB_PORT=3005         port for the web dev server (default 3005)
  *   ADMIN_EMAILS=you@x.y  grant admin to your login on the local deployment
  */
@@ -203,8 +204,19 @@ async function main() {
 
   const envLocalBackup = snapshotEnvLocal();
 
-  console.log("Starting MinIO + converter (docker compose)…");
-  run("docker", ["compose", "-f", COMPOSE_FILE, "up", "-d", "--build"], {
+  const composeArgs = ["compose", "-f", COMPOSE_FILE, "up", "-d"];
+  if (process.env.CONVERTER_REBUILD === "1") {
+    composeArgs.push("--build");
+    console.log("Starting MinIO + converter (docker compose, rebuilding)…");
+  } else {
+    console.log(
+      "Starting MinIO + converter (docker compose, existing image)…"
+    );
+    console.log(
+      "  tip: CONVERTER_REBUILD=1 npm run dev:stack to force a rebuild"
+    );
+  }
+  run("docker", composeArgs, {
     env: {
       ...process.env,
       CONVERTER_PORT,

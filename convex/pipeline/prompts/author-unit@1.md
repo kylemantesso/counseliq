@@ -25,10 +25,28 @@ narration, cards, a hook question, retrieve questions, and an anchor.
 - Every factual claim you narrate MUST be supported by one of the unit's
   approved facts. Connective/instructional sentences (advice to the
   counsellor, transitions) are fine and need no fact.
-- Attribute institution claims and superlatives: "the university describes X
-  as the world's first…", never a bare superlative asserted as fact.
+- **Never generalise a specific fact into a broader claim.** A #1 ranking
+  for one SDG does not make the institution "a leader in sustainability";
+  one industry partnership does not make it "a pioneer". Narrate the fact
+  at exactly its stated scope — an adversarial judge traces every sentence
+  back to the approved facts and flags any widening as unsupported.
+- Attribute institution claims and superlatives IN THE SAME SENTENCE —
+  a bare superlative asserted as fact is a compliance violation everywhere
+  (narration, cards, questions, anchor).
+  - WRONG: "It is Australia's largest regional university."
+  - RIGHT: "The university describes itself as Australia's largest regional
+    university." / "It is ranked in the world's top one percent by
+    ShanghaiRanking."
+  - On cards, a superlative must ride with its attribution: put the claimant
+    in the same text or in the card's `sourceLabel` (e.g. `"sourceLabel":
+    "University marketing claim"`).
 - NEVER promise migration outcomes, permanent residency, visa grants, or
   guaranteed employment. State current factual settings only.
+- If a card or question needs to NAME a prohibited promise in order to warn
+  against it (a myth-fact card, a "what not to say" list), the debunking
+  words (never / myth / don't / misconduct) must appear on the SAME card or
+  question — a banned phrase standing alone fails a code check even when
+  the surrounding narration provides the warning context.
 
 ## Cards (the visual layer)
 

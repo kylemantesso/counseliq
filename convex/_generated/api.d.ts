@@ -37,6 +37,7 @@ import type * as pipeline_compiler_assemble from "../pipeline/compiler/assemble.
 import type * as pipeline_compiler_compile from "../pipeline/compiler/compile.js";
 import type * as pipeline_compiler_judge from "../pipeline/compiler/judge.js";
 import type * as pipeline_compiler_judgeCore from "../pipeline/compiler/judgeCore.js";
+import type * as pipeline_compiler_judgeEval from "../pipeline/compiler/judgeEval.js";
 import type * as pipeline_compiler_rules from "../pipeline/compiler/rules.js";
 import type * as pipeline_compiler_schemas from "../pipeline/compiler/schemas.js";
 import type * as pipeline_courses from "../pipeline/courses.js";
@@ -100,6 +101,7 @@ declare const fullApi: ApiFromModules<{
   "pipeline/compiler/compile": typeof pipeline_compiler_compile;
   "pipeline/compiler/judge": typeof pipeline_compiler_judge;
   "pipeline/compiler/judgeCore": typeof pipeline_compiler_judgeCore;
+  "pipeline/compiler/judgeEval": typeof pipeline_compiler_judgeEval;
   "pipeline/compiler/rules": typeof pipeline_compiler_rules;
   "pipeline/compiler/schemas": typeof pipeline_compiler_schemas;
   "pipeline/courses": typeof pipeline_courses;

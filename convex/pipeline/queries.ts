@@ -51,6 +51,18 @@ export const listRunsByState = query({
   },
 });
 
+/** Internal variant for scripts (eval-compile reuse detection). */
+export const listRunsByStateInternal = internalQuery({
+  args: { state: runStateValidator },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("runs")
+      .withIndex("by_state", (q) => q.eq("state", args.state))
+      .order("desc")
+      .take(100);
+  },
+});
+
 /** Auth check for admin-only actions (actions have no db access). */
 export const assertAdmin = internalQuery({
   args: {},

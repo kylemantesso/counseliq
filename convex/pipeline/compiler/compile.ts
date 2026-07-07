@@ -27,6 +27,7 @@ import {
   llmCompileStructureSchema,
   llmDraftQuestionSchema,
   type LlmAuthoredUnit,
+  type LlmCompileStructure,
 } from "./schemas";
 import {
   buildStructureUserText,
@@ -400,6 +401,8 @@ async function runCompilationInner(
   /** Untouched units carried over verbatim during partial re-authoring. */
   let preserved: AuthoredUnitWithPlan[] = [];
   const feedbackByUnitId = new Map<string, string>();
+  /** Authoritative unit sequence for assembly (modules keep planned order). */
+  const orderedUnitIds: string[] = [];
 
   if (partial) {
     const existing = await ctx.runQuery(
@@ -437,6 +440,7 @@ async function runCompilationInner(
         moduleId: unitRow.moduleKey,
         moduleTitle: unitRow.moduleTitle ?? unitRow.moduleKey,
       };
+      orderedUnitIds.push(plan.unitId);
       if (reAuthorSet.has(unitRow._id)) {
         plans.push(plan);
         const qa = unitRow.qa as
@@ -507,23 +511,42 @@ async function runCompilationInner(
       process.env.COMPILE_MODULE_RANGE,
       MODULE_RANGE_DEFAULT
     );
-    const { value: structure, usages } = await completeStructured(
-      client,
-      "compile-structure",
-      {
-        system: PROMPTS["compile-structure"].content,
-        user: [
+    // completeStructured already feeds validator errors back once; providers
+    // occasionally truncate output mid-JSON on BOTH attempts, so re-issue
+    // the whole (single, cheap) structure call a couple of times.
+    const STRUCTURE_ATTEMPTS = 3;
+    let structure: LlmCompileStructure | undefined;
+    for (let attempt = 1; attempt <= STRUCTURE_ATTEMPTS; attempt++) {
+      try {
+        const { value, usages } = await completeStructured(
+          client,
+          "compile-structure",
           {
-            type: "text",
-            text: buildStructureUserText(inventory, unitRange, moduleRange),
+            system: PROMPTS["compile-structure"].content,
+            user: [
+              {
+                type: "text",
+                text: buildStructureUserText(inventory, unitRange, moduleRange),
+              },
+            ],
+            schemaName: "compile_structure",
+            jsonSchema: COMPILE_STRUCTURE_JSON_SCHEMA,
           },
-        ],
-        schemaName: "compile_structure",
-        jsonSchema: COMPILE_STRUCTURE_JSON_SCHEMA,
-      },
-      llmCompileStructureSchema
-    );
-    await recordUsages(ctx, runId, "compile-structure", usages);
+          llmCompileStructureSchema
+        );
+        await recordUsages(ctx, runId, "compile-structure", usages);
+        structure = value;
+        break;
+      } catch (error) {
+        console.warn(
+          `[pipeline] run ${runId}: structure pass attempt ${attempt}/${STRUCTURE_ATTEMPTS} failed — ${error instanceof Error ? error.message : String(error)}`
+        );
+        if (attempt === STRUCTURE_ATTEMPTS) throw error;
+      }
+    }
+    if (!structure) {
+      return { status: "failed", cause: "structure pass produced no output" };
+    }
 
     // Code check: every planned unit must reference a real inventory concept.
     const conceptKeys = new Set(inventory.concepts.map((c) => c.key));
@@ -553,6 +576,7 @@ async function runCompilationInner(
         moduleTitle: module.title,
       }))
     );
+    orderedUnitIds.push(...plans.map((plan) => plan.unitId));
     console.log(
       `[pipeline] run ${runId}: structure pass planned ${plans.length} unit(s) across ${moduleOrder.length} module(s)`
     );
@@ -603,17 +627,50 @@ async function runCompilationInner(
     { runId }
   )) as Array<{ unitId: string; result: AuthoringRecord }>;
   const recordsByUnitId = new Map(rows.map((row) => [row.unitId, row.result]));
-  const failures: string[] = [];
+  let failures: string[] = [];
   const authoredUnits: AuthoredUnitWithPlan[] = [];
+  const failedPlans: UnitPlan[] = [];
   for (const plan of plans) {
     const record = recordsByUnitId.get(plan.unitId);
     if (!record) {
       failures.push(`unit ${plan.unitId}: no authoring result`);
+      failedPlans.push(plan);
     } else if (record.status === "error") {
       failures.push(record.cause);
+      failedPlans.push(plan);
     } else {
       authoredUnits.push({ plan, authored: record.authored });
     }
+  }
+
+  // Second-chance round: units that failed their in-pool retry (compliance
+  // or parse flakes) get ONE fresh authoring attempt with the failure as
+  // feedback before the whole compilation is declared failed.
+  if (failedPlans.length > 0 && failedPlans.length <= plans.length) {
+    console.log(
+      `[pipeline] run ${runId}: re-attempting ${failedPlans.length} failed unit(s) once — ${failures.join(" | ")}`
+    );
+    const remaining: string[] = [];
+    for (const plan of failedPlans) {
+      const priorCause = failures.find((f) => f.includes(plan.unitId));
+      const record = await authorOneUnit(ctx, client, {
+        runId,
+        plan,
+        courseTitle,
+        ...(priorCause !== undefined
+          ? {
+              feedback: `A previous attempt at this unit failed: ${priorCause}. Avoid that failure mode.`,
+            }
+          : {}),
+        bypassCache: true,
+      });
+      if (record.status === "ok") {
+        authoredUnits.push({ plan, authored: record.authored });
+      } else {
+        remaining.push(record.cause);
+      }
+    }
+    failures = remaining;
   }
   if (failures.length > 0) {
     return {
@@ -623,7 +680,16 @@ async function runCompilationInner(
   }
 
   // --- Assemble + course-level checks (one duplicate-prompt retry round) ---
-  let allUnits = [...preserved, ...authoredUnits];
+  // Assembly appends units to modules in array order, so restore the planned
+  // sequence (second-chance units were pushed to the end above).
+  const plannedOrder = new Map<string, number>(
+    orderedUnitIds.map((unitId, index) => [unitId, index])
+  );
+  let allUnits = [...preserved, ...authoredUnits].sort(
+    (a, b) =>
+      (plannedOrder.get(a.plan.unitId) ?? 0) -
+      (plannedOrder.get(b.plan.unitId) ?? 0)
+  );
   let assembly = tryAssemble(inventory, courseTitle, moduleOrder, allUnits);
   if (assembly.duplicatePromptUnitIds.length > 0) {
     const retryIds = new Set(assembly.duplicatePromptUnitIds);

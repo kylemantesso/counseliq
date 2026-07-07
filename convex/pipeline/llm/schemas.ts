@@ -17,11 +17,33 @@ import {
  * only steer providers that support response_format: json_schema.
  */
 
+/**
+ * zodToJsonSchema emits `$ref: "#/definitions/OpenAiAnyType"` for open
+ * records / unknown values even with $refStrategy "none" (the definition is
+ * self-referential). Google rejects unresolved $refs ("reference to
+ * undefined schema"), so replace every $ref node with the permissive empty
+ * schema and drop the definitions block. The Zod parse downstream is the
+ * enforcement either way.
+ */
+function stripRefs(node: unknown): unknown {
+  if (Array.isArray(node)) return node.map(stripRefs);
+  if (node === null || typeof node !== "object") return node;
+  const obj = node as Record<string, unknown>;
+  if (typeof obj.$ref === "string") return {};
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (key === "definitions") continue;
+    out[key] = stripRefs(value);
+  }
+  return out;
+}
+
 function toJsonSchema(schema: Parameters<typeof zodToJsonSchema>[0]) {
-  return zodToJsonSchema(schema, {
+  const generated = zodToJsonSchema(schema, {
     $refStrategy: "none",
     target: "openAi",
-  }) as Record<string, unknown>;
+  });
+  return stripRefs(generated) as Record<string, unknown>;
 }
 
 export const PAGE_EXTRACTION_JSON_SCHEMA = toJsonSchema(

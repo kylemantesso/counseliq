@@ -13,6 +13,9 @@ import type { LlmAuthoredUnit, LlmDraftQuestion } from "./schemas";
 import {
   cardText,
   findBannedClaimsInText,
+  findRedundantCards,
+  textHasAttribution,
+  textHasNegation,
   validateCardProvenance,
   validateGenericCardCap,
   validateQuestionConceptTags,
@@ -155,25 +158,62 @@ export function unitComplianceViolations(
 ): string[] {
   const violations: string[] = [];
 
-  const textBlobs: string[] = [
-    ...authored.narration.map((s) => s.text),
-    ...authored.cards.map((card) => cardText(card.props)),
-    cardText(authored.anchor.props),
-    authored.hookQuestion.prompt,
-    ...authored.hookQuestion.options,
-    authored.hookQuestion.explanation,
-    ...authored.retrieveQuestions.flatMap((q) => [
-      q.prompt,
-      ...q.options,
-      q.explanation,
-    ]),
-  ];
-  for (const blob of textBlobs) {
+  // A card whose props carry a non-empty sourceLabel is attributed — the
+  // label IS the attribution for any superlative on the card (per the
+  // authoring rules). Promises (visa/PR/employment) stay banned everywhere.
+  const hasSourceLabel = (props: Record<string, unknown>): boolean =>
+    typeof props.sourceLabel === "string" && props.sourceLabel.trim() !== "";
+  const checkBlob = (
+    blob: string,
+    context: { attributed: boolean; debunking: boolean }
+  ) => {
     for (const hit of findBannedClaimsInText(blob)) {
+      if (context.attributed && hit.code === "unattributed-superlative") {
+        continue;
+      }
+      if (
+        context.debunking &&
+        (hit.code === "migration-outcome-promise" ||
+          hit.code === "employment-guarantee")
+      ) {
+        continue;
+      }
       violations.push(
         `banned claim (${hit.code}): "${hit.excerpt}" — ${hit.description}`
       );
     }
+  };
+
+  // Narration is judged sentence by sentence with no blanket context.
+  for (const sentence of authored.narration) {
+    checkBlob(sentence.text, { attributed: false, debunking: false });
+  }
+  // A card is one claim context: a myth-fact/alert card that names the
+  // banned promise while debunking it is legal; a sourceLabel attributes
+  // any superlative on the card.
+  for (const card of [
+    ...authored.cards,
+    { template: authored.anchor.template, props: authored.anchor.props },
+  ]) {
+    const blob = cardText(card.props);
+    checkBlob(blob, {
+      attributed: hasSourceLabel(card.props),
+      debunking: textHasNegation(blob),
+    });
+  }
+  // A question is one claim context: attribution in its prompt/explanation
+  // covers superlatives quoted in its options, and a negation anywhere
+  // covers promise phrases the question is debunking.
+  for (const question of [authored.hookQuestion, ...authored.retrieveQuestions]) {
+    const joined = [
+      question.prompt,
+      ...question.options,
+      question.explanation,
+    ].join(" ");
+    checkBlob(joined, {
+      attributed: textHasAttribution(joined),
+      debunking: textHasNegation(joined),
+    });
   }
 
   violations.push(...validateGenericCardCap(authored.cards));
@@ -182,8 +222,27 @@ export function unitComplianceViolations(
   );
   violations.push(...validateStatisticCardsHaveSource(authored.cards));
 
+  // Mayer's redundancy principle, enforced in code for the egregious case:
+  // a card that is a (near-)transcript of its narration sentence is
+  // rejected outright. Lower overlap (a stat-card legitimately shares its
+  // number and nouns with the narration) is left to the judge as gate-2
+  // review material.
+  for (const candidate of findRedundantCards({
+    unitId: "unit",
+    narration: authored.narration,
+    cards: authored.cards,
+  })) {
+    if (candidate.overlap < TRANSCRIPT_OVERLAP_THRESHOLD) continue;
+    violations.push(
+      `card ${candidate.cardIndex + 1} (${candidate.template}) is a transcript of its narration sentence (${Math.round(candidate.overlap * 100)}% overlap) — cards must compress/visualise (keywords, numbers, labels), not repeat the narration`
+    );
+  }
+
   return violations;
 }
+
+/** Overlap at which a card counts as a narration transcript (hard reject). */
+export const TRANSCRIPT_OVERLAP_THRESHOLD = 0.9;
 
 // --- Assembly ---
 

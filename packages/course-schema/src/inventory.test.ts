@@ -155,6 +155,36 @@ describe("llmPageExtractionSchema", () => {
     });
     expect(result.success).toBe(true);
   });
+
+  it("coerces string years on the wire instead of failing the page", () => {
+    const fact = {
+      conceptKey: "k",
+      statement: "s",
+      claimClass: "statistic",
+      sourceLabel: "QILT GOS",
+      flagged: false,
+      flagReason: null,
+    };
+    const parse = (year: unknown) =>
+      llmPageExtractionSchema.safeParse({
+        concepts: [],
+        facts: [{ ...fact, year }],
+        entities: [],
+        quotes: [],
+      });
+
+    const numeric = parse("2023");
+    expect(numeric.success).toBe(true);
+    if (numeric.success) expect(numeric.data.facts[0].year).toBe(2023);
+
+    const range = parse("2023-24");
+    expect(range.success).toBe(true);
+    if (range.success) expect(range.data.facts[0].year).toBe(2023);
+
+    const junk = parse("recent");
+    expect(junk.success).toBe(true);
+    if (junk.success) expect(junk.data.facts[0].year).toBeNull();
+  });
 });
 
 describe("normalizeConceptTitle", () => {

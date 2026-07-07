@@ -147,6 +147,87 @@ describe("unitComplianceViolations", () => {
     expect(violations.some((v) => v.includes("provenance"))).toBe(true);
   });
 
+  test("a superlative on a source-labelled card is attributed and legal", () => {
+    const unit = makeAuthoredUnit();
+    unit.cards[1] = {
+      ...unit.cards[1],
+      props: {
+        value: "#1",
+        label: "Australia's largest online provider",
+        sourceLabel: "University marketing claim",
+      },
+    };
+    expect(unitComplianceViolations(unit, KNOWN_PROVENANCE)).toEqual([]);
+  });
+
+  test("a question quoting a superlative with attribution in the prompt is legal", () => {
+    const unit = makeAuthoredUnit({
+      hookQuestion: {
+        prompt:
+          "The university describes itself as the world's first end-to-end digital campus. True or false?",
+        options: ["True — the world's first", "False"],
+        correctIndex: 0,
+        explanation: "That is the university's own claim.",
+      },
+    });
+    expect(unitComplianceViolations(unit, KNOWN_PROVENANCE)).toEqual([]);
+  });
+
+  test("an unattributed superlative in a question is still caught", () => {
+    const unit = makeAuthoredUnit({
+      hookQuestion: {
+        prompt: "Which is true of the institution?",
+        options: ["It is Australia's largest university", "It is regional"],
+        correctIndex: 0,
+        explanation: "It enrols the most students.",
+      },
+    });
+    const violations = unitComplianceViolations(unit, KNOWN_PROVENANCE);
+    expect(violations.some((v) => v.includes("banned claim"))).toBe(true);
+  });
+
+  test("a myth-fact card debunking a banned promise is legal", () => {
+    const unit = makeAuthoredUnit();
+    unit.cards[0] = {
+      ...unit.cards[0],
+      template: "myth-fact-card",
+      props: {
+        myth: "Graduates are guaranteed employment.",
+        fact: "No outcome is promised; graduates compete in the open market.",
+      },
+    };
+    expect(unitComplianceViolations(unit, KNOWN_PROVENANCE)).toEqual([]);
+  });
+
+  test("a bare employment guarantee on a card is still caught", () => {
+    const unit = makeAuthoredUnit();
+    unit.cards[0] = {
+      ...unit.cards[0],
+      template: "stat-card",
+      props: {
+        value: "100%",
+        label: "Employment is guaranteed for graduates",
+        sourceLabel: "Marketing",
+      },
+    };
+    const violations = unitComplianceViolations(unit, KNOWN_PROVENANCE);
+    expect(violations.some((v) => v.includes("employment-guarantee"))).toBe(true);
+  });
+
+  test("a card transcribing its narration sentence is caught", () => {
+    const unit = makeAuthoredUnit();
+    unit.cards[0] = {
+      ...unit.cards[0],
+      template: "text-card",
+      props: {
+        heading: "Campuses",
+        body: "Deakin University has five campuses across Victoria.",
+      },
+    };
+    const violations = unitComplianceViolations(unit, KNOWN_PROVENANCE);
+    expect(violations.some((v) => v.includes("transcript"))).toBe(true);
+  });
+
   test("stat card without a sourceLabel is caught", () => {
     const unit = makeAuthoredUnit();
     unit.cards[1] = {

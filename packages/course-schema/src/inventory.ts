@@ -153,12 +153,26 @@ export const llmExtractedConceptSchema = z.object({
   summary: z.string(),
 });
 
+/**
+ * Models routinely emit years as strings ("2023", "2023-24") despite the
+ * schema. The wire is lenient — take the first plausible 4-digit year, or
+ * null — because a whole page failing over a quoted year is worse than a
+ * coerced value (the flag floor still governs statistic sourcing).
+ */
+const lenientYearSchema = z.preprocess((value) => {
+  if (typeof value === "string") {
+    const match = value.match(/\b(19|20)\d{2}\b/);
+    return match ? Number(match[0]) : null;
+  }
+  return value;
+}, z.number().int().nullable());
+
 export const llmExtractedFactSchema = z.object({
   conceptKey: z.string().min(1),
   statement: z.string().min(1),
   claimClass: claimClassSchema,
   sourceLabel: z.string().nullable(),
-  year: z.number().int().nullable(),
+  year: lenientYearSchema,
   flagged: z.boolean(),
   flagReason: z.string().nullable(),
 });
