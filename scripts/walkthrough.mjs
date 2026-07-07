@@ -165,7 +165,7 @@ async function printDocSummaries(sourceDocIds, docNamesById) {
 }
 
 async function main() {
-  console.log("== CounselIQ M2 walkthrough ==\n");
+  console.log("== CounselIQ pipeline walkthrough ==\n");
 
   console.log("Seeding institution…");
   const institutionId = await convexRun("pipeline/seed:seed");
