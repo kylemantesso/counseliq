@@ -199,7 +199,7 @@ export async function setupClerkAutomatically(displayName, prompter, options = {
   console.log("  Ensuring Convex JWT template exists...");
   await ensureConvexJwtTemplate(keys.secretKey, jwtIssuerDomain);
 
-  const localOrigin = "http://localhost:3000";
+  const localOrigin = "http://localhost:3005";
   const expoOrigin = "exp://localhost:8081";
   await addAllowedOrigins(keys.secretKey, [
     localOrigin,

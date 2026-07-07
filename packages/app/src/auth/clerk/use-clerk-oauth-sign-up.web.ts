@@ -4,7 +4,7 @@ import type { OAuthStrategy } from "./oauth-strategy";
 import type { OAuthResult } from "./oauth-result";
 
 function getOAuthWebOrigin(): string {
-  return getClerkAllowedRedirectOrigins()[0] ?? "http://localhost:3000";
+  return getClerkAllowedRedirectOrigins()[0] ?? "http://localhost:3005";
 }
 
 export function useClerkOAuthSignUp() {

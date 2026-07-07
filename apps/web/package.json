@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "NODE_OPTIONS='--max-http-header-size=32768' next dev",
+    "dev": "NODE_OPTIONS='--max-http-header-size=32768' next dev -p ${PORT:-3005}",
     "build": "next build",
-    "start": "next start",
+    "start": "next start -p ${PORT:-3005}",
     "lint": "next lint",
     "typecheck": "tsc --noEmit"
   },

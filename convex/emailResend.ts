@@ -10,5 +10,5 @@ export function emailFromAddress(): string {
 }
 
 export function appWebOrigin(): string {
-  return (process.env.APP_WEB_ORIGIN ?? "http://localhost:3000").replace(/\/$/, "");
+  return (process.env.APP_WEB_ORIGIN ?? "http://localhost:3005").replace(/\/$/, "");
 }

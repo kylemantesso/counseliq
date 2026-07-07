@@ -43,7 +43,7 @@ async function main() {
     [
       "APP_WEB_ORIGIN",
       resolveEnv("APP_WEB_ORIGIN", "NEXT_PUBLIC_APP_WEB_ORIGIN") ??
-        "http://localhost:3000",
+        "http://localhost:3005",
     ],
     ["RESEND_TEST_MODE", resolveEnv("RESEND_TEST_MODE") ?? "false"],
   ].filter(Boolean);

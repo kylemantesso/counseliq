@@ -151,7 +151,7 @@ npm run dev:all        # Convex + web + mobile
 
 # Or individually:
 npm run convex:dev
-npm run dev:web        # http://localhost:3000
+npm run dev:web        # http://localhost:3005
 npm run dev:mobile     # Metro — open the dev client app on your device/simulator
 ```
 

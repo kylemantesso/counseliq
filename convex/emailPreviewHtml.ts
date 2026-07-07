@@ -1,7 +1,7 @@
 import type { EmailTemplateId, EmailTemplatePropsMap } from "./emailTemplateMeta";
 
 function emailShell(heading: string, bodyHtml: string): string {
-  const dashboardUrl = `${process.env.APP_WEB_ORIGIN ?? "http://localhost:3000"}/dashboard`;
+  const dashboardUrl = `${process.env.APP_WEB_ORIGIN ?? "http://localhost:3005"}/dashboard`;
   return `<!DOCTYPE html>
 <html>
   <head><meta charset="utf-8" /></head>

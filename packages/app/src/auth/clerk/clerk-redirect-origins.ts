@@ -1,4 +1,7 @@
+// First entry doubles as the default OAuth return origin.
 const DEFAULT_ORIGINS = [
+  "http://localhost:3005",
+  "http://127.0.0.1:3005",
   "http://localhost:3000",
   "http://127.0.0.1:3000",
   "http://localhost:3001",
@@ -11,7 +14,7 @@ function getAppWebOrigin(): string {
   return (
     process.env.NEXT_PUBLIC_APP_WEB_ORIGIN?.trim() ||
     process.env.APP_WEB_ORIGIN?.trim() ||
-    "http://localhost:3000"
+    "http://localhost:3005"
   );
 }
 

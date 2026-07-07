@@ -557,7 +557,7 @@ async function runGoogleProvisioning(slug, displayName, vercelProjectUrl) {
   const consentUrl = `https://console.cloud.google.com/apis/credentials/consent?project=${gcpProjectId}`;
   const credentialsUrl = `https://console.cloud.google.com/apis/credentials?project=${gcpProjectId}`;
   const redirectUriProd = vercelProjectUrl ? `${vercelProjectUrl}/auth/callback` : null;
-  const redirectUriLocal = "http://localhost:3000/auth/callback";
+  const redirectUriLocal = "http://localhost:3005/auth/callback";
 
   console.log("\nOpening Cloud Console in your browser...");
   try {
