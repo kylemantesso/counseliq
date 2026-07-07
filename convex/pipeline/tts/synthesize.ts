@@ -250,6 +250,7 @@ async function synthesizeUnitInner(
     generatedAt: Date.now(),
   });
   await ctx.runMutation(internal.pipeline.tts.data.saveUnitTiming, {
+    runId,
     unitId: unit._id,
     timing,
     contentHash,

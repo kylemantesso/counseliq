@@ -53,6 +53,7 @@ async function decideGateHelper(
     gate: ReviewGate;
     decision: GateDecision;
     reviewer: string;
+    notes?: string;
   }
 ): Promise<void> {
   const run = await ctx.db.get(args.runId);
@@ -62,6 +63,21 @@ async function decideGateHelper(
 
   if (run.state !== GATE_STATES[args.gate]) {
     appError(AppErrorCode.RUN_NOT_AT_GATE);
+  }
+
+  // Gate 3 cannot be approved while any unit is blocked on an unresolved
+  // pronunciation or carries a synthesis error — the preview query surfaces
+  // the offending units to the reviewer.
+  if (args.gate === 3 && args.decision === "approve" && run.courseId) {
+    const units = await ctx.db
+      .query("microUnits")
+      .withIndex("by_course", (q) => q.eq("courseId", run.courseId!))
+      .take(1000);
+    if (
+      units.some((unit) => unit.state === "blocked" || unit.error !== undefined)
+    ) {
+      appError(AppErrorCode.UNITS_BLOCKED);
+    }
   }
 
   const gateItems = await ctx.db
@@ -94,6 +110,32 @@ async function decideGateHelper(
   }
 
   if (args.decision === "reject") {
+    // Gate 3 rejection is a send-back, not a dead end: the run returns to
+    // course review with the reviewer's notes attached (journaled in
+    // runEvents and surfaced at gate 2 via a gate3_rejection review item).
+    if (args.gate === 3) {
+      const notes = (args.notes ?? "").trim().slice(0, 500);
+      await applyRunTransition(ctx, {
+        runId: args.runId,
+        toState: "GATE_2_COURSE_REVIEW",
+        actor: args.reviewer,
+        detail:
+          notes.length > 0 ? `gate 3 rejected: ${notes}` : "gate 3 rejected",
+      });
+      await ctx.db.insert("reviewItems", {
+        runId: args.runId,
+        gate: 2,
+        kind: "gate3_rejection",
+        payload: {
+          notes,
+          rejectedBy: args.reviewer,
+          rejectedAt: Date.now(),
+        },
+        status: "pending",
+      });
+      return;
+    }
+
     await applyRunTransition(ctx, {
       runId: args.runId,
       toState: "FAILED",
@@ -157,6 +199,7 @@ export const decideGate = internalMutation({
     gate: reviewGateValidator,
     decision: decisionValidator,
     reviewer: v.optional(v.string()),
+    notes: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     await decideGateHelper(ctx, {
@@ -164,6 +207,7 @@ export const decideGate = internalMutation({
       gate: args.gate,
       decision: args.decision,
       reviewer: args.reviewer ?? "system",
+      ...(args.notes !== undefined ? { notes: args.notes } : {}),
     });
     return null;
   },
@@ -258,6 +302,7 @@ export const adminDecideGate = mutation({
     runId: v.id("runs"),
     gate: reviewGateValidator,
     decision: decisionValidator,
+    notes: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const admin = await requireAdmin(ctx);
@@ -266,6 +311,7 @@ export const adminDecideGate = mutation({
       gate: args.gate,
       decision: args.decision,
       reviewer: admin.email,
+      ...(args.notes !== undefined ? { notes: args.notes } : {}),
     });
     return null;
   },

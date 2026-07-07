@@ -305,7 +305,7 @@ export function reconstructCourseDefinition(
   };
 }
 
-async function getCourseRowsForRun(
+export async function getCourseRowsForRun(
   ctx: QueryCtx,
   runId: Id<"runs">
 ): Promise<{

@@ -154,21 +154,41 @@ export const recordTtsAudioAsset = internalMutation({
 /**
  * Persist a unit's timing artifact. The artifact is schema-validated here —
  * the single write path — so nothing invalid ever lands on microUnits.timing.
+ * Success also clears any stale gate-3 failed_unit review item for the unit
+ * (a per-unit retry succeeds outside runAssetGeneration's item refresh), in
+ * the same transaction as the state change.
  */
 export const saveUnitTiming = internalMutation({
   args: {
+    runId: v.id("runs"),
     unitId: v.id("microUnits"),
     timing: v.any(),
     contentHash: v.string(),
   },
   handler: async (ctx, args) => {
     const timing = unitTimingSchema.parse(args.timing);
+    const unit = await ctx.db.get(args.unitId);
+    if (!unit) appError(AppErrorCode.COURSE_NOT_FOUND);
     await ctx.db.patch(args.unitId, {
       timing,
       contentHash: args.contentHash,
       state: "assets_ready",
       error: undefined,
     });
+    const gate3Items = await ctx.db
+      .query("reviewItems")
+      .withIndex("by_run_and_gate", (q) =>
+        q.eq("runId", args.runId).eq("gate", 3)
+      )
+      .take(1000);
+    for (const item of gate3Items) {
+      if (
+        item.kind === "failed_unit" &&
+        (item.payload as { unitKey?: string }).unitKey === unit.unitKey
+      ) {
+        await ctx.db.delete(item._id);
+      }
+    }
     return null;
   },
 });

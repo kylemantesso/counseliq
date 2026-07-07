@@ -31,7 +31,8 @@ export const ALLOWED_TRANSITIONS: Record<RunState, RunState[]> = {
   GATE_2_COURSE_REVIEW: ["GENERATING_SCRIPT", "COMPILING"],
   GENERATING_SCRIPT: ["GENERATING_ASSETS"],
   GENERATING_ASSETS: ["GATE_3_PREVIEW"],
-  GATE_3_PREVIEW: ["PUBLISHED"],
+  // Approve → publish; reject → back to course review with reviewer notes.
+  GATE_3_PREVIEW: ["PUBLISHED", "GATE_2_COURSE_REVIEW"],
   PUBLISHED: [],
   FAILED: [],
 };
