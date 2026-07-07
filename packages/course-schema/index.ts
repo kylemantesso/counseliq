@@ -31,6 +31,37 @@ export type {
 } from "./src/course-definition";
 
 export {
+  CARD_PROP_SCHEMAS,
+  typedCardContentSchema,
+  validateCardProps,
+} from "./src/card-props";
+
+export type { CardPropsFor, TypedCardContent } from "./src/card-props";
+
+export { CARD_PROP_FIXTURES } from "./src/card-props-fixtures";
+
+export {
+  TIMING_VERSION,
+  cardBeatSchema,
+  scriptAlignmentSegmentSchema,
+  scriptSentenceSchema,
+  timingSentenceSchema,
+  timingWordSchema,
+  unitScriptSchema,
+  unitTimingSchema,
+} from "./src/timing";
+
+export type {
+  CardBeat,
+  ScriptAlignmentSegment,
+  ScriptSentence,
+  TimingSentence,
+  TimingWord,
+  UnitScript,
+  UnitTiming,
+} from "./src/timing";
+
+export {
   OBJECT_KEY_PATTERN,
   candidateThemeSchema,
   contentAddressedKeySchema,
