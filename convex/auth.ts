@@ -64,12 +64,21 @@ export async function getOrCreateUserForIdentity(
     .first();
 
   if (existing) {
+    const updates: Partial<{ name: string; email: string }> = {};
     if (
       isPlaceholderUserName(existing.name) &&
       !isPlaceholderUserName(resolvedName)
     ) {
-      await ctx.db.patch(existing._id, { name: resolvedName });
-      return { ...existing, name: resolvedName };
+      updates.name = resolvedName;
+    }
+    // Backfill email for rows created before the JWT template carried an
+    // email claim.
+    if (!existing.email && identity.email) {
+      updates.email = identity.email;
+    }
+    if (Object.keys(updates).length > 0) {
+      await ctx.db.patch(existing._id, updates);
+      return { ...existing, ...updates };
     }
     return existing;
   }
