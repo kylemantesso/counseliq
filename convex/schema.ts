@@ -62,6 +62,9 @@ export const sourceDocStatusValidator = v.union(
 
 export const microUnitStateValidator = v.union(
   v.literal("draft"),
+  /** M5: narration references a lexicon term whose pronunciation is the
+   *  CONFIRM_WITH_INSTITUTION sentinel — blocks gate 3 until resolved. */
+  v.literal("blocked"),
   v.literal("script_ready"),
   v.literal("assets_ready"),
   v.literal("qa_passed"),
@@ -154,6 +157,18 @@ export default defineSchema({
     brandTokens: v.any(),
     pronunciationLexicon: v.any(),
     market: v.string(),
+    /**
+     * Brand narrator voice (M5). `voiceRef` is the stable brand-level name
+     * written into CourseDefinition.voice; `voiceId` is the TTS provider's
+     * voice ID (never a secret, safe to store).
+     */
+    voiceConfig: v.optional(
+      v.object({
+        provider: v.string(),
+        voiceRef: v.string(),
+        voiceId: v.string(),
+      })
+    ),
   }),
 
   sourceDocs: defineTable({
@@ -284,6 +299,16 @@ export default defineSchema({
     contentHash: v.optional(v.string()),
     audioKey: v.optional(v.string()),
     timing: v.optional(v.any()),
+    /** UnitScript (M5): validated against unitScriptSchema in code. */
+    script: v.optional(v.any()),
+    /** Per-unit TTS failure marker (M5): the run still parks at gate 3;
+     *  the operator retries the unit from the review UI. */
+    error: v.optional(
+      v.object({
+        retryable: v.boolean(),
+        cause: v.string(),
+      })
+    ),
     qa: v.optional(v.any()),
     state: microUnitStateValidator,
   }).index("by_course", ["courseId"]),
@@ -330,6 +355,51 @@ export default defineSchema({
     model: v.string(),
     tokensIn: v.number(),
     tokensOut: v.number(),
+    costUsd: v.number(),
+    latencyMs: v.number(),
+  }).index("by_run", ["runId"]),
+
+  /**
+   * Per-sentence TTS cache (M5): content-addressed by the SPOKEN text (post
+   * lexicon substitution) + voice + model + output format, so an edited
+   * sentence — or a lexicon change affecting it — re-synthesises alone and
+   * everything else is reused across runs and courses.
+   */
+  ttsSentences: defineTable({
+    /** sha256("tts:v1|" + spokenText + "|" + voiceId + "|" + model + "|" + outputFormat) */
+    sentenceHash: v.string(),
+    /** Object-store key of the mp3: sha256/{sha256(audioBytes)}.mp3 */
+    audioKey: v.string(),
+    durationMs: v.number(),
+    /** Word timestamps; charStart/charEnd are offsets into the SPOKEN text. */
+    words: v.array(
+      v.object({
+        text: v.string(),
+        startMs: v.number(),
+        endMs: v.number(),
+        charStart: v.number(),
+        charEnd: v.number(),
+      })
+    ),
+    characters: v.number(),
+    provider: v.string(),
+    model: v.string(),
+    voiceId: v.string(),
+  }).index("by_sentence_hash", ["sentenceHash"]),
+
+  /**
+   * TTS usage ledger (M5), mirroring llmCalls. Unlike llmCalls, costUsd is
+   * ESTIMATED from the tts pricing sheet — ElevenLabs reports no per-request
+   * cost.
+   */
+  ttsCalls: defineTable({
+    runId: v.id("runs"),
+    stage: v.string(),
+    unitKey: v.optional(v.string()),
+    provider: v.string(),
+    model: v.string(),
+    voiceId: v.string(),
+    characters: v.number(),
     costUsd: v.number(),
     latencyMs: v.number(),
   }).index("by_run", ["runId"]),

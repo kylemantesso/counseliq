@@ -18,15 +18,10 @@ const PLACEHOLDER_ITEMS: Record<
   // Gate 2 (M4): the compiled course itself — with per-unit judge flags on
   // microUnits.qa — is the review surface; no reviewItems rows are needed.
   2: [],
-  3: [
-    {
-      kind: "preview_unit",
-      payload: {
-        placeholder: true,
-        note: "M1 stub — rendered course preview arrives with the assets milestone.",
-      },
-    },
-  ],
+  // Gate 3 (M5): items are real and created by the pipeline stages —
+  // blocked_unit rows by GENERATING_SCRIPT and failed_unit rows by
+  // GENERATING_ASSETS. Nothing is inserted at gate creation time.
+  3: [],
 };
 
 /** Parses `doc:{sourceDocId}:page:{n}` back into its parts (null if not a page ID). */
@@ -120,6 +115,46 @@ export async function insertGateReviewItems(
       gate,
       kind: item.kind,
       payload: item.payload,
+      status: "pending",
+    });
+  }
+}
+
+/** Payload of a gate-3 `blocked_unit` review item (created by GENERATING_SCRIPT). */
+export interface BlockedUnitItem {
+  unitKey: string;
+  moduleKey: string;
+  concept: string;
+  blockedTerms: string[];
+  narrationIds: string[];
+}
+
+/**
+ * Gate 3 (M5): one review item per unit blocked on an unresolved
+ * CONFIRM_WITH_INSTITUTION pronunciation. Idempotent: existing gate-3
+ * blocked_unit items for the run are replaced, not duplicated; other gate-3
+ * item kinds (e.g. failed_unit) are left alone.
+ */
+export async function replaceGate3BlockedUnitItems(
+  ctx: MutationCtx,
+  runId: Id<"runs">,
+  items: BlockedUnitItem[]
+): Promise<void> {
+  const existing = await ctx.db
+    .query("reviewItems")
+    .withIndex("by_run_and_gate", (q) => q.eq("runId", runId).eq("gate", 3))
+    .take(1000);
+  for (const item of existing) {
+    if (item.kind === "blocked_unit") {
+      await ctx.db.delete(item._id);
+    }
+  }
+  for (const item of items) {
+    await ctx.db.insert("reviewItems", {
+      runId,
+      gate: 3,
+      kind: "blocked_unit",
+      payload: item,
       status: "pending",
     });
   }

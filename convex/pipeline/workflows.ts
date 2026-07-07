@@ -211,9 +211,11 @@ export const compileAndJudge = workflow
   });
 
 /**
- * Phase 3: GENERATING_SCRIPT -> GENERATING_ASSETS (both no-op stubs until
- * M5), then park the run at gate 3 with placeholder review items. Started by
- * decideGate(2), which has already transitioned the run to GENERATING_SCRIPT.
+ * Phase 3: GENERATING_SCRIPT (real as of M5: deterministic narration
+ * normalisation; units with unresolved lexicon pronunciations become
+ * blocked) -> GENERATING_ASSETS (no-op stub until M5 C2), then park the run
+ * at gate 3. Started by decideGate(2), which has already transitioned the
+ * run to GENERATING_SCRIPT.
  */
 export const generateAssets = workflow
   .define({
@@ -222,15 +224,20 @@ export const generateAssets = workflow
   .handler(async (step, args): Promise<void> => {
     const { runId } = args;
 
-    await step.runAction(internal.pipeline.steps.runNoopStage, {
+    const scripts: {
+      scriptReady: number;
+      blocked: number;
+      unchanged: number;
+    } = await step.runMutation(internal.pipeline.tts.script.generateScripts, {
       runId,
-      stage: "generate-script",
     });
     await step.runMutation(internal.pipeline.transitions.transitionRun, {
       runId,
       toState: "GENERATING_ASSETS",
       actor: ACTOR,
-      detail: "generateAssets: script generated (no-op), generating assets",
+      detail:
+        `generateAssets: generate-script — ${scripts.scriptReady} script-ready, ` +
+        `${scripts.blocked} blocked, ${scripts.unchanged} unchanged`,
     });
 
     await step.runAction(internal.pipeline.steps.runNoopStage, {
@@ -241,7 +248,8 @@ export const generateAssets = workflow
       runId,
       toState: "GATE_3_PREVIEW",
       actor: ACTOR,
-      detail: "generateAssets: assets generated (no-op), awaiting preview review",
+      detail:
+        "generateAssets: assets generated (no-op until M5 C2), awaiting preview review",
     });
     await step.runMutation(internal.pipeline.reviewItems.createGateReviewItems, {
       runId,

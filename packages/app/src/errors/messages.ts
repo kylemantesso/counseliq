@@ -31,4 +31,14 @@ export const APP_ERROR_MESSAGES: Record<AppErrorCodeType, string> = {
     "Fill in the prompt, at least two options, a correct answer, and an explanation.",
   [AppErrorCode.UNITS_REQUIRED]:
     "Select at least one unit of this run's course to send back.",
+  [AppErrorCode.UNITS_BLOCKED]:
+    "Resolve every blocked or failed unit before approving this gate.",
+  [AppErrorCode.TTS_NOT_CONFIGURED]:
+    "Voice synthesis is not configured. Contact an administrator.",
+  [AppErrorCode.NARRATION_NOT_FOUND]:
+    "That narration sentence could not be found.",
+  [AppErrorCode.NARRATION_EDIT_BREAKS_CARD]:
+    "A card is anchored to a word this edit removes. Keep the anchor word or update the card first.",
+  [AppErrorCode.RUN_NOT_EDITABLE]:
+    "Narration can only be edited while the run is waiting at course review or preview.",
 };
