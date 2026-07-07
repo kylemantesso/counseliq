@@ -3,7 +3,8 @@ export type AdminToolKey =
   | "notifications-test"
   | "email-test"
   | "sentry-test"
-  | "posthog-test";
+  | "posthog-test"
+  | "source-docs";
 
 export type AdminTool = {
   key: AdminToolKey;
@@ -42,5 +43,11 @@ export const ADMIN_TOOLS: readonly AdminTool[] = [
     label: "Test PostHog",
     description: "Send test events to verify PostHog analytics.",
     href: "/admin/posthog-test",
+  },
+  {
+    key: "source-docs",
+    label: "Source documents",
+    description: "Inspect ingested documents: pages, text, and theme.",
+    href: "/admin/source-docs",
   },
 ] as const;

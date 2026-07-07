@@ -3,7 +3,8 @@
 import { v } from "convex/values";
 import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import { internalAction } from "../_generated/server";
+import { action, internalAction } from "../_generated/server";
+import { internal } from "../_generated/api";
 import { AppErrorCode, appError } from "../errors";
 
 const PRESIGN_TTL_SECONDS = 10 * 60;
@@ -54,5 +55,28 @@ export const presignGet = internalAction({
       { expiresIn: PRESIGN_TTL_SECONDS }
     );
     return { url };
+  },
+});
+
+/**
+ * Admin-only batch presign for the ingestion inspector page (page PNGs,
+ * thumbnails, logo candidates). URLs are short-lived and never logged.
+ */
+export const adminPresignGetBatch = action({
+  args: { keys: v.array(v.string()) },
+  handler: async (ctx, args): Promise<{ key: string; url: string }[]> => {
+    await ctx.runQuery(internal.pipeline.queries.assertAdmin, {});
+    const { client, bucket } = createClient();
+    const keys = args.keys.slice(0, 300);
+    return await Promise.all(
+      keys.map(async (key) => ({
+        key,
+        url: await getSignedUrl(
+          client,
+          new GetObjectCommand({ Bucket: bucket, Key: key }),
+          { expiresIn: PRESIGN_TTL_SECONDS }
+        ),
+      }))
+    );
   },
 });

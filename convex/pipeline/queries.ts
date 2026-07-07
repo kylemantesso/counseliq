@@ -51,6 +51,43 @@ export const listRunsByState = query({
   },
 });
 
+/** Auth check for admin-only actions (actions have no db access). */
+export const assertAdmin = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    await requireAdmin(ctx);
+    return null;
+  },
+});
+
+/** Source documents, newest first — the admin ingestion inspector list. */
+export const listSourceDocs = query({
+  args: {},
+  handler: async (ctx) => {
+    await requireAdmin(ctx);
+    return await ctx.db.query("sourceDocs").order("desc").take(100);
+  },
+});
+
+/** One source doc with its converted pages, ordered by page number. */
+export const getSourceDoc = query({
+  args: { sourceDocId: v.id("sourceDocs") },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+    const doc = await ctx.db.get(args.sourceDocId);
+    if (!doc) {
+      return null;
+    }
+    const slides = await ctx.db
+      .query("slides")
+      .withIndex("by_source_doc_and_n", (q) =>
+        q.eq("sourceDocId", args.sourceDocId)
+      )
+      .take(500);
+    return { doc, slides };
+  },
+});
+
 /** Pending review items waiting at a gate, oldest first. */
 export const gateQueue = query({
   args: { gate: reviewGateValidator },

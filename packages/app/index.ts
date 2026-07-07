@@ -11,6 +11,8 @@ export { AdminNotificationTestScreen } from "./src/screens/admin-notification-te
 export { AdminNotificationDeliveriesScreen } from "./src/screens/admin-notification-deliveries-screen";
 export { AdminSentryTestScreen } from "./src/screens/admin-sentry-test-screen";
 export { AdminPostHogTestScreen } from "./src/screens/admin-posthog-test-screen";
+export { AdminSourceDocsScreen } from "./src/screens/admin-source-docs-screen";
+export { AdminSourceDocDetailScreen } from "./src/screens/admin-source-doc-detail-screen";
 export { ForceUpgradeScreen } from "./src/screens/force-upgrade-screen";
 
 export { AppErrorBoundary } from "./src/components/app-error-boundary";
