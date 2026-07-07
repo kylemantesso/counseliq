@@ -186,6 +186,34 @@ describe("unitComplianceViolations", () => {
     expect(violations.some((v) => v.includes("banned claim"))).toBe(true);
   });
 
+  test("a verbatim transcript card is rejected", () => {
+    const unit = makeAuthoredUnit();
+    unit.cards[0] = {
+      ...unit.cards[0],
+      template: "text-card",
+      props: { body: "Deakin University has five campuses across Victoria." },
+    };
+    const violations = unitComplianceViolations(unit, KNOWN_PROVENANCE);
+    expect(violations.some((v) => v.includes("transcript"))).toBe(true);
+  });
+
+  test("a compressed extract (all tokens from the narration) is NOT a transcript", () => {
+    const unit = makeAuthoredUnit();
+    // Every card token appears in the sentence (100% containment), but the
+    // card reproduces only a slice of it — that's compression, the exact
+    // behaviour the author prompt asks for.
+    unit.cards[0] = {
+      ...unit.cards[0],
+      template: "list-reveal",
+      props: {
+        heading: "Deakin",
+        items: [{ text: "five campuses" }, { text: "Victoria" }],
+      },
+    };
+    const violations = unitComplianceViolations(unit, KNOWN_PROVENANCE);
+    expect(violations.filter((v) => v.includes("transcript"))).toEqual([]);
+  });
+
   test("a myth-fact card debunking a banned promise is legal", () => {
     const unit = makeAuthoredUnit();
     unit.cards[0] = {

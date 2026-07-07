@@ -304,7 +304,13 @@ describe("buildJudgeUserText", () => {
       makeUnit("mu-101", "Deakin has five campuses."),
     ]);
     const text = buildJudgeUserText(definition, INVENTORY, [
-      { unitId: "mu-101", cardIndex: 0, template: "map-card", overlap: 0.8 },
+      {
+        unitId: "mu-101",
+        cardIndex: 0,
+        template: "map-card",
+        overlap: 0.8,
+        coverage: 0.75,
+      },
     ]);
     expect(text).toContain('"unitId": "mu-101"');
     expect(text).toContain("Deakin has five campuses.");

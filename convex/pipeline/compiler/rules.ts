@@ -308,7 +308,10 @@ export function cardText(props: Record<string, unknown>): string {
 
 /**
  * Share of the card's content tokens that also appear in the narration
- * sentence it enters on. 1.0 = the card is a transcript of the narration.
+ * sentence it enters on. 1.0 = every card token comes from the narration —
+ * which is true BOTH for a verbatim transcript and for a well-compressed
+ * extract (keywords/numbers pulled from the sentence). Containment alone
+ * cannot distinguish the two; pair it with narrationCoverage.
  */
 export function tokenOverlapRatio(card: string, narration: string): number {
   const cardTokens = contentTokens(card);
@@ -318,11 +321,27 @@ export function tokenOverlapRatio(card: string, narration: string): number {
   return overlapping / cardTokens.length;
 }
 
+/**
+ * Share of the narration sentence's distinct content tokens that the card
+ * reproduces. A transcript covers (nearly) the whole sentence; a compressed
+ * extract covers a small slice of it.
+ */
+export function narrationCoverageRatio(card: string, narration: string): number {
+  const narrationTokens = new Set(contentTokens(narration));
+  if (narrationTokens.size === 0) return 0;
+  const cardTokens = new Set(contentTokens(card));
+  let covered = 0;
+  for (const token of narrationTokens) if (cardTokens.has(token)) covered += 1;
+  return covered / narrationTokens.size;
+}
+
 export interface RedundancyCandidate {
   unitId: string;
   cardIndex: number;
   template: string;
   overlap: number;
+  /** Share of the narration sentence the card reproduces (0..1). */
+  coverage: number;
 }
 
 export const REDUNDANCY_THRESHOLD = 0.6;
@@ -345,13 +364,15 @@ export function findRedundantCards(unit: {
   unit.cards.forEach((card, cardIndex) => {
     const sentence = narrationById.get(card.enterAt.narration);
     if (sentence === undefined) return;
-    const overlap = tokenOverlapRatio(cardText(card.props), sentence);
+    const text = cardText(card.props);
+    const overlap = tokenOverlapRatio(text, sentence);
     if (overlap > REDUNDANCY_THRESHOLD) {
       candidates.push({
         unitId: unit.unitId,
         cardIndex,
         template: card.template,
         overlap: Number(overlap.toFixed(3)),
+        coverage: Number(narrationCoverageRatio(text, sentence).toFixed(3)),
       });
     }
   });

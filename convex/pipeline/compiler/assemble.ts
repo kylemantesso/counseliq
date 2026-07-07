@@ -224,17 +224,26 @@ export function unitComplianceViolations(
 
   // Mayer's redundancy principle, enforced in code for the egregious case:
   // a card that is a (near-)transcript of its narration sentence is
-  // rejected outright. Lower overlap (a stat-card legitimately shares its
-  // number and nouns with the narration) is left to the judge as gate-2
-  // review material.
+  // rejected outright. Transcription requires BOTH directions: the card's
+  // tokens come from the sentence (overlap) AND the card reproduces most of
+  // the sentence (coverage). A compressed extract — a few keywords/numbers
+  // pulled from the narration, exactly what the prompt asks for — has high
+  // overlap but low coverage and must NOT be rejected. Lower-grade
+  // redundancy is left to the judge as gate-2 review material.
+  const narrationById = new Map(
+    authored.narration.map((sentence) => [sentence.id, sentence.text])
+  );
   for (const candidate of findRedundantCards({
     unitId: "unit",
     narration: authored.narration,
     cards: authored.cards,
   })) {
     if (candidate.overlap < TRANSCRIPT_OVERLAP_THRESHOLD) continue;
+    if (candidate.coverage < TRANSCRIPT_COVERAGE_THRESHOLD) continue;
+    const card = authored.cards[candidate.cardIndex];
+    const sentence = narrationById.get(card.enterAt.narration) ?? "";
     violations.push(
-      `card ${candidate.cardIndex + 1} (${candidate.template}) is a transcript of its narration sentence (${Math.round(candidate.overlap * 100)}% overlap) — cards must compress/visualise (keywords, numbers, labels), not repeat the narration`
+      `card ${candidate.cardIndex + 1} (${candidate.template}) is a transcript of its narration sentence "${sentence.slice(0, 120)}" (${Math.round(candidate.overlap * 100)}% overlap, ${Math.round(candidate.coverage * 100)}% coverage) — put a short compressed fragment on the card (a number, a 2-4 word label), not the sentence itself`
     );
   }
 
@@ -243,6 +252,12 @@ export function unitComplianceViolations(
 
 /** Overlap at which a card counts as a narration transcript (hard reject). */
 export const TRANSCRIPT_OVERLAP_THRESHOLD = 0.9;
+
+/**
+ * Coverage floor for the hard reject: the card must also reproduce at least
+ * this share of the sentence's distinct tokens to count as a transcript.
+ */
+export const TRANSCRIPT_COVERAGE_THRESHOLD = 0.7;
 
 // --- Assembly ---
 
