@@ -2,6 +2,7 @@ import type { CSSProperties, FC } from "react";
 import type { CardPropsFor } from "@counseliq/course-schema";
 import type { CardComponentProps } from "../timing";
 import { fade, fadeUp, msWindow } from "../interpolate";
+import { fitDisplayFontSize } from "../fit";
 import { cssVar } from "../theme/brand-theme-provider";
 
 /**
@@ -49,7 +50,8 @@ export const TextCard: FC<CardComponentProps<CardPropsFor<"text-card">>> = ({ pr
         <div
           style={{
             ...display,
-            fontSize: 33,
+            fontSize: fitDisplayFontSize(props.body, 33),
+            overflowWrap: "break-word",
             lineHeight: 1.3,
             ...fadeUp(msWindow(timing, 300, 550)),
           }}

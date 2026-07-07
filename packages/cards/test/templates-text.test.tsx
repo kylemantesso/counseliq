@@ -115,12 +115,13 @@ describe("graceful degradation", () => {
     expect(html).toContain("1 July 2026");
   });
 
-  test("term-card scales long terms down", () => {
+  test("term-card scales long terms down to fit the column", () => {
     const short = renderOnce(<TermCard props={{ term: "OSHC", definition: "d" }} timing={SETTLED_TIMING} />);
     const long = renderOnce(
       <TermCard props={{ term: "Genuine Student requirement", definition: "d" }} timing={SETTLED_TIMING} />
     );
     expect(short).toContain("font-size: 92px");
-    expect(long).toContain("font-size: 40px");
+    // Width-aware fit: "requirement" (11 chars) -> floor(300/(0.58*11)) = 47px.
+    expect(long).toContain("font-size: 47px");
   });
 });

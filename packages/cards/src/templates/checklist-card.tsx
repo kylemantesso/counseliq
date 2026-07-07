@@ -1,6 +1,7 @@
 import type { CSSProperties, FC } from "react";
 import type { CardPropsFor } from "@counseliq/course-schema";
 import { beatProgress, fadeUp, msWindow, pop } from "../interpolate";
+import { fitDisplayFontSize } from "../fit";
 import { cssVar } from "../theme/brand-theme-provider";
 import type { CardComponentProps } from "../timing";
 
@@ -35,7 +36,8 @@ export const ChecklistCard: FC<CardComponentProps<CardPropsFor<"checklist-card">
         <div
           style={{
             ...display,
-            fontSize: 33,
+            fontSize: fitDisplayFontSize(props.heading, 33),
+            overflowWrap: "break-word",
             lineHeight: 1.12,
             ...fadeUp(msWindow(timing, 100, 500)),
           }}

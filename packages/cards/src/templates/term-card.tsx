@@ -2,6 +2,7 @@ import type { CSSProperties, FC } from "react";
 import type { CardPropsFor } from "@counseliq/course-schema";
 import type { CardComponentProps } from "../timing";
 import { fade, fadeUp, growX, msWindow, settle } from "../interpolate";
+import { fitDisplayFontSize } from "../fit";
 import { cssVar } from "../theme/brand-theme-provider";
 
 /**
@@ -19,9 +20,7 @@ const display: CSSProperties = {
 
 /** Long terms scale down so they stay on the 360px canvas. */
 function termFontSize(term: string): number {
-  if (term.length > 14) return 40;
-  if (term.length > 8) return 60;
-  return 92;
+  return fitDisplayFontSize(term, 92, { minPx: 30 });
 }
 
 export const TermCard: FC<CardComponentProps<CardPropsFor<"term-card">>> = ({ props, timing }) => {

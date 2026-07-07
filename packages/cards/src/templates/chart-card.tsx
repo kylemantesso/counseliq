@@ -1,5 +1,6 @@
 import type { CardPropsFor } from "@counseliq/course-schema";
 import { beatProgress, fade, fadeUp, growX, msWindow } from "../interpolate";
+import { fitDisplayFontSize } from "../fit";
 import { cssVar } from "../theme/brand-theme-provider";
 import type { CardComponentProps } from "../timing";
 
@@ -44,7 +45,8 @@ export function ChartCard({ props, timing }: CardComponentProps<CardPropsFor<"ch
             fontWeight: cssVar("displayWeight") as never,
             textTransform: cssVar("titleCase") as never,
             letterSpacing: cssVar("tracking"),
-            fontSize: 34,
+            fontSize: fitDisplayFontSize(props.heading, 34),
+            overflowWrap: "break-word",
             lineHeight: 1.1,
             ...fadeUp(msWindow(timing, 200, 500)),
           }}
@@ -108,12 +110,22 @@ export function ChartCard({ props, timing }: CardComponentProps<CardPropsFor<"ch
         <div
           style={{
             display: "flex",
-            alignItems: "center",
+            alignItems: "flex-start",
             gap: 7,
             ...fade(beatProgress(timing, props.series.length)),
           }}
         >
-          <span style={{ width: 5, height: 5, borderRadius: "50%", background: cssVar("accent") }} />
+          <span
+            style={{
+              flex: "0 0 auto",
+              width: 5,
+              height: 5,
+              borderRadius: "50%",
+              background: cssVar("accent"),
+              // Optically align with the first text line's cap height.
+              marginTop: 4,
+            }}
+          />
           <span
             style={{
               fontFamily: cssVar("fontMono"),

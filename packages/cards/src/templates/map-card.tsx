@@ -1,5 +1,6 @@
 import type { CardPropsFor } from "@counseliq/course-schema";
 import { beatProgress, fade, fadeUp, msWindow, pop } from "../interpolate";
+import { fitDisplayFontSize } from "../fit";
 import { cssVar } from "../theme/brand-theme-provider";
 import type { CardComponentProps } from "../timing";
 
@@ -46,7 +47,8 @@ export function MapCard({ props, timing }: CardComponentProps<CardPropsFor<"map-
             fontWeight: cssVar("displayWeight") as never,
             textTransform: cssVar("titleCase") as never,
             letterSpacing: cssVar("tracking"),
-            fontSize: 36,
+            fontSize: fitDisplayFontSize(props.region, 36),
+            overflowWrap: "break-word",
             lineHeight: 1.1,
             ...fadeUp(msWindow(timing, 200, 500)),
           }}

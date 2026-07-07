@@ -1,6 +1,7 @@
 import type { CSSProperties, FC } from "react";
 import type { CardPropsFor } from "@counseliq/course-schema";
 import { beatProgress, fadeUp, msWindow } from "../interpolate";
+import { fitDisplayFontSize } from "../fit";
 import { cssVar } from "../theme/brand-theme-provider";
 import type { CardComponentProps } from "../timing";
 
@@ -25,6 +26,16 @@ export const ListReveal: FC<CardComponentProps<CardPropsFor<"list-reveal">>> = (
   const dense = items.length >= 5 || longestText > 48;
   const itemFontSize = dense ? 16 : 19;
   const rowPadding = dense ? "12px 0" : "18px 0";
+  // Per-item source labels are NOT rendered inline — repeated/truncated
+  // citations read as noise in the rows. Attribution consolidates into one
+  // deduped footer line (stat-card's quiet style).
+  const sourceLabels = [
+    ...new Set(
+      items
+        .map((item) => (typeof item.sourceLabel === "string" ? item.sourceLabel.trim() : ""))
+        .filter((label) => label.length > 0)
+    ),
+  ];
   return (
     <div
       style={{
@@ -42,8 +53,9 @@ export const ListReveal: FC<CardComponentProps<CardPropsFor<"list-reveal">>> = (
         <div
           style={{
             ...display,
-            fontSize: 34,
+            fontSize: fitDisplayFontSize(props.heading, 34),
             lineHeight: 1.12,
+            overflowWrap: "break-word",
             ...fadeUp(msWindow(timing, 100, 500)),
           }}
         >
@@ -71,30 +83,46 @@ export const ListReveal: FC<CardComponentProps<CardPropsFor<"list-reveal">>> = (
             <span style={{ flex: "1 1 0", minWidth: 0, fontSize: itemFontSize, fontWeight: 600, lineHeight: 1.25 }}>
               {item.text}
             </span>
-            {item.sourceLabel ? (
-              <span
-                data-ciq-source-label=""
-                style={{
-                  flex: "0 1 auto",
-                  maxWidth: "34%",
-                  fontFamily: cssVar("fontMono"),
-                  fontSize: 9,
-                  letterSpacing: "0.1em",
-                  textTransform: "uppercase",
-                  color: cssVar("dim"),
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  textAlign: "right",
-                }}
-                title={item.sourceLabel}
-              >
-                {item.sourceLabel}
-              </span>
-            ) : null}
           </div>
         ))}
       </div>
+      {sourceLabels.length > 0 ? (
+        <div
+          data-ciq-source-label=""
+          style={{
+            marginTop: "auto",
+            paddingTop: 14,
+            display: "flex",
+            alignItems: "flex-start",
+            gap: 7,
+            ...fadeUp(beatProgress(timing, items.length)),
+          }}
+        >
+          <span
+            style={{
+              flex: "0 0 auto",
+              width: 5,
+              height: 5,
+              borderRadius: "50%",
+              background: cssVar("accent"),
+              // Optically align with the first text line's cap height.
+              marginTop: 4,
+            }}
+          />
+          <span
+            style={{
+              fontFamily: cssVar("fontMono"),
+              fontSize: 9,
+              letterSpacing: "0.1em",
+              textTransform: "uppercase",
+              color: cssVar("dim"),
+              lineHeight: 1.5,
+            }}
+          >
+            {sourceLabels.join(" · ")}
+          </span>
+        </div>
+      ) : null}
     </div>
   );
 };

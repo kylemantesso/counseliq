@@ -2,6 +2,7 @@ import type { CSSProperties, FC } from "react";
 import type { CardPropsFor } from "@counseliq/course-schema";
 import type { CardComponentProps } from "../timing";
 import { fade, fadeUp, msWindow } from "../interpolate";
+import { fitDisplayFontSize } from "../fit";
 import { cssVar } from "../theme/brand-theme-provider";
 
 /**
@@ -36,7 +37,8 @@ export const DocumentCallout: FC<CardComponentProps<CardPropsFor<"document-callo
       <div
         style={{
           ...display,
-          fontSize: 32,
+          fontSize: fitDisplayFontSize(props.title, 32),
+          overflowWrap: "break-word",
           lineHeight: 1.1,
           ...fadeUp(msWindow(timing, 100, 500)),
         }}
@@ -90,12 +92,22 @@ export const DocumentCallout: FC<CardComponentProps<CardPropsFor<"document-callo
         <div
           style={{
             display: "flex",
-            alignItems: "center",
+            alignItems: "flex-start",
             gap: 7,
             ...fade(msWindow(timing, 1400, 600)),
           }}
         >
-          <span style={{ width: 5, height: 5, borderRadius: "50%", background: cssVar("accent") }} />
+          <span
+            style={{
+              flex: "0 0 auto",
+              width: 5,
+              height: 5,
+              borderRadius: "50%",
+              background: cssVar("accent"),
+              // Optically align with the first text line's cap height.
+              marginTop: 4,
+            }}
+          />
           <span
             style={{
               fontFamily: cssVar("fontMono"),

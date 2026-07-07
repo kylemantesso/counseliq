@@ -2,6 +2,7 @@ import type { CSSProperties, FC } from "react";
 import type { CardPropsFor } from "@counseliq/course-schema";
 import type { CardComponentProps } from "../timing";
 import { fade, fadeUp, growX, interpolate, msWindow } from "../interpolate";
+import { fitDisplayFontSize } from "../fit";
 import { cssVar } from "../theme/brand-theme-provider";
 
 /**
@@ -64,7 +65,8 @@ export const MythFactCard: FC<CardComponentProps<CardPropsFor<"myth-fact-card">>
         <div
           style={{
             ...display,
-            fontSize: 29,
+            fontSize: fitDisplayFontSize(props.myth, 29),
+            overflowWrap: "break-word",
             lineHeight: 1.25,
             marginTop: 14,
             ...fadeUp(msWindow(timing, 250, 500)),
@@ -94,7 +96,8 @@ export const MythFactCard: FC<CardComponentProps<CardPropsFor<"myth-fact-card">>
         <div
           style={{
             ...display,
-            fontSize: 29,
+            fontSize: fitDisplayFontSize(props.fact, 29),
+            overflowWrap: "break-word",
             lineHeight: 1.25,
             marginTop: 16,
             ...fadeUp(msWindow(timing, 1500, 550)),

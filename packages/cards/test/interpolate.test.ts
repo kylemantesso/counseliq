@@ -110,3 +110,30 @@ describe("style factories settle cleanly at t >= 1", () => {
     expect(String(pan(0.5, "down").transform)).toContain("translate(0%, 2%)");
   });
 });
+
+// --- fitDisplayFontSize (width-aware display sizing) ---
+import { fitDisplayFontSize } from "../src/fit";
+
+describe("fitDisplayFontSize", () => {
+  test("short text keeps the mockup size", () => {
+    expect(fitDisplayFontSize("42nd", 108)).toBe(108);
+    expect(fitDisplayFontSize("Key dates", 47)).toBe(47);
+  });
+
+  test("a long single word shrinks to fit the 300px column", () => {
+    const size = fitDisplayFontSize("Acknowledgement of Country", 47);
+    // "Acknowledgement" = 15 chars -> floor(300 / (0.58 * 15)) = 34
+    expect(size).toBe(34);
+    expect(size * 0.58 * 15).toBeLessThanOrEqual(300);
+  });
+
+  test("pathological words clamp at the floor", () => {
+    expect(fitDisplayFontSize("a".repeat(60), 47)).toBe(22);
+    expect(fitDisplayFontSize("a".repeat(60), 92, { minPx: 30 })).toBe(30);
+  });
+
+  test("empty text keeps the max", () => {
+    expect(fitDisplayFontSize("", 47)).toBe(47);
+    expect(fitDisplayFontSize(undefined, 47)).toBe(47);
+  });
+});

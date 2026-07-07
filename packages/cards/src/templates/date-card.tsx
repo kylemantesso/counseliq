@@ -2,6 +2,7 @@ import type { CSSProperties, FC } from "react";
 import type { CardPropsFor } from "@counseliq/course-schema";
 import type { CardComponentProps } from "../timing";
 import { fade, fadeUp, msWindow } from "../interpolate";
+import { fitDisplayFontSize } from "../fit";
 import { cssVar } from "../theme/brand-theme-provider";
 
 /**
@@ -48,7 +49,8 @@ export const DateCard: FC<CardComponentProps<CardPropsFor<"date-card">>> = ({ pr
         <div
           style={{
             ...display,
-            fontSize: 44,
+            fontSize: fitDisplayFontSize(props.date, 44),
+            overflowWrap: "break-word",
             lineHeight: 1.05,
             color: cssVar("accent"),
             ...fadeUp(msWindow(timing, 200, 500)),

@@ -87,9 +87,19 @@ export const StatCard: FC<CardComponentProps<CardPropsFor<"stat-card">>> = ({ pr
       {props.sourceLabel ? (
         <div
           data-ciq-source-label=""
-          style={{ display: "flex", alignItems: "center", gap: 7, ...fade(msWindow(timing, 1250, 600)) }}
+          style={{ display: "flex", alignItems: "flex-start", gap: 7, ...fade(msWindow(timing, 1250, 600)) }}
         >
-          <span style={{ width: 5, height: 5, borderRadius: "50%", background: cssVar("accent") }} />
+          <span
+            style={{
+              flex: "0 0 auto",
+              width: 5,
+              height: 5,
+              borderRadius: "50%",
+              background: cssVar("accent"),
+              // Optically align with the first text line's cap height.
+              marginTop: 4,
+            }}
+          />
           <span
             style={{
               fontFamily: cssVar("fontMono"),

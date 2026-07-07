@@ -1,6 +1,7 @@
 import type { CSSProperties, FC } from "react";
 import type { CardPropsFor } from "@counseliq/course-schema";
 import { beatProgress, fade, fadeUp, growY, msWindow } from "../interpolate";
+import { fitDisplayFontSize } from "../fit";
 import { cssVar } from "../theme/brand-theme-provider";
 import type { CardComponentProps } from "../timing";
 
@@ -36,7 +37,8 @@ export const PathwayCard: FC<CardComponentProps<CardPropsFor<"pathway-card">>> =
         <div
           style={{
             ...display,
-            fontSize: 34,
+            fontSize: fitDisplayFontSize(props.heading, 34),
+            overflowWrap: "break-word",
             lineHeight: 1.1,
             ...fadeUp(msWindow(timing, 100, 500)),
           }}

@@ -1,6 +1,7 @@
 import type { CardPropsFor } from "@counseliq/course-schema";
 import { CardImage } from "../assets";
 import { fade, fadeUp, msWindow } from "../interpolate";
+import { fitDisplayFontSize } from "../fit";
 import { cssVar } from "../theme/brand-theme-provider";
 import type { CardComponentProps } from "../timing";
 
@@ -67,7 +68,8 @@ export function ImageTextCard({ props, timing }: CardComponentProps<CardPropsFor
               fontWeight: cssVar("displayWeight") as never,
               textTransform: cssVar("titleCase") as never,
               letterSpacing: cssVar("tracking"),
-              fontSize: 42,
+              fontSize: fitDisplayFontSize(props.text, 42),
+              overflowWrap: "break-word",
               lineHeight: 1.05,
               marginTop: 12,
               ...fadeUp(msWindow(timing, 550, 550)),
