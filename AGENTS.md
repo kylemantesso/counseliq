@@ -11,7 +11,10 @@ app-template/
 │   └── mobile/       # Expo Router — thin routes + platform wiring only
 ├── packages/
 │   ├── ui/           # Design system (Gluestack v5 + NativeWind v5)
-│   └── app/          # Product code: screens, auth, Convex client
+│   ├── app/          # Product code: screens, auth, Convex client
+│   └── course-schema/ # Zod contracts: course definition + ingestion manifest
+├── services/
+│   └── converter/    # Node/TS document converter (Fly.io/Docker; LibreOffice + poppler)
 └── convex/           # Canonical Convex backend (schema, mutations, auth)
 ```
 
