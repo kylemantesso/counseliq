@@ -29,3 +29,25 @@ export type {
   PipelineNotes,
   QuestionBankItem,
 } from "./src/course-definition";
+
+export {
+  OBJECT_KEY_PATTERN,
+  candidateThemeSchema,
+  contentAddressedKeySchema,
+  conversionCallbackSchema,
+  conversionManifestSchema,
+  convertRequestSchema,
+  embeddedImageSchema,
+  manifestPageSchema,
+  sourceDocKindSchema,
+} from "./src/ingestion";
+
+export type {
+  CandidateTheme,
+  ConversionCallback,
+  ConversionManifest,
+  ConvertRequest,
+  EmbeddedImage,
+  ManifestPage,
+  SourceDocKind,
+} from "./src/ingestion";
