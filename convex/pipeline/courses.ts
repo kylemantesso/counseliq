@@ -14,6 +14,7 @@ import {
 } from "../_generated/server";
 import type { QueryCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
+import { internal } from "../_generated/api";
 import { AppErrorCode, appError } from "../errors";
 import { requireAdmin } from "../admin";
 
@@ -465,7 +466,95 @@ export const setCourseQa = internalMutation({
   },
 });
 
-// --- Question editing (gate-2 UI, D5) ---
+// --- Question editing + regeneration (gate-2 UI, D5) ---
+
+/**
+ * Context for regenerating one question: the question row, the micro-unit
+ * that references it, and every other prompt in the course's bank (the
+ * replacement must not duplicate any of them).
+ */
+export const getQuestionContextInternal = internalQuery({
+  args: { questionId: v.id("questions") },
+  handler: async (ctx, args) => {
+    const question = await ctx.db.get(args.questionId);
+    if (!question) appError(AppErrorCode.QUESTION_NOT_FOUND);
+    const units = await ctx.db
+      .query("microUnits")
+      .withIndex("by_course", (q) => q.eq("courseId", question.courseId))
+      .take(500);
+    const body = question.body as QuestionBankItem;
+    const unit = units.find((row) => {
+      const meta = row.meta as MicroUnitMeta;
+      return (
+        meta.hook.questionRef === body.id || meta.retrieve.includes(body.id)
+      );
+    });
+    const siblings = await ctx.db
+      .query("questions")
+      .withIndex("by_course", (q) => q.eq("courseId", question.courseId))
+      .take(2000);
+    return {
+      question,
+      unit: unit ?? null,
+      otherPrompts: siblings
+        .filter((row) => row._id !== question._id)
+        .map((row) => (row.body as QuestionBankItem).prompt),
+    };
+  },
+});
+
+/** Replaces a question's editable fields (regeneration result). */
+export const replaceQuestionBody = internalMutation({
+  args: {
+    questionId: v.id("questions"),
+    prompt: v.string(),
+    options: v.array(v.string()),
+    correctIndex: v.number(),
+    explanation: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const row = await ctx.db.get(args.questionId);
+    if (!row) appError(AppErrorCode.QUESTION_NOT_FOUND);
+    const body = row.body as QuestionBankItem;
+    await ctx.db.patch(args.questionId, {
+      body: {
+        ...body,
+        prompt: args.prompt,
+        options: args.options,
+        correctIndex: args.correctIndex,
+        explanation: args.explanation,
+      },
+    });
+    return null;
+  },
+});
+
+/**
+ * Admin: regenerate one question via the author model. Validates and
+ * schedules the LLM action; the questions query updates reactively when the
+ * replacement lands.
+ */
+export const adminRegenerateQuestion = mutation({
+  args: {
+    runId: v.id("runs"),
+    questionId: v.id("questions"),
+  },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+    const run = await ctx.db.get(args.runId);
+    if (!run) appError(AppErrorCode.RUN_NOT_FOUND);
+    const question = await ctx.db.get(args.questionId);
+    if (!question || question.courseId !== run.courseId) {
+      appError(AppErrorCode.QUESTION_NOT_FOUND);
+    }
+    await ctx.scheduler.runAfter(
+      0,
+      internal.pipeline.compiler.compile.regenerateQuestion,
+      { runId: args.runId, questionId: args.questionId }
+    );
+    return null;
+  },
+});
 
 /** Admin: edit one question in place (prompt/options/answer/explanation). */
 export const adminUpdateQuestion = mutation({

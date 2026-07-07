@@ -25,4 +25,10 @@ export const APP_ERROR_MESSAGES: Record<AppErrorCodeType, string> = {
     "That review item has already been resolved.",
   [AppErrorCode.REVIEW_ITEM_SOURCE_REQUIRED]:
     "Enter a source label and year to approve this fact.",
+  [AppErrorCode.COURSE_NOT_FOUND]: "That course could not be found.",
+  [AppErrorCode.QUESTION_NOT_FOUND]: "That question could not be found.",
+  [AppErrorCode.QUESTION_INVALID]:
+    "Fill in the prompt, at least two options, a correct answer, and an explanation.",
+  [AppErrorCode.UNITS_REQUIRED]:
+    "Select at least one unit of this run's course to send back.",
 };

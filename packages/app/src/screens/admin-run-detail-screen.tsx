@@ -131,6 +131,20 @@ function AdminRunDetailContent() {
                     </Text>
                   </Link>
                 ) : null}
+                {runId &&
+                (run.state === "GATE_2_COURSE_REVIEW" ||
+                  (run.courseId &&
+                    ["COMPILED", "QA_RUNNING", "QA_PASSED", "QA_FLAGGED"].includes(
+                      run.state
+                    ))) ? (
+                  <Link href={`/admin/runs/${runId}/gate-2`}>
+                    <Text className="text-primary font-semibold">
+                      {run.state === "GATE_2_COURSE_REVIEW"
+                        ? "Open gate-2 course review →"
+                        : "View compiled course →"}
+                    </Text>
+                  </Link>
+                ) : null}
               </Box>
 
               {cost && cost.totalCalls > 0 ? (

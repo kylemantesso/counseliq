@@ -181,6 +181,49 @@ export const adminStartRun = mutation({
   },
 });
 
+/**
+ * Gate-2 send-back: re-author the selected units with the judge's flags as
+ * feedback. Preserved units pass through the recompile unchanged; the
+ * re-authored course goes back through the QA judge before returning to
+ * gate 2.
+ */
+export const adminSendBackForReauthoring = mutation({
+  args: {
+    runId: v.id("runs"),
+    unitIds: v.array(v.id("microUnits")),
+  },
+  handler: async (ctx, args) => {
+    const admin = await requireAdmin(ctx);
+    const run = await ctx.db.get(args.runId);
+    if (!run) {
+      appError(AppErrorCode.RUN_NOT_FOUND);
+    }
+    if (run.state !== GATE_STATES[2]) {
+      appError(AppErrorCode.RUN_NOT_AT_GATE);
+    }
+    if (args.unitIds.length === 0) {
+      appError(AppErrorCode.UNITS_REQUIRED);
+    }
+    for (const unitId of args.unitIds) {
+      const unit = await ctx.db.get(unitId);
+      if (!unit || !run.courseId || unit.courseId !== run.courseId) {
+        appError(AppErrorCode.UNITS_REQUIRED);
+      }
+    }
+    await applyRunTransition(ctx, {
+      runId: args.runId,
+      toState: "COMPILING",
+      actor: admin.email,
+      detail: `gate 2 send-back: re-authoring ${args.unitIds.length} unit(s)`,
+    });
+    await start(ctx, internal.pipeline.workflows.compileAndJudge, {
+      runId: args.runId,
+      reAuthorUnitIds: args.unitIds,
+    });
+    return null;
+  },
+});
+
 /** Admin-only public wrapper for decideGate. */
 export const adminDecideGate = mutation({
   args: {

@@ -15,6 +15,7 @@ export { AdminSourceDocsScreen } from "./src/screens/admin-source-docs-screen";
 export { AdminSourceDocDetailScreen } from "./src/screens/admin-source-doc-detail-screen";
 export { AdminRunDetailScreen } from "./src/screens/admin-run-detail-screen";
 export { AdminGateOneReviewScreen } from "./src/screens/admin-gate-one-review-screen";
+export { AdminGateTwoReviewScreen } from "./src/screens/admin-gate-two-review-screen";
 export { ForceUpgradeScreen } from "./src/screens/force-upgrade-screen";
 
 export { AppErrorBoundary } from "./src/components/app-error-boundary";

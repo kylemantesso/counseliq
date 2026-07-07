@@ -18,12 +18,14 @@ import { currentModelRouting, modelForTask, type LlmTask } from "../llm/models";
 import {
   AUTHOR_UNIT_JSON_SCHEMA,
   COMPILE_STRUCTURE_JSON_SCHEMA,
+  DRAFT_QUESTION_JSON_SCHEMA,
 } from "../llm/schemas";
 import { PROMPTS } from "../prompts";
 import { definitionToWire } from "../courses";
 import {
   llmAuthoredUnitSchema,
   llmCompileStructureSchema,
+  llmDraftQuestionSchema,
   type LlmAuthoredUnit,
 } from "./schemas";
 import {
@@ -256,6 +258,84 @@ export const authorUnit = internalAction({
       ...(args.feedback !== undefined ? { feedback: args.feedback } : {}),
     });
     return { status: record.status };
+  },
+});
+
+// --- Single-question regeneration (gate-2 UI) ---
+
+export const regenerateQuestion = internalAction({
+  args: {
+    runId: v.id("runs"),
+    questionId: v.id("questions"),
+  },
+  handler: async (ctx, args) => {
+    const context = await ctx.runQuery(
+      internal.pipeline.courses.getQuestionContextInternal,
+      { questionId: args.questionId }
+    );
+    const body = context.question.body as QuestionBankItem;
+    const inventory: ReviewedInventory = await ctx.runQuery(
+      internal.pipeline.courses.getReviewedInventoryInternal,
+      { runId: args.runId }
+    );
+    const facts = inventory.facts.filter(
+      (fact) => fact.conceptKey === (context.unit?.meta?.conceptKey ?? body.conceptTag)
+        || fact.conceptKey === body.conceptTag
+    );
+
+    const userText = [
+      `Regenerate ONE ${body.type === "commit" ? "commit (hook)" : "retrieve (MCQ)"} question for a micro-learning unit.`,
+      `Concept tag: ${body.conceptTag}`,
+      context.unit
+        ? `Unit narration:\n${JSON.stringify(context.unit.narration, null, 2)}`
+        : "",
+      ``,
+      `Approved facts (the ONLY factual grounding):`,
+      JSON.stringify(facts.map(factForPrompt), null, 2),
+      ``,
+      `The current question (write a DIFFERENT question testing the same concept):`,
+      JSON.stringify(
+        {
+          prompt: body.prompt,
+          options: body.options,
+          correctIndex: body.correctIndex,
+          explanation: body.explanation,
+        },
+        null,
+        2
+      ),
+      ``,
+      `Prompts already used elsewhere in this course (yours must not duplicate any):`,
+      JSON.stringify(context.otherPrompts, null, 2),
+      ``,
+      `Output ONLY a JSON object with prompt, options (2-4), correctIndex, explanation.`,
+    ].join("\n");
+
+    const client = defaultClient();
+    const { value, usages } = await completeStructured(
+      client,
+      "author-unit",
+      {
+        system: PROMPTS["author-unit"].content,
+        user: [{ type: "text", text: userText }],
+        schemaName: "draft_question",
+        jsonSchema: DRAFT_QUESTION_JSON_SCHEMA,
+      },
+      llmDraftQuestionSchema
+    );
+    await recordUsages(ctx, args.runId, "author-unit", usages);
+
+    await ctx.runMutation(internal.pipeline.courses.replaceQuestionBody, {
+      questionId: args.questionId,
+      prompt: value.prompt,
+      options: value.options,
+      correctIndex: value.correctIndex,
+      explanation: value.explanation,
+    });
+    console.log(
+      `[pipeline] run ${args.runId}: regenerated question ${body.id}`
+    );
+    return null;
   },
 });
 

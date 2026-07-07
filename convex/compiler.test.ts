@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 import { convexTest } from "convex-test";
 import { describe, expect, test } from "vitest";
-import { internal } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import schema from "./schema";
 import {
@@ -109,6 +109,78 @@ describe("M4 state machine resequencing", () => {
         runId,
         gate: 2,
         decision: "approve",
+      })
+    ).rejects.toThrow(/Component "workflow" is not registered/);
+  });
+
+  test("gate 2 send-back validates units and re-runs the compile workflow", async () => {
+    const { t, runId } = await setupRun("GATE_2_COURSE_REVIEW");
+    const { unitId, strayUnitId } = await t.run(async (ctx) => {
+      const run = await ctx.db.get(runId);
+      const courseId = await ctx.db.insert("courses", {
+        institutionId: run!.institutionId,
+        title: "Test course",
+        level: 3,
+        version: 1,
+        status: "in_review",
+      });
+      await ctx.db.patch(runId, { courseId });
+      const unitId = await ctx.db.insert("microUnits", {
+        courseId,
+        moduleKey: "m1",
+        unitKey: "mu-101",
+        concept: "campuses",
+        narration: [],
+        cards: [],
+        state: "draft",
+      });
+      const otherCourseId = await ctx.db.insert("courses", {
+        institutionId: run!.institutionId,
+        title: "Other course",
+        level: 3,
+        version: 1,
+        status: "in_review",
+      });
+      const strayUnitId = await ctx.db.insert("microUnits", {
+        courseId: otherCourseId,
+        moduleKey: "m1",
+        unitKey: "mu-999",
+        concept: "other",
+        narration: [],
+        cards: [],
+        state: "draft",
+      });
+      await ctx.db.insert("users", {
+        tokenIdentifier: "https://convex.test|admin",
+        name: "Admin",
+        email: "admin@test.dev",
+        createdAt: Date.now(),
+        isAdmin: true,
+      });
+      return { unitId, strayUnitId };
+    });
+    const asAdmin = t.withIdentity({ subject: "admin" });
+
+    // Empty selection and foreign units are rejected before any transition.
+    await expect(
+      asAdmin.mutation(api.pipeline.runs.adminSendBackForReauthoring, {
+        runId,
+        unitIds: [],
+      })
+    ).rejects.toThrow(/UNITS_REQUIRED/);
+    await expect(
+      asAdmin.mutation(api.pipeline.runs.adminSendBackForReauthoring, {
+        runId,
+        unitIds: [strayUnitId],
+      })
+    ).rejects.toThrow(/UNITS_REQUIRED/);
+
+    // A valid selection gets past validation + the COMPILING transition to
+    // the workflow start (component not registered in convex-test).
+    await expect(
+      asAdmin.mutation(api.pipeline.runs.adminSendBackForReauthoring, {
+        runId,
+        unitIds: [unitId],
       })
     ).rejects.toThrow(/Component "workflow" is not registered/);
   });

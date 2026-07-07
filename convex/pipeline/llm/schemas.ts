@@ -7,6 +7,7 @@ import { zodToJsonSchema } from "zod-to-json-schema";
 import {
   llmAuthoredUnitSchema,
   llmCompileStructureSchema,
+  llmDraftQuestionSchema,
   llmJudgeCourseSchema,
 } from "../compiler/schemas";
 
@@ -35,3 +36,4 @@ export const COMPILE_STRUCTURE_JSON_SCHEMA = toJsonSchema(
 );
 export const AUTHOR_UNIT_JSON_SCHEMA = toJsonSchema(llmAuthoredUnitSchema);
 export const JUDGE_COURSE_JSON_SCHEMA = toJsonSchema(llmJudgeCourseSchema);
+export const DRAFT_QUESTION_JSON_SCHEMA = toJsonSchema(llmDraftQuestionSchema);
