@@ -247,11 +247,14 @@ async function main() {
     const docFacts = facts.filter((f) => inDoc(f.provenance));
     const docEntities = entities.filter((e) => inDoc(e.provenance));
 
-    // Concept recall.
+    // Concept recall. A labelled concept matches on its title or any alias.
     const missedConcepts = [];
     let matched = 0;
     for (const labelled of label.concepts) {
-      if (docConcepts.some((c) => titlesMatch(labelled.title, c.title))) {
+      const wanted = [labelled.title, ...(labelled.aliases ?? [])];
+      if (
+        docConcepts.some((c) => wanted.some((w) => titlesMatch(w, c.title)))
+      ) {
         matched += 1;
       } else {
         missedConcepts.push(labelled.title);

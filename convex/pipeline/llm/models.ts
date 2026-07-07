@@ -27,12 +27,29 @@ const ENV_OVERRIDES: Record<LlmTask, string> = {
   "infer-theme": "MODEL_INFER_THEME",
 };
 
+/**
+ * Output-token caps per task. Sent as max_tokens on every request: bounds
+ * worst-case cost per call, and OpenRouter's affordability check otherwise
+ * assumes the model's maximum (65k for Gemini 2.5 Flash), which rejects
+ * requests on credit-limited keys with a 402.
+ */
+const MAX_OUTPUT_TOKENS: Record<LlmTask, number> = {
+  "extract-page": 4096,
+  "merge-inventory": 16384,
+  "infer-theme": 2048,
+};
+
 /** OpenRouter model string for a task (env override > default). */
 export function modelForTask(task: LlmTask): string {
   const override = process.env[ENV_OVERRIDES[task]];
   return override && override.trim() !== ""
     ? override.trim()
     : DEFAULT_MODELS[task];
+}
+
+/** max_tokens for a task's requests. */
+export function maxTokensForTask(task: LlmTask): number {
+  return MAX_OUTPUT_TOKENS[task];
 }
 
 /** All tasks with their currently-routed models (for runs.promptVersions). */

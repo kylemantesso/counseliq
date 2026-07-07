@@ -64,6 +64,22 @@ function run(command, args, options = {}) {
   return result;
 }
 
+/**
+ * Reads a var from the repo-root .env.local as a fallback for values not
+ * exported in the shell (e.g. OPENROUTER_API_KEY lives there, not in env).
+ */
+function rootEnvLocalValue(key) {
+  try {
+    const envFile = readFileSync(path.join(ROOT, ".env.local"), "utf8");
+    const match = envFile.match(
+      new RegExp(`^${key}=(.*)$`, "m")
+    );
+    return match ? match[1].trim() : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Clerk publishable keys encode the frontend API host in base64. */
 function clerkIssuerFromWebEnv() {
   try {
@@ -122,8 +138,9 @@ function setConvexEnvVars() {
   if (process.env.ADMIN_EMAILS) {
     vars.ADMIN_EMAILS = process.env.ADMIN_EMAILS;
   }
-  // LLM extraction (M3). Forward when present; an already-set value on the
-  // local deployment persists across stack restarts either way.
+  // LLM extraction (M3). Forward when present (shell env wins over the
+  // repo-root .env.local); an already-set value on the local deployment
+  // persists across stack restarts either way.
   for (const key of [
     "OPENROUTER_API_KEY",
     "MODEL_EXTRACT_PAGE",
@@ -132,9 +149,15 @@ function setConvexEnvVars() {
     "EXTRACTION_PARALLELISM",
     "EXTRACTION_MODE",
   ]) {
-    if (process.env[key]) {
-      vars[key] = process.env[key];
+    const value = process.env[key] ?? rootEnvLocalValue(key);
+    if (value) {
+      vars[key] = value;
     }
+  }
+  if (!vars.OPENROUTER_API_KEY) {
+    console.warn(
+      "! OPENROUTER_API_KEY not found in the shell env or .env.local — EXTRACTING will fail until it is set on the local deployment."
+    );
   }
 
   for (const [key, value] of Object.entries(vars)) {

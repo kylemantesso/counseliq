@@ -1,5 +1,5 @@
 import type { z } from "zod";
-import { modelForTask, type LlmTask } from "./models";
+import { maxTokensForTask, modelForTask, type LlmTask } from "./models";
 
 /**
  * Narrow LLM interface for the extraction pipeline. All pipeline code
@@ -95,11 +95,18 @@ export function createOpenRouterClient(options?: {
 
   async function requestOnce(
     model: string,
+    maxTokens: number,
     input: LlmCompleteInput,
     useJsonSchema: boolean
   ): Promise<Response> {
     const body = {
       model,
+      // Bounds worst-case output cost; without it OpenRouter's affordability
+      // check assumes the model max and 402s on credit-limited keys.
+      max_tokens: maxTokens,
+      // Extraction is a recognition task, not a creative one: greedy decoding
+      // keeps eval runs comparable across executions.
+      temperature: 0,
       messages: [
         {
           role: "system",
@@ -146,11 +153,17 @@ export function createOpenRouterClient(options?: {
         throw new LlmError("OPENROUTER_API_KEY is not configured", false);
       }
       const model = modelForTask(task);
+      const maxTokens = maxTokensForTask(task);
       let useJsonSchema = true;
 
       for (let attempt = 1; attempt <= MAX_TRANSPORT_ATTEMPTS; attempt++) {
         const startedAt = Date.now();
-        const response = await requestOnce(model, input, useJsonSchema);
+        const response = await requestOnce(
+          model,
+          maxTokens,
+          input,
+          useJsonSchema
+        );
 
         if (response.status === 429 || response.status >= 500) {
           if (attempt === MAX_TRANSPORT_ATTEMPTS) {

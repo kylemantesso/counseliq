@@ -211,6 +211,11 @@ export const labelledConceptSchema = z
   .object({
     key: z.string().min(1),
     title: z.string().min(1),
+    /**
+     * Alternate titles that also count as this concept (the same topic is
+     * often legitimately titled differently between extraction runs).
+     */
+    aliases: z.array(z.string().min(1)).optional(),
     /** 1-based page numbers the concept comes from. */
     pages: z.array(z.number().int().positive()).min(1),
   })

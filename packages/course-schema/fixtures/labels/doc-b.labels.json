@@ -2,16 +2,74 @@
   "doc": "doc-b",
   "confirmed": false,
   "concepts": [
-    { "key": "campus-facilities", "title": "Campus facilities and innovation hubs", "pages": [2] },
-    { "key": "campuses-locations", "title": "Campuses and locations", "pages": [3] },
-    { "key": "living-in-melbourne", "title": "Living in Melbourne", "pages": [4] },
-    { "key": "regional-victoria", "title": "Regional Victoria", "pages": [4] },
-    { "key": "cost-of-living", "title": "Cost of living", "pages": [5] },
-    { "key": "student-accommodation", "title": "Student accommodation", "pages": [5] },
-    { "key": "study-areas", "title": "Study areas", "pages": [6] },
-    { "key": "student-services", "title": "Student services", "pages": [7] },
-    { "key": "student-experience", "title": "Student experience", "pages": [7] },
-    { "key": "how-to-apply", "title": "How to apply and entry requirements", "pages": [8] }
+    {
+      "key": "campus-facilities",
+      "title": "Campus facilities and innovation hubs",
+      "aliases": ["University facilities"],
+      "pages": [2]
+    },
+    {
+      "key": "campuses-locations",
+      "title": "Campuses and locations",
+      "aliases": ["Campus locations", "Campuses in Victoria", "Regional campuses"],
+      "pages": [3]
+    },
+    {
+      "key": "living-in-melbourne",
+      "title": "Living in Melbourne",
+      "aliases": [
+        "Melbourne and Victoria",
+        "Melbourne and Victoria lifestyle",
+        "Multicultural Melbourne"
+      ],
+      "pages": [4]
+    },
+    {
+      "key": "regional-victoria",
+      "title": "Regional Victoria",
+      "aliases": ["Melbourne and regional Victoria", "Victoria overview"],
+      "pages": [4]
+    },
+    {
+      "key": "cost-of-living",
+      "title": "Cost of living",
+      "pages": [5]
+    },
+    {
+      "key": "student-accommodation",
+      "title": "Student accommodation",
+      "aliases": [
+        "Living at university",
+        "Accommodation and cost of living",
+        "Residence facilities",
+        "Student residences"
+      ],
+      "pages": [5]
+    },
+    {
+      "key": "study-areas",
+      "title": "Study areas",
+      "aliases": ["University disciplines and schools", "Courses and study areas"],
+      "pages": [6]
+    },
+    {
+      "key": "student-services",
+      "title": "Student services",
+      "aliases": ["Student support services", "Student experience and support"],
+      "pages": [7]
+    },
+    {
+      "key": "student-experience",
+      "title": "Student experience",
+      "aliases": ["Student experience and support", "Student life"],
+      "pages": [7]
+    },
+    {
+      "key": "how-to-apply",
+      "title": "How to apply and entry requirements",
+      "aliases": ["Application and entry requirements"],
+      "pages": [8]
+    }
   ],
   "knownDirtyStatistics": [
     {

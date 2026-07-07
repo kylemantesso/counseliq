@@ -2,23 +2,104 @@
   "doc": "doc-a",
   "confirmed": false,
   "concepts": [
-    { "key": "university-history", "title": "University history", "pages": [4] },
-    { "key": "university-rankings", "title": "University rankings", "pages": [6, 7] },
-    { "key": "schools-and-disciplines", "title": "Schools and disciplines", "pages": [8, 40] },
-    { "key": "strategic-plan", "title": "Strategic plan and vision", "pages": [9, 10] },
-    { "key": "health-strengths", "title": "Health rankings and clinical training", "pages": [12] },
-    { "key": "health-workforce-investment", "title": "Health workforce investment", "pages": [13] },
-    { "key": "ai-technology-partnerships", "title": "AI and technology partnerships", "pages": [14, 15] },
-    { "key": "digital-health-programs", "title": "Digital health programs", "pages": [16] },
-    { "key": "medical-ai-innovation", "title": "Artificial intelligence in medical innovation", "pages": [17] },
-    { "key": "health-partnerships", "title": "Health partnerships and virtual care", "pages": [18] },
-    { "key": "data-analytics", "title": "Business analytics and data science", "pages": [19, 20] },
-    { "key": "global-footprint", "title": "Global footprint and international partnerships", "pages": [24] },
-    { "key": "university-city", "title": "University City vision", "pages": [26, 27] },
-    { "key": "sustainability-net-zero", "title": "Sustainability and net zero campuses", "pages": [30, 31, 36] },
-    { "key": "sustainable-agriculture", "title": "Sustainable agriculture and food security", "pages": [32, 33] },
-    { "key": "womens-sport", "title": "Women's sport", "pages": [38] },
-    { "key": "australian-ballet", "title": "Australian Ballet partnership", "pages": [39] }
+    {
+      "key": "university-history",
+      "title": "University history",
+      "aliases": ["History and vision", "University history and vision"],
+      "pages": [4]
+    },
+    {
+      "key": "university-rankings",
+      "title": "University rankings",
+      "pages": [6, 7]
+    },
+    {
+      "key": "schools-and-disciplines",
+      "title": "Schools and disciplines",
+      "aliases": ["University disciplines and schools", "Disciplines and schools of the university"],
+      "pages": [8, 40]
+    },
+    {
+      "key": "strategic-plan",
+      "title": "Strategic plan and vision",
+      "aliases": ["Strategic plan"],
+      "pages": [9, 10]
+    },
+    {
+      "key": "health-strengths",
+      "title": "Health rankings and clinical training",
+      "aliases": ["Health education and clinical placements", "Rural health and clinical placements"],
+      "pages": [12]
+    },
+    {
+      "key": "health-workforce-investment",
+      "title": "Health workforce investment",
+      "aliases": ["Care Economy CRC", "Clinical teaching investment"],
+      "pages": [13]
+    },
+    {
+      "key": "ai-technology-partnerships",
+      "title": "AI and technology partnerships",
+      "aliases": ["AI and technology"],
+      "pages": [14, 15]
+    },
+    {
+      "key": "digital-health-programs",
+      "title": "Digital health programs",
+      "aliases": ["Health and AI programs"],
+      "pages": [16]
+    },
+    {
+      "key": "medical-ai-innovation",
+      "title": "Artificial intelligence in medical innovation",
+      "pages": [17]
+    },
+    {
+      "key": "health-partnerships",
+      "title": "Health partnerships and virtual care",
+      "aliases": ["Virtual emergency department", "Virtual care partnerships"],
+      "pages": [18]
+    },
+    {
+      "key": "data-analytics",
+      "title": "Business analytics and data science",
+      "aliases": ["Analytics, AI and data degrees"],
+      "pages": [19, 20]
+    },
+    {
+      "key": "global-footprint",
+      "title": "Global footprint and international partnerships",
+      "aliases": ["Global partnerships and international engagement"],
+      "pages": [24]
+    },
+    {
+      "key": "university-city",
+      "title": "University City vision",
+      "aliases": ["University City"],
+      "pages": [26, 27]
+    },
+    {
+      "key": "sustainability-net-zero",
+      "title": "Sustainability and net zero campuses",
+      "aliases": ["Net zero campuses"],
+      "pages": [30, 31, 36]
+    },
+    {
+      "key": "sustainable-agriculture",
+      "title": "Sustainable agriculture and food security",
+      "aliases": ["Sustainability and food security", "Sustainable agriculture and food"],
+      "pages": [32, 33]
+    },
+    {
+      "key": "womens-sport",
+      "title": "Women's sport",
+      "pages": [38]
+    },
+    {
+      "key": "australian-ballet",
+      "title": "Australian Ballet partnership",
+      "pages": [39]
+    }
   ],
   "knownDirtyStatistics": [
     {

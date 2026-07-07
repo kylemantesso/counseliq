@@ -68,6 +68,7 @@ describe("createOpenRouterClient", () => {
     const [, requestInit] = fetchImpl.mock.calls[0];
     const body = JSON.parse(requestInit.body);
     expect(body.usage).toEqual({ include: true });
+    expect(body.max_tokens).toBe(4096);
     expect(body.response_format.type).toBe("json_schema");
     expect(body.messages[0].content[0].cache_control).toEqual({
       type: "ephemeral",
