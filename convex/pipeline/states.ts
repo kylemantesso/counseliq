@@ -10,7 +10,9 @@ export type ReviewGate = Infer<typeof reviewGateValidator>;
  * non-FAILED state may transition to FAILED.
  */
 export const ALLOWED_TRANSITIONS: Record<RunState, RunState[]> = {
-  UPLOADED: ["EXTRACTING"],
+  UPLOADED: ["CONVERTING"],
+  CONVERTING: ["CONVERTED"],
+  CONVERTED: ["EXTRACTING"],
   EXTRACTING: ["EXTRACTED"],
   EXTRACTED: ["COMPILING"],
   COMPILING: ["COMPILED"],

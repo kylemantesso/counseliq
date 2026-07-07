@@ -16,7 +16,8 @@ type GateDecision = "approve" | "reject";
 
 async function startRunHelper(
   ctx: MutationCtx,
-  institutionId: Id<"institutions">
+  institutionId: Id<"institutions">,
+  sourceDocIds: Id<"sourceDocs">[] = []
 ): Promise<Id<"runs">> {
   const institution = await ctx.db.get(institutionId);
   if (!institution) {
@@ -31,6 +32,15 @@ async function startRunHelper(
     state: "UPLOADED",
     promptVersions: {},
   });
+
+  // Link registered source docs to this run (a run may ingest several).
+  for (const sourceDocId of sourceDocIds) {
+    const doc = await ctx.db.get(sourceDocId);
+    if (!doc) {
+      appError(AppErrorCode.SOURCE_DOC_NOT_FOUND);
+    }
+    await ctx.db.patch(sourceDocId, { runId });
+  }
 
   await start(ctx, internal.pipeline.workflows.ingestAndCompile, { runId });
 
@@ -119,9 +129,12 @@ async function decideGateHelper(
 
 /** Create a run in UPLOADED and kick off the ingest-and-compile phase. */
 export const startRun = internalMutation({
-  args: { institutionId: v.id("institutions") },
+  args: {
+    institutionId: v.id("institutions"),
+    sourceDocIds: v.optional(v.array(v.id("sourceDocs"))),
+  },
   handler: async (ctx, args) => {
-    return await startRunHelper(ctx, args.institutionId);
+    return await startRunHelper(ctx, args.institutionId, args.sourceDocIds);
   },
 });
 
@@ -146,10 +159,13 @@ export const decideGate = internalMutation({
 
 /** Admin-only public wrapper for startRun. */
 export const adminStartRun = mutation({
-  args: { institutionId: v.id("institutions") },
+  args: {
+    institutionId: v.id("institutions"),
+    sourceDocIds: v.optional(v.array(v.id("sourceDocs"))),
+  },
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
-    return await startRunHelper(ctx, args.institutionId);
+    return await startRunHelper(ctx, args.institutionId, args.sourceDocIds);
   },
 });
 

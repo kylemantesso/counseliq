@@ -15,4 +15,7 @@ export const APP_ERROR_MESSAGES: Record<AppErrorCodeType, string> = {
     "That pipeline run cannot move to the requested state.",
   [AppErrorCode.RUN_NOT_AT_GATE]:
     "That pipeline run is not waiting at the requested review gate.",
+  [AppErrorCode.SOURCE_DOC_NOT_FOUND]: "That source document could not be found.",
+  [AppErrorCode.OBJECT_STORE_NOT_CONFIGURED]:
+    "File storage is not configured. Contact an administrator.",
 };

@@ -23,6 +23,8 @@ export const notificationDeliveryStatusValidator = v.union(
 
 export const runStateValidator = v.union(
   v.literal("UPLOADED"),
+  v.literal("CONVERTING"),
+  v.literal("CONVERTED"),
   v.literal("EXTRACTING"),
   v.literal("EXTRACTED"),
   v.literal("COMPILING"),
@@ -70,6 +72,13 @@ export const courseStatusValidator = v.union(
   v.literal("in_review"),
   v.literal("published")
 );
+
+/** Candidate brand theme extracted by the converter (null for pdf-native docs). */
+export const candidateThemeValidator = v.object({
+  colors: v.array(v.string()),
+  fonts: v.array(v.string()),
+  logoCandidates: v.array(v.string()),
+});
 
 export default defineSchema({
   users: defineTable({
@@ -141,21 +150,44 @@ export default defineSchema({
 
   sourceDocs: defineTable({
     institutionId: v.id("institutions"),
+    // Linked when a run starts; a run may ingest multiple source docs.
+    runId: v.optional(v.id("runs")),
     kind: v.string(),
     objectKey: v.string(),
-    shape: v.string(),
+    shape: v.optional(v.string()),
     status: sourceDocStatusValidator,
     themeExtracted: v.optional(v.boolean()),
-  }).index("by_institution", ["institutionId"]),
+    // Populated by the conversion callback.
+    sourceDocHash: v.optional(v.string()),
+    pageCount: v.optional(v.number()),
+    theme: v.optional(v.union(candidateThemeValidator, v.null())),
+  })
+    .index("by_institution", ["institutionId"])
+    .index("by_run", ["runId"]),
 
   slides: defineTable({
     sourceDocId: v.id("sourceDocs"),
     n: v.number(),
     pngKey: v.string(),
-    text: v.any(),
+    thumbKey: v.optional(v.string()),
+    text: v.string(),
     notes: v.string(),
+    /** Content hash of the rendered page PNG. */
     hash: v.string(),
-  }).index("by_source_doc", ["sourceDocId"]),
+    /** Provenance ID: doc:{sourceDocId}:page:{n}. */
+    provenanceId: v.optional(v.string()),
+    embeddedImages: v.optional(
+      v.array(
+        v.object({
+          key: v.string(),
+          width: v.number(),
+          height: v.number(),
+        })
+      )
+    ),
+  })
+    .index("by_source_doc", ["sourceDocId"])
+    .index("by_source_doc_and_n", ["sourceDocId", "n"]),
 
   inventoryItems: defineTable({
     runId: v.id("runs"),
@@ -246,5 +278,5 @@ export default defineSchema({
     kind: v.string(),
     sourceProvenance: v.optional(v.string()),
     rights: v.optional(v.string()),
-  }),
+  }).index("by_object_key", ["objectKey"]),
 });

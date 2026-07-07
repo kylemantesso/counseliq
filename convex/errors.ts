@@ -13,6 +13,8 @@ export const AppErrorCode = {
   RUN_NOT_FOUND: "RUN_NOT_FOUND",
   RUN_TRANSITION_INVALID: "RUN_TRANSITION_INVALID",
   RUN_NOT_AT_GATE: "RUN_NOT_AT_GATE",
+  SOURCE_DOC_NOT_FOUND: "SOURCE_DOC_NOT_FOUND",
+  OBJECT_STORE_NOT_CONFIGURED: "OBJECT_STORE_NOT_CONFIGURED",
 } as const;
 
 export type AppErrorCodeType = (typeof AppErrorCode)[keyof typeof AppErrorCode];

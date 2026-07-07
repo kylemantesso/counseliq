@@ -7,8 +7,10 @@ export const workflow = new WorkflowManager(components.workflow);
 const ACTOR = "workflow";
 
 /**
- * Phase 1: UPLOADED -> EXTRACTING -> EXTRACTED -> COMPILING -> COMPILED,
- * then park the run at gate 1 with placeholder review items.
+ * Phase 1: UPLOADED -> CONVERTING -> CONVERTED -> EXTRACTING -> EXTRACTED ->
+ * COMPILING -> COMPILED, then park the run at gate 1 with placeholder review
+ * items. Conversion is real (dispatched to services/converter); EXTRACTING
+ * onward remains stubbed until M3.
  */
 export const ingestAndCompile = workflow
   .define({
@@ -16,6 +18,42 @@ export const ingestAndCompile = workflow
   })
   .handler(async (step, args): Promise<void> => {
     const { runId } = args;
+
+    await step.runMutation(internal.pipeline.transitions.transitionRun, {
+      runId,
+      toState: "CONVERTING",
+      actor: ACTOR,
+      detail: "ingestAndCompile: dispatching source doc conversion",
+    });
+    const conversion: { status: string; cause?: string } =
+      await step.runAction(
+        internal.pipeline.ingestion.dispatchAndAwaitConversions,
+        { runId }
+      );
+    if (conversion.status === "empty") {
+      // No source docs on the run (M1-style walkthroughs, tests): nothing to
+      // convert, advance directly.
+      await step.runMutation(internal.pipeline.transitions.transitionRun, {
+        runId,
+        toState: "CONVERTED",
+        actor: ACTOR,
+        detail: "ingestAndCompile: no source docs to convert",
+      });
+    } else if (conversion.status === "timeout") {
+      await step.runMutation(internal.pipeline.transitions.transitionRun, {
+        runId,
+        toState: "FAILED",
+        actor: ACTOR,
+        detail: "ingestAndCompile: conversion timed out",
+        error: {
+          retryable: true,
+          cause: conversion.cause ?? "conversion timed out",
+        },
+      });
+      return;
+    }
+    // status === "converted": the callback already transitioned the run to
+    // CONVERTED when the final source doc landed.
 
     await step.runMutation(internal.pipeline.transitions.transitionRun, {
       runId,

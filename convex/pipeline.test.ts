@@ -32,7 +32,7 @@ describe("transitionRun", () => {
 
     await t.mutation(internal.pipeline.transitions.transitionRun, {
       runId,
-      toState: "EXTRACTING",
+      toState: "CONVERTING",
       actor: "test",
       detail: "test transition",
     });
@@ -42,12 +42,12 @@ describe("transitionRun", () => {
       { runId }
     );
 
-    expect(run?.state).toBe("EXTRACTING");
+    expect(run?.state).toBe("CONVERTING");
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({
       runId,
       fromState: "UPLOADED",
-      toState: "EXTRACTING",
+      toState: "CONVERTING",
       actor: "test",
       detail: "test transition",
     });
@@ -70,6 +70,18 @@ describe("transitionRun", () => {
     );
     expect(run?.state).toBe("UPLOADED");
     expect(events).toHaveLength(0);
+  });
+
+  test("skipping conversion (UPLOADED -> EXTRACTING) is illegal in M2", async () => {
+    const { t, runId } = await setupRun("UPLOADED");
+
+    await expect(
+      t.mutation(internal.pipeline.transitions.transitionRun, {
+        runId,
+        toState: "EXTRACTING",
+        actor: "test",
+      })
+    ).rejects.toThrow(/RUN_TRANSITION_INVALID/);
   });
 
   test("any state may fail, but FAILED is terminal", async () => {
