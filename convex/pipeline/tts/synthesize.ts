@@ -5,7 +5,6 @@ import { internalAction } from "../../_generated/server";
 import type { ActionCtx } from "../../_generated/server";
 import type { Doc, Id } from "../../_generated/dataModel";
 import { components, internal } from "../../_generated/api";
-import { AppErrorCode, appError } from "../../errors";
 import {
   assembleUnitClock,
   deriveWords,
@@ -19,6 +18,7 @@ import { buildSubstitutionMap } from "./lexicon";
 import { sentenceHash, sha256Hex, unitContentHash } from "./hashes";
 import {
   createProvider,
+  defaultVoice,
   ttsModel,
   ttsProviderName,
   ttsParallelism,
@@ -57,8 +57,11 @@ function plannedModel(): string {
 }
 
 /**
- * Resolve the provider voice ID: dev env override > institution voiceConfig.
- * The mock provider gets a stable default so tests need no configuration.
+ * Resolve the provider voice ID: dev env override > institution voiceConfig
+ * > the platform default narrator (an institution without a configured
+ * voice still synthesises — the manifest records the default voiceRef so
+ * the fallback is visible at review/publish). The mock provider gets a
+ * stable default so tests need no configuration.
  */
 function resolveVoice(voice: RunVoiceContext): {
   voiceId: string;
@@ -75,7 +78,7 @@ function resolveVoice(voice: RunVoiceContext): {
   if (ttsProviderName() === "mock") {
     return { voiceId: "mock-voice", voiceRef };
   }
-  appError(AppErrorCode.TTS_NOT_CONFIGURED);
+  return defaultVoice();
 }
 
 type UnitSynthesisResult =

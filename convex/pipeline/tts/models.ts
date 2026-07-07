@@ -25,6 +25,24 @@ export const OUTPUT_FORMAT = "mp3_44100_128";
 /** Constant silence inserted between sentences on the unit clock. */
 export const INTER_SENTENCE_GAP_MS = 250;
 
+/**
+ * Default narrator when neither ELEVENLABS_VOICE_ID nor the institution's
+ * voiceConfig names a voice: ElevenLabs' premade "Rachel"
+ * (21m00Tcm4TlvDq8ikWAM), a stable premade voice available to every
+ * account. Override per deployment with TTS_DEFAULT_VOICE_ID; brands get
+ * their own narrator via institutions.voiceConfig.
+ */
+export function defaultVoice(): { voiceId: string; voiceRef: string } {
+  const override = process.env.TTS_DEFAULT_VOICE_ID;
+  return {
+    voiceId:
+      override && override.trim() !== ""
+        ? override.trim()
+        : "21m00Tcm4TlvDq8ikWAM",
+    voiceRef: "counseliq-default",
+  };
+}
+
 /** ElevenLabs model string (env override > default). */
 export function ttsModel(): string {
   const override = process.env.TTS_MODEL;
