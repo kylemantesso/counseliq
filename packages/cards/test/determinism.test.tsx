@@ -1,4 +1,4 @@
-import { CARD_PROP_FIXTURES } from "@counseliq/course-schema";
+import { CARD_PROP_FIXTURES, CARD_TEMPLATES } from "@counseliq/course-schema";
 import { render } from "@testing-library/react";
 import { describe, expect, test } from "vitest";
 import { FallbackCard } from "../src/fallback-card";
@@ -30,6 +30,10 @@ function renderOnce(node: ReactNode): string {
 
 describe("render determinism", () => {
   const templates = Object.keys(TEMPLATE_COMPONENTS);
+
+  test("registry covers every CARD_TEMPLATES entry exactly", () => {
+    expect(templates.sort()).toEqual([...CARD_TEMPLATES].sort());
+  });
 
   for (const template of templates) {
     const props = (CARD_PROP_FIXTURES as Record<string, Record<string, unknown>>)[template];
