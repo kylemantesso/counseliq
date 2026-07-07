@@ -15,6 +15,13 @@ import { nextAfterSentence, seekTarget } from "./timeline-helpers";
  * wall-clock time is consulted, and only to span silence the artifact
  * itself defines.
  *
+ * SILENT FALLBACK: a sentence whose audio cannot load (missing object,
+ * expired URL, undecodable bytes — mock-mode artifacts are all three)
+ * free-runs the clock through its artifact duration instead of halting
+ * playback, so cards/captions stay reviewable and audio rejoins on the
+ * next healthy sentence. The host is still notified per failed key so it
+ * can re-presign.
+ *
  * Presigned URLs never appear anywhere except the elements' src.
  */
 
@@ -67,6 +74,9 @@ export function useUnitAudio({
 
   const [playing, setPlaying] = useState(false);
   const [currentSentenceIndex, setCurrentSentenceIndex] = useState(0);
+  /** audioKeys that 404'd/failed to decode — their sentences run silent. */
+  const failedKeysRef = useRef<Set<string>>(new Set());
+  const notifiedKeysRef = useRef<Set<string>>(new Set());
 
   const timingRef = useRef(timing);
   timingRef.current = timing;
@@ -110,14 +120,36 @@ export function useUnitAudio({
   const loadInto = useCallback(
     (el: HTMLAudioElement | null, index: number) => {
       if (!el) return false;
+      const t = timingRef.current;
+      const key = t?.sentences[index]?.audioKey;
+      if (!key || failedKeysRef.current.has(key)) return false;
       const url = urlFor(index);
       if (!url) return false;
       if (el.src !== url) el.src = url;
+      // Error attribution: the pair-level 'error' listener needs to know
+      // which sentence an element was carrying (idle preloads error too).
+      el.dataset.ciqSentenceIndex = String(index);
       el.muted = muted;
       return true;
     },
     [muted, urlFor]
   );
+
+  const notifyKeyFailed = useCallback((key: string) => {
+    failedKeysRef.current.add(key);
+    if (notifiedKeysRef.current.has(key)) return;
+    notifiedKeysRef.current.add(key);
+    onErrorRef.current?.(key);
+  }, []);
+
+  const finishUnit = useCallback(() => {
+    const t = timingRef.current;
+    if (!t) return;
+    clock.set(t.totalDurationMs);
+    setPlayingBoth(false);
+    stopRaf();
+    onEndedRef.current?.();
+  }, [clock, setPlayingBoth, stopRaf]);
 
   /** rAF publisher: audio-derived clock while a sentence plays, free-run in gaps. */
   const tick = useCallback(() => {
@@ -129,6 +161,10 @@ export function useUnitAudio({
       const now = gap.anchorClockMs + (performance.now() - gap.anchorPerfMs);
       if (now >= gap.untilMs) {
         gapRef.current = null;
+        if (gap.nextIndex >= t.sentences.length) {
+          finishUnit();
+          return;
+        }
         startSentenceRef.current(gap.nextIndex);
         return;
       }
@@ -141,11 +177,43 @@ export function useUnitAudio({
       }
     }
     rafRef.current = requestAnimationFrame(tick);
-  }, [clock]);
+  }, [clock, finishUnit]);
 
-  // startSentence is recursive-through-events; hold it in a ref so the
-  // stable 'ended' listener and gap ticks call the latest closure.
+  // startSentence/startSilent are recursive-through-events; hold them in
+  // refs so the stable 'ended'/'error' listeners and gap ticks call the
+  // latest closures.
   const startSentenceRef = useRef<(index: number) => void>(() => {});
+  const startSilentRef = useRef<(index: number, fromMs?: number) => void>(() => {});
+
+  /**
+   * Free-run the clock through a sentence whose audio is unavailable:
+   * same mechanism as artifact gaps, spanning the sentence (and the gap
+   * that follows it) up to the next sentence's start.
+   */
+  const startSilent = useCallback(
+    (index: number, fromMs?: number) => {
+      const t = timingRef.current;
+      if (!t) return;
+      const s = t.sentences[index];
+      if (!s) return;
+      const next = t.sentences[index + 1];
+      sentenceRef.current = index;
+      setCurrentSentenceIndex(index);
+      const anchor = Math.max(fromMs ?? s.startMs, s.startMs);
+      gapRef.current = {
+        untilMs: next ? next.startMs : t.totalDurationMs,
+        nextIndex: index + 1,
+        anchorClockMs: anchor,
+        anchorPerfMs: performance.now(),
+      };
+      clock.set(Math.round(anchor));
+      stopRaf();
+      rafRef.current = requestAnimationFrame(tick);
+    },
+    [clock, stopRaf, tick]
+  );
+  startSilentRef.current = startSilent;
+
   const startSentence = useCallback(
     (index: number) => {
       const t = timingRef.current;
@@ -153,25 +221,30 @@ export function useUnitAudio({
       ensureElements();
       const el = activeEl();
       if (!loadInto(el, index)) {
+        // Missing URL or known-failed audio: notify the host (it may
+        // re-presign for later) and keep reviewing silently.
         const key = t.sentences[index]?.audioKey;
-        setPlayingBoth(false);
-        stopRaf();
-        if (key) onErrorRef.current?.(key);
+        if (key) notifyKeyFailed(key);
+        startSilentRef.current(index);
         return;
       }
       sentenceRef.current = index;
       setCurrentSentenceIndex(index);
       el!.currentTime = 0;
       void el!.play().catch(() => {
-        setPlayingBoth(false);
-        stopRaf();
+        // Playback refused (load failure races land in the 'error'
+        // listener; autoplay policy shouldn't apply — play() is
+        // user-gesture-initiated). Fall back to the silent clock.
+        if (sentenceRef.current === index && playingRef.current && !gapRef.current) {
+          startSilentRef.current(index);
+        }
       });
       // Preload the next sentence on the idle element.
       loadInto(idleEl(), index + 1);
       stopRaf();
       rafRef.current = requestAnimationFrame(tick);
     },
-    [ensureElements, loadInto, setPlayingBoth, stopRaf, tick]
+    [ensureElements, loadInto, notifyKeyFailed, stopRaf, tick]
   );
   startSentenceRef.current = startSentence;
 
@@ -209,10 +282,18 @@ export function useUnitAudio({
     const errorFor = (el: HTMLAudioElement) => () => {
       const t = timingRef.current;
       if (!t) return;
-      const s = t.sentences[sentenceRef.current];
-      setPlayingBoth(false);
-      stopRaf();
-      if (s) onErrorRef.current?.(s.audioKey);
+      // Attribute the error to the sentence the ELEMENT carries — idle
+      // preloads error too, and must not interrupt the active sentence.
+      const elIndex = Number(el.dataset.ciqSentenceIndex ?? "-1");
+      const key = t.sentences[elIndex]?.audioKey;
+      if (key) notifyKeyFailed(key);
+      const isActiveSentence =
+        elIndex === sentenceRef.current && !gapRef.current;
+      if (isActiveSentence && playingRef.current) {
+        // The playing sentence died: continue silently from where the
+        // clock got to.
+        startSilentRef.current(elIndex, clock.getSnapshot());
+      }
     };
     const endedA = () => {
       if (activeRef.current === "a") handleEnded();
@@ -232,9 +313,10 @@ export function useUnitAudio({
       a.removeEventListener("error", errA);
       b.removeEventListener("error", errB);
     };
-  }, [ensureElements, handleEnded, setPlayingBoth, stopRaf]);
+  }, [clock, ensureElements, handleEnded, notifyKeyFailed]);
 
-  // Reset on unit (timing identity) change.
+  // Reset on unit (timing identity) change. Failed keys are cleared —
+  // re-synthesised audio (new keys or fresh URLs) gets a fresh chance.
   useEffect(() => {
     elARef.current?.pause();
     elBRef.current?.pause();
@@ -243,6 +325,8 @@ export function useUnitAudio({
     setCurrentSentenceIndex(0);
     setPlayingBoth(false);
     stopRaf();
+    failedKeysRef.current.clear();
+    notifiedKeysRef.current.clear();
     clock.set(0);
   }, [timing, clock, setPlayingBoth, stopRaf]);
 
@@ -310,9 +394,19 @@ export function useUnitAudio({
       ensureElements();
       const el = activeEl();
       if (!loadInto(el, target.sentenceIndex)) {
+        // Unplayable audio at the seek target: position the clock there;
+        // free-run silently if we were playing.
         const key = t.sentences[target.sentenceIndex]?.audioKey;
-        pause();
-        if (key) onErrorRef.current?.(key);
+        if (key) notifyKeyFailed(key);
+        sentenceRef.current = target.sentenceIndex;
+        setCurrentSentenceIndex(target.sentenceIndex);
+        const positionMs =
+          t.sentences[target.sentenceIndex].startMs + target.offsetMs;
+        if (wasPlaying) {
+          startSilentRef.current(target.sentenceIndex, positionMs);
+        } else {
+          clock.set(positionMs);
+        }
         return;
       }
       sentenceRef.current = target.sentenceIndex;
@@ -328,7 +422,7 @@ export function useUnitAudio({
         el!.pause();
       }
     },
-    [clock, ensureElements, loadInto, pause, setPlayingBoth, stopRaf, tick]
+    [clock, ensureElements, loadInto, notifyKeyFailed, pause, setPlayingBoth, stopRaf, tick]
   );
 
   const skipToSentence = useCallback(
