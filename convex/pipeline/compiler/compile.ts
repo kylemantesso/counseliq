@@ -179,7 +179,7 @@ async function authorOneUnit(
     args.feedback
   );
 
-  const callAuthor = async (feedback?: string) => {
+  const callAuthorOnce = async (feedback?: string) => {
     const { value, usages } = await completeStructured<LlmAuthoredUnit>(
       client,
       "author-unit",
@@ -195,6 +195,28 @@ async function authorOneUnit(
     );
     await recordUsages(ctx, args.runId, "author-unit", usages);
     return value;
+  };
+
+  // Same provider flake as the structure pass (see runCompilation): the
+  // model occasionally emits a broken JSON fragment on BOTH of
+  // completeStructured's attempts. Feedback can't fix a decode flake, so
+  // re-issue the call fresh a couple of times before giving up.
+  const AUTHOR_JSON_ATTEMPTS = 3;
+  const callAuthor = async (feedback?: string) => {
+    let lastError: unknown;
+    for (let attempt = 1; attempt <= AUTHOR_JSON_ATTEMPTS; attempt++) {
+      try {
+        return await callAuthorOnce(feedback);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (!message.includes("invalid JSON")) throw error;
+        lastError = error;
+        console.log(
+          `[pipeline] run ${args.runId}: unit ${args.plan.unitId} author attempt ${attempt}/${AUTHOR_JSON_ATTEMPTS} returned broken JSON, re-issuing`
+        );
+      }
+    }
+    throw lastError;
   };
 
   let record: AuthoringRecord;
