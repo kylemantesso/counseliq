@@ -37,6 +37,9 @@ export const runStateValidator = v.union(
   v.literal("GENERATING_SCRIPT"),
   v.literal("GENERATING_ASSETS"),
   v.literal("GATE_3_PREVIEW"),
+  /** M5: gate-3 approval accepted; the publish workflow is assembling and
+   *  uploading the export + manifest artifacts. */
+  v.literal("PUBLISHING"),
   v.literal("PUBLISHED"),
   v.literal("FAILED")
 );
@@ -410,4 +413,31 @@ export default defineSchema({
     sourceProvenance: v.optional(v.string()),
     rights: v.optional(v.string()),
   }).index("by_object_key", ["objectKey"]),
+
+  /**
+   * Immutable publish snapshots (M5): one row per published course version,
+   * pointing at the content-addressed export.json + manifest.json in the
+   * object store. Rows are never patched — a re-publish is a new version
+   * (recompile bumps courses.version) and therefore a new row.
+   */
+  courseVersions: defineTable({
+    courseId: v.id("courses"),
+    institutionId: v.id("institutions"),
+    runId: v.id("runs"),
+    version: v.number(),
+    exportKey: v.string(),
+    manifestKey: v.string(),
+    specHash: v.string(),
+    publishedAt: v.number(),
+    publishedBy: v.string(),
+    counts: v.object({
+      modules: v.number(),
+      units: v.number(),
+      questions: v.number(),
+      audioArtifacts: v.number(),
+    }),
+  })
+    .index("by_course", ["courseId"])
+    .index("by_course_and_version", ["courseId", "version"])
+    .index("by_run", ["runId"]),
 });

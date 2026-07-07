@@ -283,7 +283,10 @@ export const generateAssets = workflow
   });
 
 /**
- * Phase 3: GATE_3_PREVIEW -> PUBLISHED. Started by decideGate(3).
+ * Phase 4 (M5): PUBLISHING -> PUBLISHED. Started by decideGate(3), which has
+ * already transitioned the run to PUBLISHING. Assembles + validates the
+ * Course Definition export, uploads export/timing/manifest artifacts to the
+ * content-addressed store, and freezes the course (courseVersions row).
  */
 export const publishPhase = workflow
   .define({
@@ -292,14 +295,39 @@ export const publishPhase = workflow
   .handler(async (step, args): Promise<void> => {
     const { runId } = args;
 
-    await step.runAction(internal.pipeline.steps.runNoopStage, {
-      runId,
-      stage: "publish",
-    });
+    const published: {
+      status: string;
+      cause?: string;
+      exportKey?: string;
+      manifestKey?: string;
+      specHash?: string;
+      version?: number;
+      warnings?: string[];
+    } = await step.runAction(internal.pipeline.publish.runPublish, { runId });
+    if (published.status !== "ok") {
+      await step.runMutation(internal.pipeline.transitions.transitionRun, {
+        runId,
+        toState: "FAILED",
+        actor: ACTOR,
+        detail: "publishPhase: publish failed",
+        error: {
+          retryable: true,
+          cause: published.cause ?? "publish failed",
+        },
+      });
+      return;
+    }
+    const warningSuffix =
+      published.warnings !== undefined && published.warnings.length > 0
+        ? ` — warnings: ${published.warnings.join("; ")}`
+        : "";
     await step.runMutation(internal.pipeline.transitions.transitionRun, {
       runId,
       toState: "PUBLISHED",
       actor: ACTOR,
-      detail: "publishPhase: run published",
+      detail:
+        `publishPhase: published v${published.version} — export ${published.exportKey}, ` +
+        `manifest ${published.manifestKey}, specHash ${published.specHash}` +
+        warningSuffix,
     });
   });

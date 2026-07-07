@@ -1,13 +1,78 @@
 "use node";
 
 import { v } from "convex/values";
-import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
+import {
+  S3Client,
+  PutObjectCommand,
+  GetObjectCommand,
+  HeadObjectCommand,
+} from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { action, internalAction } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { AppErrorCode, appError } from "../errors";
 
 const PRESIGN_TTL_SECONDS = 10 * 60;
+
+export interface ObjectStoreClient {
+  client: S3Client;
+  bucket: string;
+}
+
+/** Plain client factory for other "use node" pipeline files (publish). */
+export function createObjectStoreClient(): ObjectStoreClient {
+  return createClient();
+}
+
+/** True when the object exists (HeadObject succeeds). */
+export async function headObjectExists(
+  store: ObjectStoreClient,
+  key: string
+): Promise<boolean> {
+  try {
+    await store.client.send(
+      new HeadObjectCommand({ Bucket: store.bucket, Key: key })
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Content-addressed write: keys embed the content hash, so an existing
+ * object is by definition identical — skip the PUT.
+ */
+export async function putObjectIfAbsent(
+  store: ObjectStoreClient,
+  key: string,
+  body: string | Uint8Array,
+  contentType: string
+): Promise<void> {
+  if (await headObjectExists(store, key)) return;
+  await store.client.send(
+    new PutObjectCommand({
+      Bucket: store.bucket,
+      Key: key,
+      Body: body,
+      ContentType: contentType,
+    })
+  );
+}
+
+/** Fetch an object's body as UTF-8 text (publish verification). */
+export async function getObjectText(
+  store: ObjectStoreClient,
+  key: string
+): Promise<string> {
+  const result = await store.client.send(
+    new GetObjectCommand({ Bucket: store.bucket, Key: key })
+  );
+  if (!result.Body) {
+    throw new Error(`object ${key} has no body`);
+  }
+  return await result.Body.transformToString("utf-8");
+}
 
 function createClient(): { client: S3Client; bucket: string } {
   const endpoint = process.env.OBJECT_STORE_ENDPOINT;

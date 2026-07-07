@@ -12,6 +12,7 @@ import { AppErrorCode, appError } from "../../errors";
 import { requireAdmin } from "../../admin";
 import { normalizeSentence } from "./normalize";
 import { findBlockedTerms } from "./lexicon";
+import { assertCourseMutable } from "../courses";
 import {
   replaceGate3BlockedUnitItems,
   type BlockedUnitItem,
@@ -52,6 +53,9 @@ async function loadEditableRunUnit(
   if (!unit || !run.courseId || unit.courseId !== run.courseId) {
     appError(AppErrorCode.UNITS_REQUIRED);
   }
+  // Defense in depth: the state gate above should make this unreachable,
+  // but published course content must never change.
+  await assertCourseMutable(ctx, unit.courseId);
   return { run, unit };
 }
 

@@ -173,6 +173,12 @@ async function decideGateHelper(
       break;
     }
     case 3: {
+      await applyRunTransition(ctx, {
+        runId: args.runId,
+        toState: "PUBLISHING",
+        actor: args.reviewer,
+        detail: "gate 3 approved: publishing course",
+      });
       await start(ctx, internal.pipeline.workflows.publishPhase, {
         runId: args.runId,
       });

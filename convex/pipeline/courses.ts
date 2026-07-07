@@ -26,6 +26,25 @@ import { requireAdmin } from "../admin";
  * Convex runtime.
  */
 
+// --- Immutability ---
+
+/**
+ * Published courses are frozen (M5): every publish is an immutable
+ * courseVersions snapshot, so any content edit after publish would silently
+ * diverge the live rows from the published artifacts. Mutations that touch
+ * course content call this first; a re-publish is a new run → new version.
+ */
+export async function assertCourseMutable(
+  ctx: QueryCtx,
+  courseId: Id<"courses">
+): Promise<void> {
+  const course = await ctx.db.get(courseId);
+  if (!course) appError(AppErrorCode.COURSE_NOT_FOUND);
+  if (course.status === "published") {
+    appError(AppErrorCode.COURSE_PUBLISHED);
+  }
+}
+
 // --- Reviewed inventory (compiler input) ---
 
 /**
@@ -167,6 +186,7 @@ export const saveCompiledCourse = internalMutation({
     if (run.courseId) {
       const existing = await ctx.db.get(run.courseId);
       if (!existing) appError(AppErrorCode.RUN_NOT_FOUND);
+      await assertCourseMutable(ctx, existing._id);
       courseId = existing._id;
       await ctx.db.patch(courseId, {
         title: definition.courseTitle,
@@ -444,6 +464,7 @@ export const setUnitQa = internalMutation({
   handler: async (ctx, args) => {
     const unit = await ctx.db.get(args.microUnitId);
     if (!unit) appError(AppErrorCode.RUN_NOT_FOUND);
+    await assertCourseMutable(ctx, unit.courseId);
     await ctx.db.patch(args.microUnitId, {
       qa: args.qa,
       ...(args.state !== undefined ? { state: args.state } : {}),
@@ -459,8 +480,7 @@ export const setCourseQa = internalMutation({
     qa: v.any(),
   },
   handler: async (ctx, args) => {
-    const course = await ctx.db.get(args.courseId);
-    if (!course) appError(AppErrorCode.COURSE_NOT_FOUND);
+    await assertCourseMutable(ctx, args.courseId);
     await ctx.db.patch(args.courseId, { qa: args.qa });
     return null;
   },
@@ -515,6 +535,7 @@ export const replaceQuestionBody = internalMutation({
   handler: async (ctx, args) => {
     const row = await ctx.db.get(args.questionId);
     if (!row) appError(AppErrorCode.QUESTION_NOT_FOUND);
+    await assertCourseMutable(ctx, row.courseId);
     const body = row.body as QuestionBankItem;
     await ctx.db.patch(args.questionId, {
       body: {
@@ -547,6 +568,7 @@ export const adminRegenerateQuestion = mutation({
     if (!question || question.courseId !== run.courseId) {
       appError(AppErrorCode.QUESTION_NOT_FOUND);
     }
+    await assertCourseMutable(ctx, question.courseId);
     await ctx.scheduler.runAfter(
       0,
       internal.pipeline.compiler.compile.regenerateQuestion,
@@ -569,6 +591,7 @@ export const adminUpdateQuestion = mutation({
     await requireAdmin(ctx);
     const row = await ctx.db.get(args.questionId);
     if (!row) appError(AppErrorCode.QUESTION_NOT_FOUND);
+    await assertCourseMutable(ctx, row.courseId);
     const body = row.body as QuestionBankItem;
     if (
       args.prompt.trim() === "" ||

@@ -41,4 +41,8 @@ export const APP_ERROR_MESSAGES: Record<AppErrorCodeType, string> = {
     "A card is anchored to a word this edit removes. Keep the anchor word or update the card first.",
   [AppErrorCode.RUN_NOT_EDITABLE]:
     "Narration can only be edited while the run is waiting at course review or preview.",
+  [AppErrorCode.COURSE_PUBLISHED]:
+    "This course is published and can no longer be edited. Re-run the pipeline to publish a new version.",
+  [AppErrorCode.PUBLISH_VERSION_CONFLICT]:
+    "A different snapshot of this course version was already published.",
 };
