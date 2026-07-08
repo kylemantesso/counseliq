@@ -212,7 +212,11 @@ export const createGateReviewItems = internalMutation({
 
 // --- Gate-1 per-item resolution ---
 
-const resolutionValidator = v.union(v.literal("approve"), v.literal("exclude"));
+const resolutionValidator = v.union(
+  v.literal("approve"),
+  v.literal("approve_without_source"),
+  v.literal("exclude")
+);
 
 /**
  * Resolves a single gate-1 flagged-fact item:
@@ -225,7 +229,7 @@ export async function resolveReviewItemHelper(
   ctx: MutationCtx,
   args: {
     reviewItemId: Id<"reviewItems">;
-    resolution: "approve" | "exclude";
+    resolution: "approve" | "approve_without_source" | "exclude";
     sourceLabel?: string;
     year?: number;
     reviewer: string;
@@ -242,17 +246,20 @@ export async function resolveReviewItemHelper(
   if (!inventoryRow) appError(AppErrorCode.REVIEW_ITEM_NOT_FOUND);
   const fact = inventoryRow.body as Fact;
 
-  if (args.resolution === "approve") {
-    const sourceLabel = args.sourceLabel?.trim();
-    if (!sourceLabel || args.year === undefined) {
-      appError(AppErrorCode.REVIEW_ITEM_SOURCE_REQUIRED);
+  if (args.resolution === "approve" || args.resolution === "approve_without_source") {
+    let updatedFact: Fact;
+    if (args.resolution === "approve") {
+      const sourceLabel = args.sourceLabel?.trim();
+      if (!sourceLabel || args.year === undefined) {
+        appError(AppErrorCode.REVIEW_ITEM_SOURCE_REQUIRED);
+      }
+      updatedFact = { ...fact, sourceLabel, year: args.year, flagged: false };
+    } else {
+      // Operator explicitly accepts the fact WITHOUT attribution: the flag
+      // clears but no source/year is invented. Downstream rules still hold
+      // (a source-less statistic cannot ride a stat/chart card).
+      updatedFact = { ...fact, flagged: false };
     }
-    const updatedFact: Fact = {
-      ...fact,
-      sourceLabel,
-      year: args.year,
-      flagged: false,
-    };
     delete updatedFact.flagReason;
     await ctx.db.patch(inventoryItemId, {
       body: updatedFact,
@@ -322,6 +329,37 @@ export const adminResolveReviewItem = mutation({
       reviewer: admin.email,
     });
     return null;
+  },
+});
+
+/**
+ * Admin bulk resolve (gate 1 "select all"): approve-without-source or
+ * exclude many pending items in one call. Already-resolved items in the
+ * selection are skipped (never throws on races). Per-item source entry
+ * stays on the single-item path — bulk cannot attribute.
+ */
+export const adminResolveReviewItemsBulk = mutation({
+  args: {
+    reviewItemIds: v.array(v.id("reviewItems")),
+    resolution: v.union(
+      v.literal("approve_without_source"),
+      v.literal("exclude")
+    ),
+  },
+  handler: async (ctx, args) => {
+    const admin = await requireAdmin(ctx);
+    let resolved = 0;
+    for (const reviewItemId of args.reviewItemIds) {
+      const item = await ctx.db.get(reviewItemId);
+      if (!item || item.status !== "pending") continue;
+      await resolveReviewItemHelper(ctx, {
+        reviewItemId,
+        resolution: args.resolution,
+        reviewer: admin.email,
+      });
+      resolved += 1;
+    }
+    return { resolved };
   },
 });
 

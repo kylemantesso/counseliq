@@ -249,6 +249,40 @@ describe("gate-1 review items", () => {
     ).rejects.toThrow(/Component "workflow" is not registered/);
   });
 
+  test("approve_without_source clears the flag but invents no attribution", async () => {
+    const { t, runId, sourceDocId } = await setup("GATE_1_KNOWLEDGE_REVIEW");
+    const prov = [`doc:${sourceDocId}:page:1`];
+    await t.mutation(internal.pipeline.inventory.replaceInventory, {
+      runId,
+      items: [fact(prov)],
+    });
+    await t.mutation(internal.pipeline.reviewItems.createGateReviewItems, {
+      runId,
+      gate: 1,
+    });
+    const [item] = await t.query(
+      internal.pipeline.reviewItems.listReviewItemsForRun,
+      { runId, gate: 1 }
+    );
+
+    await t.mutation(internal.pipeline.reviewItems.resolveReviewItem, {
+      reviewItemId: item._id,
+      resolution: "approve_without_source",
+      reviewer: "tester",
+    });
+
+    const inventory = await t.query(
+      internal.pipeline.inventory.listInventoryForRun,
+      { runId }
+    );
+    const updated = inventory[0].body as Fact;
+    expect(updated.flagged).toBe(false);
+    expect(updated.sourceLabel).toBeUndefined();
+    expect(updated.year).toBeUndefined();
+    expect(updated.flagReason).toBeUndefined();
+    expect(inventory[0].flagged).toBe(false);
+  });
+
   test("exclude marks the fact excluded (unavailable to the compiler)", async () => {
     const { t, runId, sourceDocId } = await setup("GATE_1_KNOWLEDGE_REVIEW");
     const prov = [`doc:${sourceDocId}:page:1`];

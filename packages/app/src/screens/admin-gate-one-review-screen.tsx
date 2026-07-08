@@ -58,8 +58,13 @@ function AdminGateOneReviewContent() {
     runId ? { runId, gate: 1 } : "skip"
   );
   const decideGate = useMutation(api.pipeline.runs.adminDecideGate);
+  const resolveBulk = useMutation(
+    api.pipeline.reviewItems.adminResolveReviewItemsBulk
+  );
   const presignBatch = useAction(api.pipeline.objectStore.adminPresignGetBatch);
   const [urls, setUrls] = useState<Record<string, string>>({});
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   useEffect(() => {
     if (!items) return;
@@ -161,6 +166,102 @@ function AdminGateOneReviewContent() {
                     The run is not waiting at gate 1.
                   </Text>
                 ) : null}
+                {atGate && pending.length > 0 ? (
+                  <Box className="flex-row gap-2 items-center flex-wrap pt-1">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onPress={() => {
+                        setSelectedIds((prev) => {
+                          const allSelected = pending.every((item) =>
+                            prev.has(item._id)
+                          );
+                          if (allSelected) return new Set();
+                          return new Set(pending.map((item) => item._id));
+                        });
+                      }}
+                    >
+                      <ButtonText>
+                        {pending.every((item) => selectedIds.has(item._id))
+                          ? "Clear selection"
+                          : `Select all pending (${pending.length})`}
+                      </ButtonText>
+                    </Button>
+                    {selectedIds.size > 0 ? (
+                      <>
+                        <Text className="text-sm font-semibold">
+                          {selectedIds.size} selected:
+                        </Text>
+                        <Button
+                          size="sm"
+                          disabled={bulkBusy}
+                          onPress={() =>
+                            void (async () => {
+                              setBulkBusy(true);
+                              setError(null);
+                              try {
+                                await resolveBulk({
+                                  reviewItemIds: [
+                                    ...selectedIds,
+                                  ] as Id<"reviewItems">[],
+                                  resolution: "approve_without_source",
+                                });
+                                setSelectedIds(new Set());
+                              } catch (err) {
+                                setError(
+                                  getUserFacingErrorMessage(
+                                    err,
+                                    "Bulk approve failed. Try again."
+                                  )
+                                );
+                              } finally {
+                                setBulkBusy(false);
+                              }
+                            })()
+                          }
+                        >
+                          <ButtonText>Approve without source</ButtonText>
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          disabled={bulkBusy}
+                          onPress={() =>
+                            void (async () => {
+                              setBulkBusy(true);
+                              setError(null);
+                              try {
+                                await resolveBulk({
+                                  reviewItemIds: [
+                                    ...selectedIds,
+                                  ] as Id<"reviewItems">[],
+                                  resolution: "exclude",
+                                });
+                                setSelectedIds(new Set());
+                              } catch (err) {
+                                setError(
+                                  getUserFacingErrorMessage(
+                                    err,
+                                    "Bulk exclude failed. Try again."
+                                  )
+                                );
+                              } finally {
+                                setBulkBusy(false);
+                              }
+                            })()
+                          }
+                        >
+                          <ButtonText>Exclude</ButtonText>
+                        </Button>
+                        <Text className="text-xs text-muted-foreground">
+                          Approving without source keeps the fact
+                          unattributed — source-less statistics cannot ride
+                          stat cards.
+                        </Text>
+                      </>
+                    ) : null}
+                  </Box>
+                ) : null}
               </Box>
 
               {items.length === 0 ? (
@@ -180,6 +281,15 @@ function AdminGateOneReviewContent() {
                           ]
                         : undefined
                     }
+                    selected={selectedIds.has(item._id)}
+                    onToggleSelect={() =>
+                      setSelectedIds((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(item._id)) next.delete(item._id);
+                        else next.add(item._id);
+                        return next;
+                      })
+                    }
                     onError={setError}
                   />
                 ))
@@ -195,10 +305,14 @@ function AdminGateOneReviewContent() {
 function ReviewItemCard({
   item,
   thumbUrl,
+  selected,
+  onToggleSelect,
   onError,
 }: {
   item: Doc<"reviewItems">;
   thumbUrl?: string;
+  selected: boolean;
+  onToggleSelect: () => void;
   onError: (message: string | null) => void;
 }) {
   const payload = item.payload as FlaggedFactPayload;
@@ -209,7 +323,9 @@ function ReviewItemCard({
   );
   const [busy, setBusy] = useState(false);
 
-  const resolve = async (resolution: "approve" | "exclude") => {
+  const resolve = async (
+    resolution: "approve" | "approve_without_source" | "exclude"
+  ) => {
     onError(null);
     setBusy(true);
     try {
@@ -242,6 +358,14 @@ function ReviewItemCard({
       }`}
     >
       <Box className="flex-row gap-4">
+        {pending ? (
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={onToggleSelect}
+            style={{ width: 18, height: 18, alignSelf: "flex-start", marginTop: 2 }}
+          />
+        ) : null}
         {thumbUrl ? (
           <Image
             source={{ uri: thumbUrl }}
@@ -302,6 +426,14 @@ function ReviewItemCard({
             disabled={busy || sourceLabel.trim() === "" || !yearValid}
           >
             <ButtonText>Approve with source</ButtonText>
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onPress={() => resolve("approve_without_source")}
+            disabled={busy}
+          >
+            <ButtonText>Approve without source</ButtonText>
           </Button>
           <Button
             size="sm"
