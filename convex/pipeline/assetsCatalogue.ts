@@ -465,20 +465,30 @@ export const adminDeclareAssetRights = mutation({
   },
 });
 
-/** Consent confirmation for assets showing identifiable people. */
+/**
+ * Consent confirmation for assets showing identifiable people (single or
+ * bulk). Only assets actually flagged `identifiablePeople` are touched —
+ * confirming a mixed selection quietly skips the rest, so "select all →
+ * confirm consent" is safe.
+ */
 export const adminConfirmPeopleConsent = mutation({
-  args: { assetId: v.id("assets"), confirmed: v.boolean() },
+  args: { assetIds: v.array(v.id("assets")), confirmed: v.boolean() },
   handler: async (ctx, args) => {
     const admin = await requireAdmin(ctx);
-    const asset = await ctx.db.get(args.assetId);
-    if (!asset || !isCatalogueAsset(asset)) {
-      appError(AppErrorCode.ASSET_NOT_FOUND);
+    let updated = 0;
+    for (const assetId of args.assetIds) {
+      const asset = await ctx.db.get(assetId);
+      if (!asset || !isCatalogueAsset(asset)) {
+        appError(AppErrorCode.ASSET_NOT_FOUND);
+      }
+      if (asset.identifiablePeople !== true) continue;
+      await ctx.db.patch(assetId, {
+        peopleConsentConfirmed: args.confirmed,
+        peopleConsentBy: admin.email,
+      });
+      updated += 1;
     }
-    await ctx.db.patch(args.assetId, {
-      peopleConsentConfirmed: args.confirmed,
-      peopleConsentBy: admin.email,
-    });
-    return null;
+    return { updated };
   },
 });
 

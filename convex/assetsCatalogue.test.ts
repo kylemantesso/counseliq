@@ -91,7 +91,8 @@ describe("asset library admin surface", () => {
     expect(video?.cleared).toBe(false);
 
     await asAdmin.mutation(api.pipeline.assetsCatalogue.adminConfirmPeopleConsent, {
-      assetId: videoId,
+      // Bulk-safe: the un-flagged image in the selection is quietly skipped.
+      assetIds: [imageId, videoId] as Id<"assets">[],
       confirmed: true,
     });
     const after = await asAdmin.query(

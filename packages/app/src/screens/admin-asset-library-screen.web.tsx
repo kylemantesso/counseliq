@@ -84,6 +84,9 @@ function InstitutionLibrary({ institutionId }: { institutionId: Id<"institutions
   const presignPutBatch = useAction(api.pipeline.objectStore.adminPresignPutBatch);
   const ingestAssets = useAction(api.pipeline.assetsIngest.adminIngestAssets);
   const declareRights = useMutation(api.pipeline.assetsCatalogue.adminDeclareAssetRights);
+  const confirmConsentBulk = useMutation(
+    api.pipeline.assetsCatalogue.adminConfirmPeopleConsent
+  );
 
   const [urls, setUrls] = useState<Record<string, string>>({});
   const [kindFilter, setKindFilter] = useState("all");
@@ -314,6 +317,18 @@ function InstitutionLibrary({ institutionId }: { institutionId: Id<"institutions
             </Button>
             <Button size="sm" variant="outline" onPress={() => void declareSelected("unknown")}>
               <ButtonText>Revoke (unknown)</ButtonText>
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onPress={() =>
+                void confirmConsentBulk({
+                  assetIds: [...selectedIds] as Id<"assets">[],
+                  confirmed: true,
+                })
+              }
+            >
+              <ButtonText>Confirm people consent</ButtonText>
             </Button>
           </Box>
         ) : null}
@@ -656,7 +671,10 @@ function AssetCard({
               type="checkbox"
               checked={asset.peopleConsentConfirmed === true}
               onChange={(e) =>
-                void confirmConsent({ assetId: asset._id, confirmed: e.target.checked })
+                void confirmConsent({
+                  assetIds: [asset._id],
+                  confirmed: e.target.checked,
+                })
               }
             />
             identifiable people — consent confirmed
