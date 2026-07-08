@@ -280,6 +280,26 @@ function InstitutionLibrary({ institutionId }: { institutionId: Id<"institutions
           <Text className="text-sm text-muted-foreground">
             {filtered.length} of {assets?.length ?? 0} assets
           </Text>
+          <Button
+            size="sm"
+            variant="outline"
+            onPress={() => {
+              // Toggles over the FILTERED set: with a filter active this is
+              // "select everything I'm looking at", not the whole library.
+              setSelectedIds((prev) => {
+                const allFiltered = filtered.every((asset) => prev.has(asset._id));
+                if (allFiltered && filtered.length > 0) return new Set();
+                return new Set(filtered.map((asset) => asset._id));
+              });
+            }}
+          >
+            <ButtonText>
+              {filtered.length > 0 &&
+              filtered.every((asset) => selectedIds.has(asset._id))
+                ? "Clear selection"
+                : `Select all (${filtered.length})`}
+            </ButtonText>
+          </Button>
         </Box>
         {selectedIds.size > 0 ? (
           <Box className="flex-row gap-2 items-center flex-wrap">
