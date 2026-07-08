@@ -22,9 +22,6 @@ import { extractionPool } from "./extract";
  * never write rights and never lower identifiablePeople.
  */
 
-const POLL_INTERVAL_MS = 2000;
-const TAGGING_TIMEOUT_MS_DEFAULT = 8 * 60 * 1000;
-
 async function fetchImageBase64(ctx: ActionCtx, key: string): Promise<string> {
   const { url } = await ctx.runAction(internal.pipeline.objectStore.presignGet, {
     key,
@@ -142,15 +139,22 @@ export const tagAsset = internalAction({
 });
 
 type TagBatchResult = {
-  status: "ok" | "failed";
-  cause?: string;
+  status: "ok";
   eligible: number;
 };
 
 /**
  * Orchestrator: fan every untagged catalogue asset of the institution
  * through the extraction workpool. Scheduled automatically after ingest
- * callbacks; safe to re-run any time.
+ * callbacks; safe to re-run any time (the per-asset tag stamp makes
+ * duplicates cheap no-ops).
+ *
+ * Deliberately enqueue-and-return, NO completion polling: dozens of ingest
+ * callbacks can each schedule this, and a polling loop per invocation
+ * starves the very action executor the tagAsset workers need (observed on
+ * the local backend: 73 retro callbacks → 73 pollers → tagging crawled).
+ * Completion is observable from the data (`getTaggingStatusInternal`),
+ * which is how the eval script and the library page already watch it.
  */
 export const tagUntaggedAssets = internalAction({
   args: { institutionId: v.id("institutions") },
@@ -179,28 +183,11 @@ export const tagUntaggedAssets = internalAction({
       return { status: "ok", eligible: untagged.length };
     }
 
-    const workIds = await extractionPool.enqueueActionBatch(
+    await extractionPool.enqueueActionBatch(
       ctx,
       internal.pipeline.assetsTagging.tagAsset,
       enqueueArgs
     );
-    const timeoutMs = Number(
-      process.env.TAGGING_TIMEOUT_MS ?? TAGGING_TIMEOUT_MS_DEFAULT
-    );
-    const startedAt = Date.now();
-    for (;;) {
-      const statuses = await extractionPool.statusBatch(ctx, workIds);
-      const finished = statuses.filter((s) => s.state === "finished").length;
-      if (finished === workIds.length) break;
-      if (Date.now() - startedAt > timeoutMs) {
-        return {
-          status: "failed",
-          cause: `tagging timed out after ${timeoutMs}ms (${finished}/${workIds.length} assets finished)`,
-          eligible: untagged.length,
-        };
-      }
-      await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
-    }
     return { status: "ok", eligible: untagged.length };
   },
 });
