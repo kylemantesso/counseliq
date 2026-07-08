@@ -96,6 +96,8 @@ export const getReviewedInventoryInternal = internalQuery({
       facts,
       excludedFacts,
       provenanceIds: [...provenanceIds],
+      /** M6.5: operator brief, threaded into authoring prompts. */
+      brief: run.brief ?? null,
     };
   },
 });

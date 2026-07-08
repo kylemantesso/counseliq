@@ -3,8 +3,10 @@ import type { Fact } from "@counseliq/course-schema";
 import type { LlmAuthoredUnit } from "./schemas";
 import {
   assembleCourseDefinition,
+  buildOutlineUserText,
   buildUnitUserText,
   mediaContextFromCatalogue,
+  plansFromOutline,
   tryAssemble,
   unitComplianceViolations,
   type AuthoredUnitWithPlan,
@@ -524,5 +526,131 @@ describe("unitComplianceViolations media composition", () => {
     expect(violations.some((v) => v.includes("media pacing"))).toBe(true);
     // The exact same unit is legal when the catalogue is empty.
     expect(unitComplianceViolations(unit, KNOWN_PROVENANCE, NO_MEDIA)).toEqual([]);
+  });
+});
+
+// --- M6.5 outline consumption + brief threading ---
+
+const OUTLINE = {
+  courseTitle: "Deakin Health Essentials",
+  modules: [
+    {
+      moduleId: "m1-why",
+      title: "Why Deakin",
+      units: [
+        {
+          unitId: "mu-101",
+          conceptKey: "campuses",
+          conceptTag: "campuses",
+          title: "The campus network",
+          secondsBudget: 45,
+          mediaAssetIds: ["asset-vid-1"],
+        },
+        {
+          unitId: "mu-102",
+          conceptKey: "rankings",
+          conceptTag: "rankings",
+          title: "Rankings, attributed",
+          secondsBudget: 40,
+          mediaAssetIds: null,
+        },
+      ],
+    },
+    {
+      moduleId: "m2-practice",
+      title: "Counselling practice",
+      units: [
+        {
+          unitId: "mu-201",
+          conceptKey: "campuses",
+          conceptTag: "matching",
+          title: "Matching students",
+          secondsBudget: 55,
+        },
+      ],
+    },
+  ],
+};
+
+describe("plansFromOutline", () => {
+  test("maps the approved outline into the compiler's planning shape", () => {
+    const { courseTitle, moduleOrder, plans } = plansFromOutline(OUTLINE);
+    expect(courseTitle).toBe("Deakin Health Essentials");
+    expect(moduleOrder).toEqual([
+      { moduleId: "m1-why", title: "Why Deakin" },
+      { moduleId: "m2-practice", title: "Counselling practice" },
+    ]);
+    expect(plans).toHaveLength(3);
+    expect(plans[0]).toEqual({
+      unitId: "mu-101",
+      conceptKey: "campuses",
+      conceptTag: "campuses",
+      title: "The campus network",
+      secondsBudget: 45,
+      moduleId: "m1-why",
+      moduleTitle: "Why Deakin",
+      mediaAssetIds: ["asset-vid-1"],
+    });
+    // null / absent media suggestions never reach the plan.
+    expect(plans[1]).not.toHaveProperty("mediaAssetIds");
+    expect(plans[2]).not.toHaveProperty("mediaAssetIds");
+  });
+});
+
+describe("buildOutlineUserText", () => {
+  test("brief rules the prompt; catalogue and feedback sections appear", () => {
+    const text = buildOutlineUserText(
+      INVENTORY,
+      [8, 12],
+      [3, 5],
+      "Focus on rural placements.",
+      CATALOGUE,
+      ["Merge modules 2 and 3."]
+    );
+    expect(text).toContain("OPERATOR BRIEF");
+    expect(text).toContain("Focus on rural placements.");
+    expect(text).toContain("Cleared media library (2 asset(s)");
+    expect(text).toContain("asked for changes");
+    expect(text).toContain("1. Merge modules 2 and 3.");
+  });
+
+  test("no brief / empty catalogue produce explicit absence sections", () => {
+    const text = buildOutlineUserText(INVENTORY, [8, 12], [3, 5], undefined, []);
+    expect(text).not.toContain("OPERATOR BRIEF");
+    expect(text).toContain("No cleared media assets are available");
+  });
+});
+
+describe("buildUnitUserText brief + outline suggestions (M6.5)", () => {
+  test("brief and per-unit suggested assets are threaded into the prompt", () => {
+    const plan = { ...makePlan("mu-101"), mediaAssetIds: ["asset-img-1"] };
+    const text = buildUnitUserText(
+      plan,
+      INVENTORY.concepts[0],
+      INVENTORY.facts,
+      "Deakin Health 101",
+      "Deakin University",
+      [],
+      CATALOGUE,
+      "Emphasise placements."
+    );
+    expect(text).toContain("Course purpose (operator brief");
+    expect(text).toContain("Emphasise placements.");
+    expect(text).toContain("Outline-suggested assets for THIS unit");
+    expect(text).toContain("asset-img-1");
+  });
+
+  test("absent brief/suggestions leave the prompt unchanged", () => {
+    const text = buildUnitUserText(
+      makePlan("mu-101"),
+      INVENTORY.concepts[0],
+      INVENTORY.facts,
+      "Deakin Health 101",
+      "Deakin University",
+      [],
+      CATALOGUE
+    );
+    expect(text).not.toContain("Course purpose (operator brief");
+    expect(text).not.toContain("Outline-suggested assets");
   });
 });

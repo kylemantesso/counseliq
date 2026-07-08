@@ -37,6 +37,7 @@ import {
   factForPrompt,
   mediaContextFromCatalogue,
   parseRange,
+  plansFromOutline,
   tryAssemble,
   unitComplianceViolations,
   type AuthoredUnitWithPlan,
@@ -157,6 +158,7 @@ async function authorOneUnit(
       model,
       feedback: args.feedback ?? null,
       catalogueHash: sha256(JSON.stringify(catalogue)),
+      brief: inventory.brief ?? null,
     })
   );
 
@@ -179,6 +181,7 @@ async function authorOneUnit(
     inventory.institution.name,
     lexiconNames,
     catalogue,
+    inventory.brief ?? undefined,
     args.feedback
   );
 
@@ -276,6 +279,7 @@ export const authorUnit = internalAction({
       secondsBudget: v.number(),
       moduleId: v.string(),
       moduleTitle: v.string(),
+      mediaAssetIds: v.optional(v.array(v.string())),
     }),
     courseTitle: v.string(),
     feedback: v.optional(v.string()),
@@ -531,6 +535,28 @@ async function runCompilationInner(
     console.log(
       `[pipeline] run ${runId}: re-authoring ${plans.length} unit(s), preserving ${preserved.length}`
     );
+  } else if (
+    await (async () => {
+      // M6.5: an approved outline (edited by the operator) IS the plan —
+      // skip the inline structure LLM pass entirely. Legacy runs without
+      // one fall through to the old inline pass below.
+      const outline = await ctx.runQuery(
+        internal.pipeline.outlineReview.getApprovedOutlineForRun,
+        { runId }
+      );
+      if (!outline) return false;
+      const mapped = plansFromOutline(outline);
+      courseTitle = mapped.courseTitle;
+      moduleOrder = mapped.moduleOrder;
+      plans = mapped.plans;
+      orderedUnitIds.push(...plans.map((plan) => plan.unitId));
+      console.log(
+        `[pipeline] run ${runId}: authoring from the approved outline — ${plans.length} unit(s) across ${moduleOrder.length} module(s)`
+      );
+      return true;
+    })()
+  ) {
+    // planned from the approved outline above
   } else {
     const unitRange = parseRange(
       process.env.COMPILE_UNIT_RANGE,

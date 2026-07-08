@@ -60,6 +60,8 @@ export interface UnitPlan {
   secondsBudget: number;
   moduleId: string;
   moduleTitle: string;
+  /** Outline-suggested cleared asset ids (bias, not commitment — M6.5). */
+  mediaAssetIds?: string[];
 }
 
 export interface AuthoredUnitWithPlan {
@@ -77,6 +79,8 @@ export interface ReviewedInventory {
   facts: Fact[];
   excludedFacts: Fact[];
   provenanceIds: string[];
+  /** M6.5: operator brief (null when the run has none). */
+  brief?: string | null;
 }
 
 export function slugify(text: string): string {
@@ -185,6 +189,53 @@ export function buildOutlineUserText(
 }
 
 /**
+ * The approved outline mapped into the compiler's in-memory planning shape
+ * (M6.5) — the exact mapping the inline structure pass used to produce,
+ * plus the outline's per-unit media suggestions.
+ */
+export function plansFromOutline(outline: {
+  courseTitle: string;
+  modules: Array<{
+    moduleId: string;
+    title: string;
+    units: Array<{
+      unitId: string;
+      conceptKey: string;
+      conceptTag: string;
+      title: string;
+      secondsBudget: number;
+      mediaAssetIds?: string[] | null;
+    }>;
+  }>;
+}): {
+  courseTitle: string;
+  moduleOrder: Array<{ moduleId: string; title: string }>;
+  plans: UnitPlan[];
+} {
+  return {
+    courseTitle: outline.courseTitle,
+    moduleOrder: outline.modules.map((m) => ({
+      moduleId: m.moduleId,
+      title: m.title,
+    })),
+    plans: outline.modules.flatMap((module) =>
+      module.units.map((unit) => ({
+        unitId: unit.unitId,
+        conceptKey: unit.conceptKey,
+        conceptTag: unit.conceptTag,
+        title: unit.title,
+        secondsBudget: unit.secondsBudget,
+        moduleId: module.moduleId,
+        moduleTitle: module.title,
+        ...(unit.mediaAssetIds && unit.mediaAssetIds.length > 0
+          ? { mediaAssetIds: unit.mediaAssetIds }
+          : {}),
+      }))
+    ),
+  };
+}
+
+/**
  * Media context for authoring + validation, built ONLY from cleared assets
  * (getClearedCatalogueForRun filters in code — the model and these
  * validators never see an unknown-rights asset except as "missing").
@@ -220,6 +271,7 @@ export function buildUnitUserText(
   institutionName: string,
   lexiconNames: string[],
   catalogue: readonly CompactCatalogueAsset[],
+  brief?: string,
   feedback?: string
 ): string {
   const parts = [
@@ -241,6 +293,13 @@ export function buildUnitUserText(
     `Approved facts for this concept (the ONLY factual claims you may narrate):`,
     JSON.stringify(facts.map(factForPrompt), null, 2),
   ];
+  if (brief !== undefined && brief.trim() !== "") {
+    parts.push(
+      ``,
+      `Course purpose (operator brief — keep the unit aligned with it):`,
+      brief.trim()
+    );
+  }
   if (lexiconNames.length > 0) {
     parts.push(
       ``,
@@ -257,6 +316,12 @@ export function buildUnitUserText(
     parts.push(
       ``,
       `No cleared media assets are available for this institution — do not emit video-card cards, and do not put an assetRef on any card.`
+    );
+  }
+  if (plan.mediaAssetIds && plan.mediaAssetIds.length > 0) {
+    parts.push(
+      ``,
+      `Outline-suggested assets for THIS unit (prefer these where they fit; other library assets remain allowed): ${plan.mediaAssetIds.join(", ")}`
     );
   }
   if (feedback) {
