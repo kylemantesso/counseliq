@@ -55,7 +55,10 @@ const FIXTURE: UnitTiming = unitTimingSchema.parse({
     { cardIndex: 1, atMs: 700 },
     { cardIndex: 2, atMs: 2900 },
   ],
-  media: [],
+  media: [
+    // Card 1's asset: 1500ms video inside its 700-2900ms window.
+    { cardIndex: 1, inMs: 700, outMs: 2200 },
+  ],
   generatedAt: 1720000000000,
 });
 
@@ -143,5 +146,26 @@ describe("deriveActiveSentence", () => {
   test("word emphasis is the last word whose start has passed", () => {
     expect(deriveActiveSentence(FIXTURE, 450)?.wordIndex).toBe(1);
     expect(deriveActiveSentence(FIXTURE, 1999)?.wordIndex).toBe(3);
+  });
+});
+
+describe("deriveActiveCard media windows (timing v2)", () => {
+  test("no media field for cards without a window", () => {
+    expect(deriveActiveCard(FIXTURE, 100).timing.media).toBeUndefined();
+    expect(deriveActiveCard(FIXTURE, 3000).timing.media).toBeUndefined();
+  });
+
+  test("position advances with the clock inside the window", () => {
+    const at = (clock: number) => deriveActiveCard(FIXTURE, clock).timing.media;
+    expect(at(700)).toEqual({ positionMs: 0, durationMs: 1500 });
+    expect(at(1400)).toEqual({ positionMs: 700, durationMs: 1500 });
+  });
+
+  test("position clamps at the out point (hold last frame)", () => {
+    // Clock past outMs but still inside the card's window (until 2900).
+    expect(deriveActiveCard(FIXTURE, 2500).timing.media).toEqual({
+      positionMs: 1500,
+      durationMs: 1500,
+    });
   });
 });

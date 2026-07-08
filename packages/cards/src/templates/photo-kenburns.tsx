@@ -46,7 +46,10 @@ export function PhotoKenburnsCard({ props, timing }: CardComponentProps<CardProp
             ...drift,
           }}
         >
-          <CardImage imageRef={props.imageRef} alt={props.overlayText ?? "photo"} />
+          <CardImage
+            imageRef={props.assetRef ?? props.imageRef}
+            alt={props.overlayText ?? "photo"}
+          />
         </div>
         <div
           style={{

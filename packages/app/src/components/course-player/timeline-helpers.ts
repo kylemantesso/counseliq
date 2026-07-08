@@ -1,4 +1,4 @@
-import type { PreviewModule, PreviewUnit, UnitPhase } from "./types";
+import type { PreviewAsset, PreviewModule, PreviewUnit, UnitPhase } from "./types";
 
 /**
  * Pure sequencing/derivation helpers for the player. Everything here is
@@ -144,4 +144,57 @@ export function nextPhase(unit: PreviewUnit, phase: UnitPhase): UnitPhase | null
   const at = phases.indexOf(phase);
   if (at < 0 || at + 1 >= phases.length) return null;
   return phases[at + 1];
+}
+
+/** Every assetRef used by a unit's cards + anchor (M6 media). */
+export function assetRefsForUnit(unit: PreviewUnit): string[] {
+  const refs: string[] = [];
+  const fromProps = (props: Record<string, unknown> | undefined) => {
+    const ref = props?.assetRef;
+    if (typeof ref === "string" && ref.length > 0) refs.push(ref);
+  };
+  for (const card of unit.cards) fromProps(card.props);
+  fromProps(unit.meta.anchor?.props);
+  return refs;
+}
+
+/**
+ * Object-store keys the player needs for a set of units' media (video/image
+ * bytes + posters/thumbs). Pure, so preloading the NEXT unit's media is the
+ * same call one index ahead.
+ */
+export function mediaKeysForUnits(
+  units: Array<PreviewUnit | undefined>,
+  assets: Record<string, PreviewAsset> | undefined
+): string[] {
+  if (!assets) return [];
+  const keys = new Set<string>();
+  for (const unit of units) {
+    if (!unit) continue;
+    for (const ref of assetRefsForUnit(unit)) {
+      const asset = assets[ref];
+      if (!asset) continue;
+      keys.add(asset.objectKey);
+      if (asset.thumbKey) keys.add(asset.thumbKey);
+    }
+  }
+  return [...keys];
+}
+
+/**
+ * AssetResolver mapping for the cards package: `<assetRef>` resolves to the
+ * asset's presigned objectKey URL, `poster:<assetRef>` to its thumb/poster.
+ * Legacy loose imageRef strings resolve to null (themed placeholder).
+ */
+export function resolveAssetUrl(
+  ref: string,
+  assets: Record<string, PreviewAsset> | undefined,
+  urls: ReadonlyMap<string, string>
+): string | null {
+  if (!assets) return null;
+  const posterRequest = ref.startsWith("poster:");
+  const asset = assets[posterRequest ? ref.slice("poster:".length) : ref];
+  if (!asset) return null;
+  const key = posterRequest ? asset.thumbKey : asset.objectKey;
+  return key !== undefined ? (urls.get(key) ?? null) : null;
 }

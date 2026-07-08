@@ -81,6 +81,7 @@ function toRunPreviewData(preview: PreviewPayload, runId: string): RunPreviewDat
       units: m.units.map(toPreviewUnit),
     })),
     questions: preview.questions.map((q) => q.body as PreviewQuestion),
+    assets: preview.assets as RunPreviewData["assets"],
     summary: {
       ready: preview.summary.ready,
       blocked: preview.summary.blocked,

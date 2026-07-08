@@ -66,6 +66,15 @@ export interface PreviewModule {
   units: PreviewUnit[];
 }
 
+/** Catalogue asset metadata for refs used in the course (M6 media). */
+export interface PreviewAsset {
+  objectKey: string;
+  /** Thumbnail for images; poster frame for video. */
+  thumbKey?: string;
+  kind: "image" | "video";
+  durationMs?: number;
+}
+
 export interface RunPreviewData {
   runId: string;
   runState: string;
@@ -73,6 +82,8 @@ export interface RunPreviewData {
   institution: { name: string; brandTokens?: unknown };
   modules: PreviewModule[];
   questions: PreviewQuestion[];
+  /** assetRef (assets._id) → object-store keys, for cards' media. */
+  assets?: Record<string, PreviewAsset>;
   summary?: {
     ready: number;
     blocked: number;

@@ -32,7 +32,10 @@ export function ImageTextCard({ props, timing }: CardComponentProps<CardPropsFor
     >
       <div style={{ position: "absolute", left: 0, right: 0, top: 0, height: "46%", overflow: "hidden" }}>
         <div style={{ position: "absolute", inset: 0, ...fade(msWindow(timing, 0, 700)) }}>
-          <CardImage imageRef={props.imageRef} alt={title ?? props.text} />
+          <CardImage
+            imageRef={props.assetRef ?? props.imageRef}
+            alt={title ?? props.text}
+          />
         </div>
       </div>
       <div

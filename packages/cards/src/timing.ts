@@ -29,6 +29,14 @@ export interface CardTiming {
   beatsRevealed: number;
   /** Render the settled end state with no motion (prefers-reduced-motion). */
   reducedMotion: boolean;
+  /**
+   * Media playback position for the card's asset (timing artifact v2
+   * `media` windows). `positionMs` advances with the host clock from the
+   * card's beat; past `durationMs` the video holds its last frame.
+   * Undefined for cards without a media window (and in SETTLED_TIMING) —
+   * media cards then show their poster.
+   */
+  media?: { positionMs: number; durationMs: number };
 }
 
 /** Fully settled timing — static previews, anchors, reduced motion. */

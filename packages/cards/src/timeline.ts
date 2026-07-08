@@ -72,6 +72,22 @@ export function deriveActiveCard(
   }
   const localMs = clock - active.atMs;
   const windowMs = Math.max(1, nextAtMs - active.atMs);
+  // v2 media window for the active card (if any): playback position is the
+  // clock offset into the window, clamped to the window's length so a
+  // trimmed video pauses on its last in-window frame.
+  const mediaWindow = timing.media.find(
+    (window) => window.cardIndex === active.cardIndex
+  );
+  const media =
+    mediaWindow !== undefined
+      ? {
+          positionMs: Math.max(
+            0,
+            Math.min(clock, mediaWindow.outMs) - mediaWindow.inMs
+          ),
+          durationMs: mediaWindow.outMs - mediaWindow.inMs,
+        }
+      : undefined;
   return {
     cardIndex: active.cardIndex,
     timing: {
@@ -79,6 +95,7 @@ export function deriveActiveCard(
       progress: reducedMotion ? 1 : Math.min(1, localMs / windowMs),
       beatsRevealed: reducedMotion ? Number.POSITIVE_INFINITY : beatsRevealedAt(localMs),
       reducedMotion,
+      ...(media !== undefined ? { media } : {}),
     },
   };
 }

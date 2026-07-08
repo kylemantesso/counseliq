@@ -2,9 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  AssetResolverContext,
   BrandThemeProvider,
   CardStage,
   brandThemeFromTokens,
+  type AssetResolver,
 } from "@counseliq/cards";
 import { createUnitClock, useUnitClock, type UnitClockStore } from "./clock-store.web";
 import { ModuleRail } from "./module-rail.web";
@@ -12,7 +14,9 @@ import { PlayerControls } from "./player-controls.web";
 import {
   courseProgressPct,
   flattenUnits,
+  mediaKeysForUnits,
   phaseFraction,
+  resolveAssetUrl,
 } from "./timeline-helpers";
 import type { PreviewQuestion, RunPreviewData, UnitPhase } from "./types";
 import { UnitFlow, useUnitFlow } from "./unit-flow.web";
@@ -84,22 +88,40 @@ export function CoursePlayer({
     onError: (audioKey) => onRequestUrls?.([audioKey]),
   });
 
-  // Announce missing URLs for the current + next unit's sentences.
+  // Announce missing URLs for the current + next unit's sentences AND media
+  // assets (video/image bytes + posters) — the next unit's media preloads
+  // through the same seam as its audio.
   const lastRequestedRef = useRef<string>("");
   useEffect(() => {
     if (!onRequestUrls) return;
+    const adjacent = [flatUnits[flatIndex], flatUnits[flatIndex + 1]];
     const wanted: string[] = [];
-    for (const f of [flatUnits[flatIndex], flatUnits[flatIndex + 1]]) {
+    for (const f of adjacent) {
       for (const s of f?.unit.timing?.sentences ?? []) {
         if (!presignedUrls.has(s.audioKey)) wanted.push(s.audioKey);
       }
+    }
+    for (const key of mediaKeysForUnits(
+      adjacent.map((f) => f?.unit),
+      data.assets
+    )) {
+      if (!presignedUrls.has(key)) wanted.push(key);
     }
     if (wanted.length === 0) return;
     const signature = wanted.join("|");
     if (signature === lastRequestedRef.current) return;
     lastRequestedRef.current = signature;
     onRequestUrls(wanted);
-  }, [flatUnits, flatIndex, presignedUrls, onRequestUrls]);
+  }, [flatUnits, flatIndex, presignedUrls, onRequestUrls, data.assets]);
+
+  // assetRef → presigned URL resolution for the cards package (M6). URLs
+  // are never logged; unresolved refs render themed placeholders.
+  const assetResolver = useMemo<AssetResolver>(
+    () => ({
+      resolve: (ref) => resolveAssetUrl(ref, data.assets, presignedUrls),
+    }),
+    [data.assets, presignedUrls]
+  );
 
   if (!unit || !current) {
     return <div style={{ padding: 24, color: "#9aa3ad" }}>No units to preview.</div>;
@@ -149,24 +171,26 @@ export function CoursePlayer({
         />
         <PhasePills flow={flow} />
         <div style={{ width: "min(360px, 100%)", aspectRatio: "360 / 640", flex: "0 0 auto" }}>
-          <BrandThemeProvider theme={theme}>
-            <CardStage>
-              <UnitFlow
-                unit={unit}
-                flow={flow}
-                questionsById={questionsById}
-                clock={clock}
-                audio={audio}
-                reducedMotion={reducedMotion}
-                isLastUnit={current.flatIndex === flatUnits.length - 1}
-                onEditSentence={
-                  onEditSentence
-                    ? (narrationId) => onEditSentence(unit.id, narrationId)
-                    : undefined
-                }
-              />
-            </CardStage>
-          </BrandThemeProvider>
+          <AssetResolverContext.Provider value={assetResolver}>
+            <BrandThemeProvider theme={theme}>
+              <CardStage>
+                <UnitFlow
+                  unit={unit}
+                  flow={flow}
+                  questionsById={questionsById}
+                  clock={clock}
+                  audio={audio}
+                  reducedMotion={reducedMotion}
+                  isLastUnit={current.flatIndex === flatUnits.length - 1}
+                  onEditSentence={
+                    onEditSentence
+                      ? (narrationId) => onEditSentence(unit.id, narrationId)
+                      : undefined
+                  }
+                />
+              </CardStage>
+            </BrandThemeProvider>
+          </AssetResolverContext.Provider>
         </div>
         {flow.phase === "content" && unit.timing ? (
           <div style={{ width: "min(420px, 100%)" }}>

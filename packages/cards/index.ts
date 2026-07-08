@@ -57,3 +57,4 @@ export {
   type AssetResolver,
   type CardImageProps,
 } from "./src/assets";
+export { CardVideo, type CardVideoProps } from "./src/card-video";

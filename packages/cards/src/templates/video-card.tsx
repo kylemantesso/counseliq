@@ -1,5 +1,5 @@
 import type { CardPropsFor } from "@counseliq/course-schema";
-import { CardImage } from "../assets";
+import { CardVideo } from "../card-video";
 import { fadeUp, msWindow } from "../interpolate";
 import { fitBlockFontSize } from "../fit";
 import { cssVar } from "../theme/brand-theme-provider";
@@ -7,10 +7,11 @@ import type { CardComponentProps } from "../timing";
 
 /**
  * 22 · video-card — full-bleed muted b-roll (M6). Playback is driven by the
- * host clock through `timing.media` (no internal timers, ever); until the
- * playback layer lands this renders the asset's poster frame via the
- * `poster:<assetRef>` resolver convention. Narration remains the only
- * audio — the video element is muted by contract.
+ * host clock through `timing.media` (CardVideo, the whitelisted playback
+ * primitive — no internal timers, ever): poster until the beat fires,
+ * play within the media window, hold the last frame when the clip is
+ * shorter than the card, poster still under reduced motion. Narration
+ * remains the only audio — the video element is muted by contract.
  */
 
 export function VideoCard({ props, timing }: CardComponentProps<CardPropsFor<"video-card">>) {
@@ -26,9 +27,10 @@ export function VideoCard({ props, timing }: CardComponentProps<CardPropsFor<"vi
       }}
     >
       <div style={{ position: "absolute", inset: 0, overflow: "hidden" }}>
-        <CardImage
-          imageRef={props.assetRef ? `poster:${props.assetRef}` : undefined}
+        <CardVideo
+          assetRef={props.assetRef}
           alt={props.overlayText ?? "video"}
+          timing={timing}
         />
         <div
           style={{

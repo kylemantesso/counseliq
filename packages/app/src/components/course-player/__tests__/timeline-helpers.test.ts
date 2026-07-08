@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import {
+  assetRefsForUnit,
   courseProgressPct,
   flattenUnits,
   formatMs,
@@ -7,11 +8,13 @@ import {
   nextPhase,
   phaseFraction,
   phasesForUnit,
+  mediaKeysForUnits,
+  resolveAssetUrl,
   seekTarget,
   sentenceForClock,
   type SentenceWindow,
 } from "../timeline-helpers";
-import type { PreviewModule, PreviewUnit } from "../types";
+import type { PreviewAsset, PreviewModule, PreviewUnit } from "../types";
 
 /**
  * The audio engine is a thin shell over these pure decisions — boundaries,
@@ -150,5 +153,78 @@ describe("flattenUnits", () => {
     const flat = flattenUnits(modules);
     expect(flat.map((f) => f.unit.unitKey)).toEqual(["mu-101", "mu-102", "mu-201"]);
     expect(flat[2]).toMatchObject({ moduleIndex: 1, unitIndexInModule: 0, flatIndex: 2 });
+  });
+});
+
+// --- M6 media plumbing ---
+
+const MEDIA_UNIT: PreviewUnit = {
+  id: "u1",
+  unitKey: "mu-101",
+  concept: "campuses",
+  state: "assets_ready",
+  narration: [],
+  cards: [
+    {
+      template: "video-card",
+      props: { assetRef: "vid1" },
+      enterAt: { narration: "n1", word: "campus" },
+      provenance: "compiler:derived",
+    },
+    {
+      template: "stat-card",
+      props: { headline: "5" },
+      enterAt: { narration: "n1", word: "five" },
+      provenance: "doc:a:page:1",
+    },
+    {
+      template: "photo-kenburns",
+      props: { imageRef: "asset:legacy:12" }, // legacy loose ref: no assetRef
+      enterAt: { narration: "n1", word: "the" },
+      provenance: "compiler:derived",
+    },
+  ],
+  meta: { anchor: { template: "photo-kenburns", props: { assetRef: "img1" } } },
+};
+
+const ASSETS: Record<string, PreviewAsset> = {
+  vid1: {
+    objectKey: "sha256/aa.mp4",
+    thumbKey: "sha256/bb.jpg",
+    kind: "video",
+    durationMs: 2100,
+  },
+  img1: { objectKey: "sha256/cc.jpg", thumbKey: "sha256/dd.jpg", kind: "image" },
+};
+
+describe("assetRefsForUnit / mediaKeysForUnits", () => {
+  test("collects card + anchor refs, ignoring legacy imageRef strings", () => {
+    expect(assetRefsForUnit(MEDIA_UNIT)).toEqual(["vid1", "img1"]);
+  });
+
+  test("keys cover object + thumb for known refs across units, deduped", () => {
+    const keys = mediaKeysForUnits([MEDIA_UNIT, MEDIA_UNIT, undefined], ASSETS);
+    expect(keys.sort()).toEqual(
+      ["sha256/aa.mp4", "sha256/bb.jpg", "sha256/cc.jpg", "sha256/dd.jpg"].sort()
+    );
+    expect(mediaKeysForUnits([MEDIA_UNIT], undefined)).toEqual([]);
+  });
+});
+
+describe("resolveAssetUrl", () => {
+  const URLS = new Map([
+    ["sha256/aa.mp4", "https://signed/aa"],
+    ["sha256/bb.jpg", "https://signed/bb"],
+  ]);
+
+  test("assetRef resolves to the objectKey URL; poster: to the thumb", () => {
+    expect(resolveAssetUrl("vid1", ASSETS, URLS)).toBe("https://signed/aa");
+    expect(resolveAssetUrl("poster:vid1", ASSETS, URLS)).toBe("https://signed/bb");
+  });
+
+  test("unknown refs, legacy refs, and unsigned keys resolve to null", () => {
+    expect(resolveAssetUrl("asset:legacy:12", ASSETS, URLS)).toBeNull();
+    expect(resolveAssetUrl("img1", ASSETS, URLS)).toBeNull(); // no URL yet
+    expect(resolveAssetUrl("vid1", undefined, URLS)).toBeNull();
   });
 });

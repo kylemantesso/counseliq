@@ -111,6 +111,41 @@ async function buildRunPreview(ctx: QueryCtx, runId: Id<"runs">) {
     }
   }
 
+  // assetRef → object-store keys for every media card/anchor in the course
+  // (M6). Keys only — presigning stays with the client's batch action.
+  const assetRefs = new Set<string>();
+  const collectRefs = (cards: unknown) => {
+    if (!Array.isArray(cards)) return;
+    for (const card of cards) {
+      const ref = (card as { props?: { assetRef?: unknown } }).props?.assetRef;
+      if (typeof ref === "string" && ref.length > 0) assetRefs.add(ref);
+    }
+  };
+  for (const unit of units) {
+    collectRefs(unit.cards);
+    const anchor = (unit.meta as { anchor?: { props?: { assetRef?: unknown } } } | undefined)
+      ?.anchor;
+    if (typeof anchor?.props?.assetRef === "string") {
+      assetRefs.add(anchor.props.assetRef);
+    }
+  }
+  const assets: Record<
+    string,
+    { objectKey: string; thumbKey?: string; kind: string; durationMs?: number }
+  > = {};
+  for (const ref of assetRefs) {
+    const assetId = ctx.db.normalizeId("assets", ref);
+    if (!assetId) continue;
+    const asset = await ctx.db.get(assetId);
+    if (!asset || (asset.kind !== "image" && asset.kind !== "video")) continue;
+    assets[ref] = {
+      objectKey: asset.objectKey,
+      ...(asset.thumbKey !== undefined ? { thumbKey: asset.thumbKey } : {}),
+      kind: asset.kind,
+      ...(asset.durationMs !== undefined ? { durationMs: asset.durationMs } : {}),
+    };
+  }
+
   const gate3Items = await ctx.db
     .query("reviewItems")
     .withIndex("by_run_and_gate", (q) => q.eq("runId", runId).eq("gate", 3))
@@ -146,6 +181,7 @@ async function buildRunPreview(ctx: QueryCtx, runId: Id<"runs">) {
         }
       : null,
     modules,
+    assets,
     questions: questions.map((q) => ({
       _id: q._id,
       conceptTag: q.conceptTag,

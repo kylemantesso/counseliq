@@ -9,7 +9,8 @@ import { describe, expect, test } from "vitest";
  * frame capture and fails here.
  *
  * card-stage.tsx is whitelisted for LAYOUT hooks only (it measures its
- * container) — timers and CSS animations stay banned there too.
+ * container); card-video.tsx for imperative <video> control driven purely
+ * by host-clock props — timers and CSS animations stay banned in both.
  */
 
 const SRC_DIR = join(__dirname, "..", "src");
@@ -21,7 +22,7 @@ const BANNED_ALWAYS =
 /** Additionally banned outside the layout-measurement whitelist. */
 const BANNED_HOOKS = /\b(useEffect|useLayoutEffect|useRef)\b/;
 
-const HOOK_WHITELIST = new Set(["card-stage.tsx"]);
+const HOOK_WHITELIST = new Set(["card-stage.tsx", "card-video.tsx"]);
 
 function walk(dir: string): string[] {
   const out: string[] = [];
