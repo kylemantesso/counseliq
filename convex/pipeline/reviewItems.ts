@@ -6,6 +6,7 @@ import type { Id } from "../_generated/dataModel";
 import { reviewGateValidator } from "../schema";
 import { AppErrorCode, appError } from "../errors";
 import { requireAdmin } from "../admin";
+import { findBannedClaimsInText, textHasAttribution } from "./compiler/rules";
 import type { ReviewGate } from "./states";
 
 const PLACEHOLDER_ITEMS: Record<
@@ -349,9 +350,26 @@ export const adminResolveReviewItemsBulk = mutation({
   handler: async (ctx, args) => {
     const admin = await requireAdmin(ctx);
     let resolved = 0;
+    let skippedRisky = 0;
     for (const reviewItemId of args.reviewItemIds) {
       const item = await ctx.db.get(reviewItemId);
       if (!item || item.status !== "pending") continue;
+      // An unattributed superlative/promise fact can NEVER be authored
+      // (the compiler's banned-claims rule refuses it and retries cannot
+      // fix the fact) — bulk approve-without-source skips these; they
+      // need an explicit per-item decision: approve WITH source, or
+      // exclude.
+      if (args.resolution === "approve_without_source") {
+        const fact = (item.payload as { fact?: { statement?: string } }).fact;
+        const statement = fact?.statement ?? "";
+        if (
+          findBannedClaimsInText(statement).length > 0 &&
+          !textHasAttribution(statement)
+        ) {
+          skippedRisky += 1;
+          continue;
+        }
+      }
       await resolveReviewItemHelper(ctx, {
         reviewItemId,
         resolution: args.resolution,
@@ -359,7 +377,7 @@ export const adminResolveReviewItemsBulk = mutation({
       });
       resolved += 1;
     }
-    return { resolved };
+    return { resolved, skippedRisky };
   },
 });
 

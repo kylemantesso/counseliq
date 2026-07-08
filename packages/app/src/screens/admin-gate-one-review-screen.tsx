@@ -15,6 +15,10 @@ import {
 } from "@counseliq/ui";
 import { Image } from "react-native";
 import type { Doc, Id } from "../../../../convex/_generated/dataModel";
+import {
+  findBannedClaimsInText,
+  textHasAttribution,
+} from "../../../../convex/pipeline/compiler/rules";
 import { AdminGuard } from "../components/admin-guard";
 import { Screen } from "../components/screen";
 import { api } from "../db/api";
@@ -200,13 +204,18 @@ function AdminGateOneReviewContent() {
                               setBulkBusy(true);
                               setError(null);
                               try {
-                                await resolveBulk({
+                                const outcome = await resolveBulk({
                                   reviewItemIds: [
                                     ...selectedIds,
                                   ] as Id<"reviewItems">[],
                                   resolution: "approve_without_source",
                                 });
                                 setSelectedIds(new Set());
+                                if (outcome.skippedRisky > 0) {
+                                  setError(
+                                    `${outcome.skippedRisky} fact(s) skipped: unattributed superlatives/promises can never be authored — approve them WITH a source, or exclude.`
+                                  );
+                                }
                               } catch (err) {
                                 setError(
                                   getUserFacingErrorMessage(
@@ -350,6 +359,10 @@ function ReviewItemCard({
 
   const pending = item.status === "pending";
   const yearValid = /^\d{4}$/.test(year.trim());
+  // An unattributed superlative/promise can never be authored — steer to
+  // approve-with-source or exclude (bulk approve also skips these).
+  const bannedHits = findBannedClaimsInText(payload.fact.statement);
+  const risky = bannedHits.length > 0 && !textHasAttribution(payload.fact.statement);
 
   return (
     <Box
@@ -388,6 +401,12 @@ function ReviewItemCard({
           <Text className="text-xs text-muted-foreground">
             {payload.provenance.join(", ")}
           </Text>
+          {pending && risky ? (
+            <Text className="text-xs text-destructive font-semibold">
+              ⚠ {bannedHits[0].description} — approve WITH a source, or
+              exclude; without attribution this fact can never be authored.
+            </Text>
+          ) : null}
           {!pending ? (
             <Text className="text-xs font-semibold">
               {item.status === "approved"
@@ -431,9 +450,11 @@ function ReviewItemCard({
             size="sm"
             variant="outline"
             onPress={() => resolve("approve_without_source")}
-            disabled={busy}
+            disabled={busy || risky}
           >
-            <ButtonText>Approve without source</ButtonText>
+            <ButtonText>
+              {risky ? "Needs source or exclude" : "Approve without source"}
+            </ButtonText>
           </Button>
           <Button
             size="sm"
