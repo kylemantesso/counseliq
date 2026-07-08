@@ -11,6 +11,7 @@ import {
 } from "../_generated/server";
 import type { Doc } from "../_generated/dataModel";
 import { requireAdmin } from "../admin";
+import { assetFitsTemplate } from "./compiler/rules";
 import { AppErrorCode, appError } from "../errors";
 
 /**
@@ -223,6 +224,45 @@ export const adminListIngestJobs = query({
       )
       .order("desc")
       .take(20);
+  },
+});
+
+/**
+ * Cleared assets that could replace the asset on a media card of the
+ * given template (gate-2/3 swap picker). Same predicates as the compiler
+ * filter and the swap mutation — the picker can never offer an asset the
+ * swap would reject.
+ */
+export const adminListSwappableAssets = query({
+  args: { runId: v.id("runs"), template: v.string() },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+    const run = await ctx.db.get(args.runId);
+    if (!run) appError(AppErrorCode.RUN_NOT_FOUND);
+    const assets = await ctx.db
+      .query("assets")
+      .withIndex("by_institution", (q) =>
+        q.eq("institutionId", run.institutionId)
+      )
+      .take(2000);
+    return assets
+      .filter(
+        (asset) =>
+          isCatalogueAsset(asset) &&
+          isAssetCleared(asset) &&
+          assetFitsTemplate(args.template, {
+            kind: asset.kind as "image" | "video",
+            ...(asset.aspect !== undefined ? { aspect: asset.aspect } : {}),
+          }) === null
+      )
+      .map((asset) => ({
+        _id: asset._id,
+        kind: asset.kind,
+        aspect: asset.aspect,
+        caption: asset.caption,
+        thumbKey: asset.thumbKey ?? (asset.kind === "image" ? asset.objectKey : undefined),
+        durationMs: asset.durationMs,
+      }));
   },
 });
 

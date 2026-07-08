@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useEffect, useMemo, useState } from "react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { useParams, useRouter } from "solito/navigation";
 import {
   Box,
@@ -14,6 +14,7 @@ import {
   ScrollView,
   Text,
 } from "@counseliq/ui";
+import { Image } from "react-native";
 import type { Doc, Id } from "../../../../convex/_generated/dataModel";
 import { AdminGuard } from "../components/admin-guard";
 import { CardStaticPreview } from "../components/card-static-preview";
@@ -512,6 +513,20 @@ function UnitDetail({
               <Text className="text-xs text-muted-foreground" numberOfLines={1}>
                 {card.provenance}
               </Text>
+              {MEDIA_TEMPLATES.includes(card.template) ? (
+                <SwapAssetControl
+                  runId={runId}
+                  unitId={unit._id}
+                  cardIndex={index}
+                  template={card.template}
+                  currentRef={
+                    typeof card.props.assetRef === "string"
+                      ? card.props.assetRef
+                      : null
+                  }
+                  onError={onError}
+                />
+              ) : null}
             </Box>
           ))}
         </Box>
@@ -708,6 +723,128 @@ function QuestionCard({
           <ButtonText>Cancel</ButtonText>
         </Button>
       </Box>
+    </Box>
+  );
+}
+
+// --- M6: gate-2 asset swap (re-validates, never re-synthesises) ---
+
+const MEDIA_TEMPLATES = ["video-card", "photo-kenburns", "image-text-card"];
+
+function SwapAssetControl({
+  runId,
+  unitId,
+  cardIndex,
+  template,
+  currentRef,
+  onError,
+}: {
+  runId: Id<"runs">;
+  unitId: Id<"microUnits">;
+  cardIndex: number;
+  template: string;
+  currentRef: string | null;
+  onError: (message: string | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const swappable = useQuery(
+    api.pipeline.assetsCatalogue.adminListSwappableAssets,
+    open ? { runId, template } : "skip"
+  );
+  const swapAsset = useMutation(api.pipeline.tts.edit.adminSwapCardAsset);
+  const presignBatch = useAction(api.pipeline.objectStore.adminPresignGetBatch);
+  const [thumbUrls, setThumbUrls] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (!swappable || swappable.length === 0) return;
+    const keys = swappable
+      .map((asset) => asset.thumbKey)
+      .filter((key): key is string => key !== undefined);
+    if (keys.length === 0) return;
+    let cancelled = false;
+    presignBatch({ keys })
+      .then((entries) => {
+        if (cancelled) return;
+        const map: Record<string, string> = {};
+        for (const entry of entries) map[entry.key] = entry.url;
+        setThumbUrls(map);
+      })
+      .catch(() => {
+        // Captions still make the picker usable without thumbnails.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [swappable, presignBatch]);
+
+  async function swapTo(assetId: Id<"assets">) {
+    setBusy(true);
+    onError(null);
+    try {
+      await swapAsset({ runId, unitId, cardIndex, assetId });
+      setOpen(false);
+    } catch (error) {
+      onError(
+        getUserFacingErrorMessage(error, "Could not swap the asset. Try again.")
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Box className="gap-1">
+      <Button variant="outline" size="sm" onPress={() => setOpen((v) => !v)}>
+        <ButtonText>{open ? "Close picker" : "Swap asset"}</ButtonText>
+      </Button>
+      {open ? (
+        <Box className="bg-card border border-border rounded-lg p-2 gap-2">
+          {swappable === undefined ? (
+            <Text className="text-xs text-muted-foreground">Loading…</Text>
+          ) : swappable.length === 0 ? (
+            <Text className="text-xs text-muted-foreground">
+              No cleared assets fit this template. Declare rights in the asset
+              library first.
+            </Text>
+          ) : (
+            swappable.map((asset) => (
+              <Pressable
+                key={asset._id}
+                disabled={busy || asset._id === currentRef}
+                onPress={() => void swapTo(asset._id)}
+                className={
+                  asset._id === currentRef
+                    ? "flex-row gap-2 items-center opacity-50"
+                    : "flex-row gap-2 items-center"
+                }
+              >
+                {asset.thumbKey && thumbUrls[asset.thumbKey] ? (
+                  <Image
+                    source={{ uri: thumbUrls[asset.thumbKey] }}
+                    resizeMode="cover"
+                    style={{ width: 56, height: 36, borderRadius: 4, backgroundColor: "#f4f4f5" }}
+                  />
+                ) : (
+                  <Box className="w-14 h-9 bg-background border border-border rounded" />
+                )}
+                <Box className="flex-1">
+                  <Text className="text-xs" numberOfLines={2}>
+                    {asset.caption ?? "(untagged)"}
+                  </Text>
+                  <Text className="text-[10px] text-muted-foreground">
+                    {asset.kind}
+                    {asset.durationMs
+                      ? ` · ${Math.round(asset.durationMs / 1000)}s`
+                      : ""}
+                    {asset._id === currentRef ? " · current" : ""}
+                  </Text>
+                </Box>
+              </Pressable>
+            ))
+          )}
+        </Box>
+      ) : null}
     </Box>
   );
 }

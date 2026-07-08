@@ -1,7 +1,9 @@
 import { v } from "convex/values";
 import {
   unitScriptSchema,
+  unitTimingSchema,
   type UnitScript,
+  type UnitTiming,
   type ScriptSentence,
 } from "@counseliq/course-schema";
 import { internalMutation, mutation } from "../../_generated/server";
@@ -12,7 +14,10 @@ import { AppErrorCode, appError } from "../../errors";
 import { requireAdmin } from "../../admin";
 import { normalizeSentence } from "./normalize";
 import { findBlockedTerms } from "./lexicon";
+import { computeMediaWindows, MEDIA_WINDOW_TEMPLATES } from "./beats";
 import { assertCourseMutable } from "../courses";
+import { isAssetCleared, isCatalogueAsset } from "../assetsCatalogue";
+import { assetFitsTemplate } from "../compiler/rules";
 import {
   replaceGate3BlockedUnitItems,
   type BlockedUnitItem,
@@ -245,6 +250,112 @@ async function retryUnitTtsHelper(
   );
   return { status: "scheduled" };
 }
+
+// --- Gate-2/3 asset swap (M6) — never touches narration audio ---
+
+async function swapCardAssetHelper(
+  ctx: MutationCtx,
+  args: {
+    runId: Id<"runs">;
+    unitId: Id<"microUnits">;
+    cardIndex: number;
+    assetId: Id<"assets">;
+  }
+): Promise<{ status: "swapped" }> {
+  const { unit } = await loadEditableRunUnit(ctx, args.runId, args.unitId);
+
+  const cards = (unit.cards ?? []) as Array<{
+    template: string;
+    props: Record<string, unknown>;
+    enterAt: { narration: string; word: string };
+  }>;
+  const card = cards[args.cardIndex];
+  if (!card || !MEDIA_WINDOW_TEMPLATES.includes(card.template)) {
+    appError(AppErrorCode.ASSET_KIND_MISMATCH);
+  }
+
+  const asset = await ctx.db.get(args.assetId);
+  if (!asset || !isCatalogueAsset(asset)) {
+    appError(AppErrorCode.ASSET_NOT_FOUND);
+  }
+  // The mechanical rights gate applies to swaps exactly as to compilation.
+  if (!isAssetCleared(asset)) appError(AppErrorCode.ASSET_NOT_CLEARED);
+  if (
+    assetFitsTemplate(card.template, {
+      kind: asset.kind as "image" | "video",
+      ...(asset.aspect !== undefined ? { aspect: asset.aspect } : {}),
+    }) !== null
+  ) {
+    appError(AppErrorCode.ASSET_KIND_MISMATCH);
+  }
+
+  const updatedCards = cards.map((entry, index) =>
+    index === args.cardIndex
+      ? { ...entry, props: { ...entry.props, assetRef: String(args.assetId) } }
+      : entry
+  );
+  await ctx.db.patch(unit._id, { cards: updatedCards });
+
+  // Visual-only change by construction: unitContentHash strips assetRef
+  // (sanitizeCardsForAudioHash), so unit.contentHash stays valid and no
+  // synthesis is ever scheduled. Only the timing artifact's media windows
+  // depend on the asset (video duration) — recompute them in place.
+  const timing = unit.timing as UnitTiming | undefined;
+  if (timing) {
+    const durations = new Map<string, number>();
+    for (const entry of updatedCards) {
+      const ref = entry.props.assetRef;
+      if (typeof ref !== "string") continue;
+      const refId = ctx.db.normalizeId("assets", ref);
+      if (!refId) continue;
+      const refAsset =
+        String(refId) === String(args.assetId) ? asset : await ctx.db.get(refId);
+      if (refAsset?.durationMs !== undefined) {
+        durations.set(ref, refAsset.durationMs);
+      }
+    }
+    const media = computeMediaWindows(
+      updatedCards,
+      timing.cardBeats,
+      timing.totalDurationMs,
+      durations
+    );
+    // Single-write-path discipline: the artifact is schema-validated on
+    // every write. Sentences/beats are untouched — audio never changes.
+    await ctx.db.patch(unit._id, {
+      timing: unitTimingSchema.parse({ ...timing, media }),
+    });
+  }
+
+  return { status: "swapped" };
+}
+
+/** Internal variant for scripts/tests. */
+export const swapCardAsset = internalMutation({
+  args: {
+    runId: v.id("runs"),
+    unitId: v.id("microUnits"),
+    cardIndex: v.number(),
+    assetId: v.id("assets"),
+  },
+  handler: async (ctx, args) => {
+    return await swapCardAssetHelper(ctx, args);
+  },
+});
+
+/** Admin: swap the asset on one media card at gate 2/3 — no re-TTS, ever. */
+export const adminSwapCardAsset = mutation({
+  args: {
+    runId: v.id("runs"),
+    unitId: v.id("microUnits"),
+    cardIndex: v.number(),
+    assetId: v.id("assets"),
+  },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+    return await swapCardAssetHelper(ctx, args);
+  },
+});
 
 /** Internal variant for scripts/walkthroughs. */
 export const retryUnitTts = internalMutation({
