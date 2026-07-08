@@ -161,6 +161,131 @@ describe("applyAssetManifest", () => {
   });
 });
 
+describe("applyPdfImagesManifest", () => {
+  const IMG_KEY = `sha256/${"5".repeat(64)}.png`;
+  const IMG_THUMB = `sha256/${"6".repeat(64)}.png`;
+  const LOGO_KEY = `sha256/${"7".repeat(64)}.png`;
+
+  async function seedPdfDoc() {
+    const t = convexTest(schema, modules);
+    const ids = await t.run(async (ctx) => {
+      const institutionId = await ctx.db.insert("institutions", {
+        name: "Banksia University",
+        brandTokens: { placeholder: true },
+        pronunciationLexicon: {},
+        market: "AU",
+      });
+      const sourceDocId = await ctx.db.insert("sourceDocs", {
+        institutionId,
+        kind: "pdf",
+        objectKey: `sha256/${"8".repeat(64)}.pdf`,
+        status: "converted",
+      });
+      const slideId = await ctx.db.insert("slides", {
+        sourceDocId,
+        n: 4,
+        pngKey: `sha256/${"4".repeat(64)}.png`,
+        text: "",
+        notes: "",
+        hash: "4".repeat(64),
+        provenanceId: `doc:${sourceDocId}:page:4`,
+        embeddedImages: [],
+      });
+      return { institutionId, sourceDocId, slideId };
+    });
+    return { t, ...ids };
+  }
+
+  function makePdfManifest() {
+    return {
+      sourceDocHash: "8".repeat(64),
+      images: [
+        {
+          pageNs: [4, 7],
+          key: IMG_KEY,
+          thumbKey: IMG_THUMB,
+          width: 900,
+          height: 600,
+        },
+      ],
+      logoCandidates: [LOGO_KEY],
+    };
+  }
+
+  test("catalogues images, reflects slides, merges theme logo candidates — idempotently", async () => {
+    const { t, institutionId, sourceDocId, slideId } = await seedPdfDoc();
+    await t.mutation(internal.pipeline.assetsIngest.applyPdfImagesManifest, {
+      jobId: sourceDocId,
+      manifest: makePdfManifest(),
+    });
+    // Re-delivery must be a no-op.
+    await t.mutation(internal.pipeline.assetsIngest.applyPdfImagesManifest, {
+      jobId: sourceDocId,
+      manifest: makePdfManifest(),
+    });
+
+    const { assets, slide, doc } = await t.run(async (ctx) => ({
+      assets: await ctx.db.query("assets").take(100),
+      slide: await ctx.db.get(slideId),
+      doc: await ctx.db.get(sourceDocId),
+    }));
+
+    const catalogued = assets.filter((a) => a.objectKey === IMG_KEY);
+    expect(catalogued).toHaveLength(1);
+    expect(catalogued[0]).toMatchObject({
+      kind: "image",
+      origin: "deck_extracted",
+      rights: "unknown",
+      institutionId,
+      sourceProvenance: `doc:${sourceDocId}:page:4`,
+      aspect: "landscape",
+    });
+
+    expect(slide?.embeddedImages).toEqual([
+      { key: IMG_KEY, width: 900, height: 600, thumbKey: IMG_THUMB },
+    ]);
+
+    const logoRows = assets.filter((a) => a.objectKey === LOGO_KEY);
+    expect(logoRows).toHaveLength(1);
+    expect(logoRows[0].kind).toBe("logo-candidate");
+    expect(doc?.theme).toEqual({
+      method: "llm-inferred",
+      colors: [],
+      fonts: [],
+      logoCandidates: [LOGO_KEY],
+    });
+  });
+
+  test("infer-theme later fills colors/fonts while preserving logo candidates", async () => {
+    const { t, sourceDocId } = await seedPdfDoc();
+    await t.mutation(internal.pipeline.assetsIngest.applyPdfImagesManifest, {
+      jobId: sourceDocId,
+      manifest: makePdfManifest(),
+    });
+    await t.mutation(internal.pipeline.inventory.setDocInferredTheme, {
+      sourceDocId,
+      colors: ["#112233"],
+      fonts: ["Georgia"],
+    });
+    const doc = await t.run(async (ctx) => ctx.db.get(sourceDocId));
+    expect(doc?.theme).toEqual({
+      method: "llm-inferred",
+      colors: ["#112233"],
+      fonts: ["Georgia"],
+      logoCandidates: [LOGO_KEY],
+    });
+
+    // A second inference must not clobber already-present colors.
+    await t.mutation(internal.pipeline.inventory.setDocInferredTheme, {
+      sourceDocId,
+      colors: ["#FFFFFF"],
+      fonts: ["Arial"],
+    });
+    const after = await t.run(async (ctx) => ctx.db.get(sourceDocId));
+    expect(after?.theme?.colors).toEqual(["#112233"]);
+  });
+});
+
 describe("backfillDeckExtractedAssets", () => {
   test("promotes embedded-image rows with dims/institution from slides", async () => {
     const t = convexTest(schema, modules);

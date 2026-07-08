@@ -9,6 +9,7 @@ import type { MutationCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
 import { internal } from "../_generated/api";
 import { AppErrorCode, appError } from "../errors";
+import { upsertCatalogueAsset } from "./assetsIngest";
 import { applyRunTransition } from "./transitions";
 import { hmacSha256Hex, SIGNATURE_HEADER } from "./hmac";
 
@@ -142,13 +143,22 @@ export const applyConversionManifest = internalMutation({
       const pageAssets: { objectKey: string; kind: string }[] = [
         { objectKey: page.pngKey, kind: "page-png" },
         { objectKey: page.thumbKey, kind: "page-thumb" },
-        ...page.embeddedImages.map((image) => ({
-          objectKey: image.key,
-          kind: "embedded-image",
-        })),
       ];
       for (const asset of pageAssets) {
         await insertAssetIfAbsent(ctx, asset.objectKey, asset.kind, provenanceId);
+      }
+      // Embedded images enter the media catalogue directly (M6): one
+      // library, two origins — rights stay "unknown" until declared.
+      for (const image of page.embeddedImages) {
+        await upsertCatalogueAsset(ctx, doc.institutionId, {
+          objectKey: image.key,
+          kind: "image",
+          ...(image.thumbKey !== undefined ? { thumbKey: image.thumbKey } : {}),
+          width: image.width,
+          height: image.height,
+          origin: "deck_extracted",
+          sourceProvenance: provenanceId,
+        });
       }
     }
 

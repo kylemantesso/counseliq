@@ -3,11 +3,14 @@ import type { ZodType } from "zod";
 import {
   assetIngestRequestSchema,
   convertRequestSchema,
+  pdfImageExtractRequestSchema,
 } from "@counseliq/course-schema";
 import type { ConverterConfig } from "./config";
+import { sha256Hex } from "./content-address";
 import { deliverCallback, runConversion } from "./convert";
 import { verifySignature, SIGNATURE_HEADER } from "./hmac";
 import { runAssetIngest } from "./media";
+import { extractPdfImages, loadPdfImageOptions } from "./pdf-images";
 import { ObjectStore } from "./store";
 
 /**
@@ -90,7 +93,10 @@ export function createServer(config: ConverterConfig): FastifyInstance {
       convertRequestSchema,
       "conversion",
       async (job) => {
-        const manifest = await runConversion(job, store);
+        const manifest = await runConversion(job, store, {
+          thumbEdgePx: config.media.thumbEdgePx,
+          pdfImages: loadPdfImageOptions(),
+        });
         return { jobId: job.jobId, manifest };
       }
     )
@@ -106,6 +112,33 @@ export function createServer(config: ConverterConfig): FastifyInstance {
       async (job) => {
         const manifest = await runAssetIngest(job, store, config.media);
         return { jobId: job.jobId, manifest };
+      }
+    )
+  );
+
+  // Retroactive pdf embedded-image extraction over an already-converted doc.
+  app.post("/extract-pdf-images", async (request, reply) =>
+    acceptJob(
+      request.body,
+      request.headers[SIGNATURE_HEADER],
+      reply,
+      pdfImageExtractRequestSchema,
+      "pdf image extraction",
+      async (job) => {
+        const pdf = await store.download(job.sourceKey);
+        const { images, logoCandidates } = await extractPdfImages(
+          pdf,
+          store,
+          loadPdfImageOptions()
+        );
+        return {
+          jobId: job.jobId,
+          manifest: {
+            sourceDocHash: sha256Hex(pdf),
+            images,
+            logoCandidates,
+          },
+        };
       }
     )
   );

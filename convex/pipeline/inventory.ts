@@ -249,14 +249,19 @@ export const setDocInferredTheme = internalMutation({
   handler: async (ctx, args) => {
     const doc = await ctx.db.get(args.sourceDocId);
     if (!doc) appError(AppErrorCode.SOURCE_DOC_NOT_FOUND);
-    // ooxml extraction remains authoritative when present.
-    if (doc.theme) return null;
+    // ooxml extraction remains authoritative when present. A pdf converter
+    // manifest may have parked logoCandidates in an otherwise-empty
+    // llm-inferred theme (M6 pdfimages extraction) — merge colors/fonts in
+    // while PRESERVING those candidates; never overwrite colors that are
+    // already there.
+    if (doc.theme?.method === "ooxml") return null;
+    if ((doc.theme?.colors?.length ?? 0) > 0) return null;
     await ctx.db.patch(args.sourceDocId, {
       theme: {
         method: "llm-inferred",
         colors: args.colors,
         fonts: args.fonts,
-        logoCandidates: [],
+        logoCandidates: doc.theme?.logoCandidates ?? [],
       },
     });
     return null;
