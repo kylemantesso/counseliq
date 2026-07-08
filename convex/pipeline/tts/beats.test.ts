@@ -3,6 +3,7 @@ import { unitScriptSchema, type UnitScript } from "@counseliq/course-schema";
 import {
   assembleUnitClock,
   buildUnitTiming,
+  computeMediaWindows,
   deriveWords,
   projectWordsToSpeakText,
   resolveCardBeats,
@@ -205,13 +206,100 @@ describe("buildUnitTiming", () => {
       gapMs: 250,
       sentences: timing,
       cardBeats: beats,
+      media: [],
       generatedAt: 1720000000000,
     });
 
-    expect(artifact.version).toBe(1);
+    expect(artifact.version).toBe(2);
     expect(artifact.totalDurationMs).toBe(
       timing[1].startMs + timing[1].durationMs
     );
     expect(artifact.cardBeats).toHaveLength(1);
+    expect(artifact.media).toEqual([]);
+  });
+});
+
+describe("computeMediaWindows", () => {
+  const mediaCard = (template: string, assetRef?: string) => ({
+    template,
+    props: assetRef !== undefined ? { assetRef } : {},
+  });
+
+  test("image window spans beat to next beat; last card runs to unit end", () => {
+    const cards = [
+      mediaCard("photo-kenburns", "asset1"),
+      mediaCard("text-card"),
+      mediaCard("image-text-card", "asset2"),
+    ];
+    const beats = [
+      { cardIndex: 0, atMs: 0 },
+      { cardIndex: 1, atMs: 2000 },
+      { cardIndex: 2, atMs: 5000 },
+    ];
+    expect(computeMediaWindows(cards, beats, 9000, new Map())).toEqual([
+      { cardIndex: 0, inMs: 0, outMs: 2000 },
+      { cardIndex: 2, inMs: 5000, outMs: 9000 },
+    ]);
+  });
+
+  test("video is capped at the asset duration (trim-if-longer)", () => {
+    const cards = [mediaCard("video-card", "vid1")];
+    const beats = [{ cardIndex: 0, atMs: 1000 }];
+    const windows = computeMediaWindows(
+      cards,
+      beats,
+      10000,
+      new Map([["vid1", 3000]])
+    );
+    expect(windows).toEqual([{ cardIndex: 0, inMs: 1000, outMs: 4000 }]);
+  });
+
+  test("video longer than its card window is trimmed to the window", () => {
+    const cards = [mediaCard("video-card", "vid1"), mediaCard("stat-card")];
+    const beats = [
+      { cardIndex: 0, atMs: 0 },
+      { cardIndex: 1, atMs: 2500 },
+    ];
+    const windows = computeMediaWindows(
+      cards,
+      beats,
+      9000,
+      new Map([["vid1", 60000]])
+    );
+    expect(windows).toEqual([{ cardIndex: 0, inMs: 0, outMs: 2500 }]);
+  });
+
+  test("beats out of card order still window by clock order", () => {
+    // Card 1 enters BEFORE card 0 on the clock.
+    const cards = [
+      mediaCard("photo-kenburns", "a"),
+      mediaCard("photo-kenburns", "b"),
+    ];
+    const beats = [
+      { cardIndex: 0, atMs: 4000 },
+      { cardIndex: 1, atMs: 1000 },
+    ];
+    expect(computeMediaWindows(cards, beats, 8000, new Map())).toEqual([
+      { cardIndex: 0, inMs: 4000, outMs: 8000 },
+      { cardIndex: 1, inMs: 1000, outMs: 4000 },
+    ]);
+  });
+
+  test("non-media templates, missing assetRef, and shadowed beats get no window", () => {
+    const cards = [
+      mediaCard("stat-card"),
+      mediaCard("photo-kenburns"), // media template but no assetRef
+      mediaCard("video-card", "vid1"), // shadowed: same atMs as next beat
+      mediaCard("photo-kenburns", "img1"),
+    ];
+    const beats = [
+      { cardIndex: 0, atMs: 0 },
+      { cardIndex: 1, atMs: 1000 },
+      { cardIndex: 2, atMs: 2000 },
+      { cardIndex: 3, atMs: 2000 },
+    ];
+    expect(computeMediaWindows(cards, beats, 6000, new Map())).toEqual([
+      { cardIndex: 3, inMs: 2000, outMs: 6000 },
+    ]);
   });
 });

@@ -126,4 +126,9 @@ export const CARD_PROP_FIXTURES: Record<CardTemplate, Record<string, unknown>> =
       "Translation certification",
     ],
   },
+  "video-card": {
+    assetRef: "asset:demo:clinical-simulation-broll",
+    overlayText: "Inside the clinical simulation wards",
+    sourceLabel: "University media kit",
+  },
 };

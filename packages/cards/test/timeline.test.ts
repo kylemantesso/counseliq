@@ -15,7 +15,7 @@ import {
  * real contract.
  */
 const FIXTURE: UnitTiming = unitTimingSchema.parse({
-  version: 1,
+  version: 2,
   unitKey: "mu-101",
   provider: "mock",
   voiceRef: "test-narrator",
@@ -55,6 +55,7 @@ const FIXTURE: UnitTiming = unitTimingSchema.parse({
     { cardIndex: 1, atMs: 700 },
     { cardIndex: 2, atMs: 2900 },
   ],
+  media: [],
   generatedAt: 1720000000000,
 });
 

@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import type { UnitScript, UnitTiming } from "@counseliq/course-schema";
+import { TIMING_VERSION } from "@counseliq/course-schema";
 import { internalQuery, query } from "../../_generated/server";
 import type { QueryCtx } from "../../_generated/server";
 import type { Doc, Id } from "../../_generated/dataModel";
@@ -36,6 +37,24 @@ interface PreviewModule {
   units: PreviewUnit[];
 }
 
+/**
+ * A stored timing artifact from an older TIMING_VERSION is surfaced as
+ * absent (the studio shows the unit as needing re-synthesis) rather than
+ * crashing a consumer that reads v2-only fields. The contentHash embeds
+ * TIMING_VERSION, so the next GENERATING_ASSETS pass rebuilds it — audio
+ * itself is per-sentence cached, so the rebuild costs no TTS spend.
+ */
+function currentVersionTiming(timing: unknown): unknown {
+  if (
+    timing !== null &&
+    typeof timing === "object" &&
+    (timing as { version?: unknown }).version === TIMING_VERSION
+  ) {
+    return timing;
+  }
+  return null;
+}
+
 async function buildRunPreview(ctx: QueryCtx, runId: Id<"runs">) {
   const rows = await getCourseRowsForRun(ctx, runId);
   if (!rows) return null;
@@ -65,7 +84,7 @@ async function buildRunPreview(ctx: QueryCtx, runId: Id<"runs">) {
       cards: unit.cards,
       meta: unit.meta,
       script: unit.script ?? null,
-      timing: unit.timing ?? null,
+      timing: currentVersionTiming(unit.timing),
       qa: unit.qa ?? null,
     });
   }
@@ -81,7 +100,7 @@ async function buildRunPreview(ctx: QueryCtx, runId: Id<"runs">) {
     else if (unit.state === "assets_ready" || unit.state === "published") {
       ready += 1;
     }
-    const timing = unit.timing as UnitTiming | undefined;
+    const timing = currentVersionTiming(unit.timing) as UnitTiming | null;
     if (timing?.totalDurationMs) totalDurationMs += timing.totalDurationMs;
     const script = unit.script as UnitScript | undefined;
     if (script) {

@@ -153,6 +153,7 @@ const DISPLAY_TEXT_CAPS: Partial<Record<CardTemplate, Record<string, number>>> =
   "myth-fact-card": { myth: 140, fact: 140 },
   "photo-kenburns": { overlayText: 120 },
   "takeaway-card": { text: 160 },
+  "video-card": { overlayText: 120 },
 };
 
 export const llmDraftQuestionSchema = z.object({

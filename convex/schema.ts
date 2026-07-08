@@ -208,6 +208,8 @@ export default defineSchema({
           key: v.string(),
           width: v.number(),
           height: v.number(),
+          /** Thumbnail key (emitted by M6+ converters). */
+          thumbKey: v.optional(v.string()),
         })
       )
     ),
@@ -407,12 +409,55 @@ export default defineSchema({
     latencyMs: v.number(),
   }).index("by_run", ["runId"]),
 
+  /**
+   * Object-store bookkeeping AND (M6) the institution media catalogue.
+   * Catalogue rows are `kind` "image" | "video" and carry the M6 fields
+   * below; conversion/tts bookkeeping rows (page-png, page-thumb,
+   * embedded-image, logo-candidate, tts-audio) keep only the original
+   * columns and never surface in library queries. `rights` is
+   * OPERATOR-DECLARED, defaults "unknown" at ingestion, and is never
+   * written by any model (the tag-asset output schema has no rights field).
+   */
   assets: defineTable({
     objectKey: v.string(),
     kind: v.string(),
     sourceProvenance: v.optional(v.string()),
     rights: v.optional(v.string()),
-  }).index("by_object_key", ["objectKey"]),
+    // --- M6 catalogue fields (image/video rows only) ---
+    institutionId: v.optional(v.id("institutions")),
+    thumbKey: v.optional(v.string()),
+    width: v.optional(v.number()),
+    height: v.optional(v.number()),
+    /** "portrait" | "landscape" | "square", derived from width/height. */
+    aspect: v.optional(v.string()),
+    /** Video only. */
+    durationMs: v.optional(v.number()),
+    originalName: v.optional(v.string()),
+    /** "deck_extracted" | "uploaded". */
+    origin: v.optional(v.string()),
+    // Tagging pass output (+ its cache stamp; re-tag = version mismatch).
+    caption: v.optional(v.string()),
+    tags: v.optional(v.array(v.string())),
+    subjects: v.optional(v.array(v.string())),
+    setting: v.optional(v.string()),
+    textInImage: v.optional(v.string()),
+    qualityScore: v.optional(v.number()),
+    /** Model may raise this; only a human lowers it. */
+    identifiablePeople: v.optional(v.boolean()),
+    taggedAt: v.optional(v.number()),
+    tagPromptVersion: v.optional(v.string()),
+    tagModel: v.optional(v.string()),
+    suggestedUses: v.optional(v.array(v.string())),
+    // Operator declarations.
+    rightsDeclaredBy: v.optional(v.string()),
+    rightsDeclaredAt: v.optional(v.number()),
+    peopleConsentConfirmed: v.optional(v.boolean()),
+    peopleConsentBy: v.optional(v.string()),
+  })
+    .index("by_object_key", ["objectKey"])
+    .index("by_institution", ["institutionId"])
+    .index("by_institution_and_kind", ["institutionId", "kind"])
+    .index("by_institution_and_object", ["institutionId", "objectKey"]),
 
   /**
    * Immutable publish snapshots (M5): one row per published course version,

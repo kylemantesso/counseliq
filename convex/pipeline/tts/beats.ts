@@ -13,6 +13,7 @@
 
 import type {
   CardBeat,
+  MediaWindow,
   TimingSentence,
   TimingWord,
   UnitScript,
@@ -188,6 +189,55 @@ export function resolveCardBeats(
   });
 }
 
+/** Card templates whose active window plays/holds a media asset (M6). */
+export const MEDIA_WINDOW_TEMPLATES: readonly string[] = [
+  "video-card",
+  "photo-kenburns",
+  "image-text-card",
+];
+
+/**
+ * Media playback windows (timing v2). A media card's window opens at its
+ * beat and closes at the next beat in clock order (or unit end). Video is
+ * additionally capped at the asset's duration — trim-if-longer; a shorter
+ * clip holds its last frame for the rest of the card window (the window
+ * itself stays the full card span, so `positionMs` keeps advancing and the
+ * player knows to hold). Cards whose beat is shadowed by a simultaneous
+ * later beat get no window.
+ */
+export function computeMediaWindows(
+  cards: ReadonlyArray<{ template?: string; props?: Record<string, unknown> }>,
+  cardBeats: readonly CardBeat[],
+  totalDurationMs: number,
+  assetDurations: ReadonlyMap<string, number>
+): MediaWindow[] {
+  // Same active-window semantics as the player: order beats by atMs (card
+  // order breaking ties), each window runs to the next beat's atMs.
+  const ordered = [...cardBeats].sort(
+    (a, b) => a.atMs - b.atMs || a.cardIndex - b.cardIndex
+  );
+  const windows: MediaWindow[] = [];
+  for (let i = 0; i < ordered.length; i++) {
+    const beat = ordered[i];
+    const card = cards[beat.cardIndex];
+    if (!card?.template || !MEDIA_WINDOW_TEMPLATES.includes(card.template)) {
+      continue;
+    }
+    const assetRef = card.props?.assetRef;
+    if (typeof assetRef !== "string" || assetRef.length === 0) continue;
+    const windowEnd = ordered[i + 1]?.atMs ?? totalDurationMs;
+    if (windowEnd <= beat.atMs) continue;
+    const durationMs = assetDurations.get(assetRef);
+    const outMs =
+      durationMs !== undefined
+        ? Math.min(windowEnd, beat.atMs + durationMs)
+        : windowEnd;
+    if (outMs <= beat.atMs) continue;
+    windows.push({ cardIndex: beat.cardIndex, inMs: beat.atMs, outMs });
+  }
+  return windows.sort((a, b) => a.cardIndex - b.cardIndex);
+}
+
 /** Assemble and schema-validate the versioned per-unit timing artifact. */
 export function buildUnitTiming(input: {
   unitKey: string;
@@ -197,6 +247,7 @@ export function buildUnitTiming(input: {
   gapMs: number;
   sentences: readonly TimingSentence[];
   cardBeats: readonly CardBeat[];
+  media: readonly MediaWindow[];
   generatedAt: number;
 }): UnitTiming {
   const last = input.sentences.at(-1);
@@ -211,6 +262,7 @@ export function buildUnitTiming(input: {
     totalDurationMs,
     sentences: input.sentences,
     cardBeats: input.cardBeats,
+    media: input.media,
     generatedAt: input.generatedAt,
   });
 }

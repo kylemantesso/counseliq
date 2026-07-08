@@ -22,9 +22,10 @@ import { TermCard } from "./term-card";
 import { TextCard } from "./text-card";
 import { TimelineCard } from "./timeline-card";
 import { TitleCard } from "./title-card";
+import { VideoCard } from "./video-card";
 
 /**
- * Template name → component registry, covering all 21 CARD_TEMPLATES.
+ * Template name → component registry, covering all 22 CARD_TEMPLATES.
  * CardRenderer falls back for anything absent, and the determinism test
  * iterates this record, so every entry is mechanically covered.
  */
@@ -51,4 +52,5 @@ export const TEMPLATE_COMPONENTS: Record<string, ComponentType<CardComponentProp
   "text-card": TextCard,
   "timeline-card": TimelineCard,
   "title-card": TitleCard,
+  "video-card": VideoCard,
 };

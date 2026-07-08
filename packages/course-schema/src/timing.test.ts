@@ -52,6 +52,7 @@ const validTiming: UnitTiming = {
     },
   ],
   cardBeats: [{ cardIndex: 0, atMs: 980 }],
+  media: [{ cardIndex: 0, inMs: 980, outMs: 4200 }],
 };
 
 describe("unitScriptSchema", () => {
@@ -95,6 +96,29 @@ describe("unitTimingSchema", () => {
 
   test("unknown keys are rejected (strict)", () => {
     expect(unitTimingSchema.safeParse({ ...validTiming, debug: {} }).success).toBe(false);
+  });
+
+  test("v2: media is required (empty array when no media cards)", () => {
+    const { media: _media, ...withoutMedia } = validTiming;
+    expect(unitTimingSchema.safeParse(withoutMedia).success).toBe(false);
+    expect(
+      unitTimingSchema.safeParse({ ...validTiming, media: [] }).success
+    ).toBe(true);
+  });
+
+  test("v2: media window outMs must be positive and fields integer", () => {
+    expect(
+      unitTimingSchema.safeParse({
+        ...validTiming,
+        media: [{ cardIndex: 0, inMs: 0, outMs: 0 }],
+      }).success
+    ).toBe(false);
+    expect(
+      unitTimingSchema.safeParse({
+        ...validTiming,
+        media: [{ cardIndex: 0, inMs: 10.5, outMs: 400 }],
+      }).success
+    ).toBe(false);
   });
 
   test("empty words rejected", () => {

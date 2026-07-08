@@ -30,6 +30,8 @@ export const CARD_TEMPLATES = [
   "chart-card",
   "date-card",
   "checklist-card",
+  // M6 media enrichment
+  "video-card",
 ] as const;
 
 export const cardTemplateSchema = z.enum(CARD_TEMPLATES);

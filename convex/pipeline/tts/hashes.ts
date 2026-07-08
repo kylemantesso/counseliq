@@ -9,8 +9,10 @@
  *   is skipped entirely on re-runs of GENERATING_ASSETS.
  *
  * Brand tokens and card-template versions are deliberately NOT hashed here:
- * they do not affect audio or beat times. The M6 render artifact gets its
- * own hash.
+ * they do not affect audio or beat times. Visual-only card props (assetRef /
+ * imageRef) are stripped for the same reason — swapping which cleared asset
+ * fills a frame (gate-2 asset swap) must never force re-synthesis. A future
+ * render artifact gets its own hash.
  */
 
 import { TIMING_VERSION } from "@counseliq/course-schema";
@@ -55,6 +57,33 @@ function canonicalLexicon(
     .map((key) => [key, lexicon[key]]);
 }
 
+/** Card props that never affect audio or beat times. */
+const VISUAL_ONLY_PROPS: readonly string[] = ["assetRef", "imageRef"];
+
+/**
+ * Cards with visual-only props stripped — the shape that participates in
+ * `unitContentHash`. Everything else (templates, text props, enterAt order)
+ * stays: it feeds beat resolution or authored content.
+ */
+export function sanitizeCardsForAudioHash(cards: unknown): unknown {
+  if (!Array.isArray(cards)) return cards;
+  return cards.map((card) => {
+    if (card === null || typeof card !== "object" || Array.isArray(card)) {
+      return card;
+    }
+    const { props, ...rest } = card as Record<string, unknown>;
+    if (props === null || typeof props !== "object" || Array.isArray(props)) {
+      return card;
+    }
+    const cleaned: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(props)) {
+      if (VISUAL_ONLY_PROPS.includes(key)) continue;
+      cleaned[key] = value;
+    }
+    return { ...rest, props: cleaned };
+  });
+}
+
 /**
  * A unit's audio-relevant fingerprint. Matching `microUnits.contentHash`
  * plus an existing timing artifact means GENERATING_ASSETS skips the unit.
@@ -70,11 +99,11 @@ export async function unitContentHash(input: {
 }): Promise<string> {
   return await sha256Hex(
     JSON.stringify({
-      v: 1,
+      v: 2,
       timingVersion: TIMING_VERSION,
       sentences: input.speakTexts,
       lexicon: canonicalLexicon(input.lexicon),
-      cards: input.cards,
+      cards: sanitizeCardsForAudioHash(input.cards),
       voiceId: input.voiceId,
       model: input.model,
       outputFormat: input.outputFormat,

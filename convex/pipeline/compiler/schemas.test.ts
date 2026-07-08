@@ -255,8 +255,8 @@ describe("AUTHOR_UNIT_JSON_SCHEMA wire shape", () => {
     );
   }
 
-  test("cards are a discriminated union on the wire (21 branches)", () => {
-    expect(cardBranches(AUTHOR_UNIT_JSON_SCHEMA as JsonSchema)).toHaveLength(21);
+  test("cards are a discriminated union on the wire (22 branches)", () => {
+    expect(cardBranches(AUTHOR_UNIT_JSON_SCHEMA as JsonSchema)).toHaveLength(22);
   });
 
   test("list-reveal items are typed as an array on the wire", () => {

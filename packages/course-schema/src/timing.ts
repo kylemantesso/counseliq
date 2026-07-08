@@ -4,9 +4,10 @@ import { z } from "zod";
  * M5 timing contracts — the versioned artifacts produced by
  * GENERATING_SCRIPT (UnitScript) and GENERATING_ASSETS (UnitTiming).
  *
- * UnitTiming is the single clock the gate-3 player consumes now and the
- * Remotion renderer consumes in M6: any field change requires bumping
- * TIMING_VERSION, and consumers must check `version` before reading.
+ * UnitTiming is the single clock the gate-3 player consumes now and a
+ * future Remotion renderer consumes later: any field change requires
+ * bumping TIMING_VERSION, and consumers must check `version` before
+ * reading. v2 (M6) adds `media` — per-media-card playback windows.
  *
  * All times are integer milliseconds on the UNIT clock (t=0 at the start of
  * the unit's first sentence), never sentence-local.
@@ -59,7 +60,7 @@ export const unitScriptSchema = z
 // UnitTiming (stored on microUnits.timing, written by GENERATING_ASSETS)
 // ---------------------------------------------------------------------------
 
-export const TIMING_VERSION = 1 as const;
+export const TIMING_VERSION = 2 as const;
 
 export const timingWordSchema = z
   .object({
@@ -91,6 +92,22 @@ export const cardBeatSchema = z
   })
   .strict();
 
+/**
+ * v2: playback window for one media card (video-card / photo-kenburns /
+ * image-text-card carrying an assetRef). `inMs` equals the card's beat;
+ * `outMs` is the card's window end, additionally capped at
+ * `inMs + asset durationMs` for video (trim-if-longer — a shorter video
+ * holds its last frame for the remainder of the card window).
+ */
+export const mediaWindowSchema = z
+  .object({
+    /** Index into microUnits.cards. */
+    cardIndex: z.number().int().nonnegative(),
+    inMs: z.number().int().nonnegative(),
+    outMs: z.number().int().positive(),
+  })
+  .strict();
+
 export const unitTimingSchema = z
   .object({
     version: z.literal(TIMING_VERSION),
@@ -103,6 +120,8 @@ export const unitTimingSchema = z
     totalDurationMs: z.number().int().positive(),
     sentences: z.array(timingSentenceSchema).min(1),
     cardBeats: z.array(cardBeatSchema),
+    /** v2: media playback windows (empty when the unit has no media cards). */
+    media: z.array(mediaWindowSchema),
     generatedAt: z.number(),
   })
   .strict();
@@ -113,4 +132,5 @@ export type UnitScript = z.infer<typeof unitScriptSchema>;
 export type TimingWord = z.infer<typeof timingWordSchema>;
 export type TimingSentence = z.infer<typeof timingSentenceSchema>;
 export type CardBeat = z.infer<typeof cardBeatSchema>;
+export type MediaWindow = z.infer<typeof mediaWindowSchema>;
 export type UnitTiming = z.infer<typeof unitTimingSchema>;

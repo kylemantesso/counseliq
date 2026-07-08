@@ -104,6 +104,9 @@ export const CARD_PROP_SCHEMAS = {
     .passthrough(),
   "photo-kenburns": z
     .object({
+      /** Catalogue asset id (M6). */
+      assetRef: z.string().min(1).optional(),
+      /** Deprecated loose ref — pre-M6 fixtures/courses only; assetRef wins. */
       imageRef: z.string().min(1).optional(),
       overlayText: z.string().min(1).optional(),
       panDirection: z.string().min(1).optional(),
@@ -160,6 +163,9 @@ export const CARD_PROP_SCHEMAS = {
     .passthrough(),
   "image-text-card": z
     .object({
+      /** Catalogue asset id (M6). */
+      assetRef: z.string().min(1).optional(),
+      /** Deprecated loose ref — pre-M6 fixtures/courses only; assetRef wins. */
       imageRef: z.string().min(1).optional(),
       text: z.string().min(1),
     })
@@ -181,6 +187,14 @@ export const CARD_PROP_SCHEMAS = {
     .object({
       heading: z.string().min(1).optional(),
       items: z.array(z.string().min(1)).min(1),
+    })
+    .passthrough(),
+  "video-card": z
+    .object({
+      /** Catalogue asset id — required; a video-card cannot render without one. */
+      assetRef: z.string().min(1),
+      overlayText: z.string().min(1).optional(),
+      sourceLabel,
     })
     .passthrough(),
 } as const satisfies Record<CardTemplate, z.ZodTypeAny>;
@@ -217,6 +231,7 @@ export const typedCardContentSchema = z.discriminatedUnion("template", [
   member("chart-card"),
   member("date-card"),
   member("checklist-card"),
+  member("video-card"),
 ]);
 
 export type TypedCardContent = z.infer<typeof typedCardContentSchema>;

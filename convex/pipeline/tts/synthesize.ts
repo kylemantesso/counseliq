@@ -7,10 +7,12 @@ import type { Doc, Id } from "../../_generated/dataModel";
 import { components, internal } from "../../_generated/api";
 import {
   assembleUnitClock,
+  computeMediaWindows,
   deriveWords,
   projectWordsToSpeakText,
   resolveCardBeats,
   buildUnitTiming,
+  MEDIA_WINDOW_TEMPLATES,
   type SentenceForAssembly,
   type SpokenWord,
 } from "./beats";
@@ -134,6 +136,8 @@ async function synthesizeUnitInner(
   const { voiceId, voiceRef } = await resolveVoice(voice);
   const lexicon = voice.lexicon;
   const cards = (unit.cards ?? []) as Array<{
+    template?: string;
+    props?: Record<string, unknown>;
     enterAt: { narration: string; word: string };
   }>;
 
@@ -249,6 +253,30 @@ async function synthesizeUnitInner(
 
   const timingSentences = assembleUnitClock(assembly, INTER_SENTENCE_GAP_MS);
   const cardBeats = resolveCardBeats(cards, script, timingSentences);
+  const lastSentence = timingSentences.at(-1);
+  const totalDurationMs = lastSentence
+    ? lastSentence.startMs + lastSentence.durationMs
+    : 0;
+  const mediaRefs = cards
+    .filter(
+      (card) =>
+        card.template !== undefined &&
+        MEDIA_WINDOW_TEMPLATES.includes(card.template) &&
+        typeof card.props?.assetRef === "string"
+    )
+    .map((card) => card.props?.assetRef as string);
+  const assetDurations =
+    mediaRefs.length > 0
+      ? await ctx.runQuery(internal.pipeline.tts.data.getAssetDurations, {
+          assetIds: mediaRefs,
+        })
+      : {};
+  const media = computeMediaWindows(
+    cards,
+    cardBeats,
+    totalDurationMs,
+    new Map(Object.entries(assetDurations))
+  );
   const timing = buildUnitTiming({
     unitKey: unit.unitKey,
     provider: providerName,
@@ -257,6 +285,7 @@ async function synthesizeUnitInner(
     gapMs: INTER_SENTENCE_GAP_MS,
     sentences: timingSentences,
     cardBeats,
+    media,
     generatedAt: Date.now(),
   });
   await ctx.runMutation(internal.pipeline.tts.data.saveUnitTiming, {

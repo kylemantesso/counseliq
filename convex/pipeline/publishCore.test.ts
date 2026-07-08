@@ -21,7 +21,7 @@ function fakeSha256(input: string): string {
 
 function makeTiming(overrides?: Partial<UnitTiming>): UnitTiming {
   return {
-    version: 1,
+    version: 2,
     unitKey: "mu-101",
     provider: "mock",
     voiceRef: "latrobe-narrator-01",
@@ -47,6 +47,7 @@ function makeTiming(overrides?: Partial<UnitTiming>): UnitTiming {
       },
     ],
     cardBeats: [{ cardIndex: 0, atMs: 0 }],
+    media: [],
     generatedAt: 1751884800000,
     ...overrides,
   };

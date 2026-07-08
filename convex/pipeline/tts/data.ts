@@ -46,6 +46,25 @@ async function loadRunVoiceContext(
   };
 }
 
+/**
+ * durationMs per catalogued video asset id, for media-window computation.
+ * Non-id refs (legacy fixture strings) and duration-less assets (images)
+ * are silently absent from the result.
+ */
+export const getAssetDurations = internalQuery({
+  args: { assetIds: v.array(v.string()) },
+  handler: async (ctx, args): Promise<Record<string, number>> => {
+    const out: Record<string, number> = {};
+    for (const id of new Set(args.assetIds)) {
+      const normalized = ctx.db.normalizeId("assets", id);
+      if (!normalized) continue;
+      const asset = await ctx.db.get(normalized);
+      if (asset?.durationMs !== undefined) out[id] = asset.durationMs;
+    }
+    return out;
+  },
+});
+
 /** One unit + the run's voice context (per-unit synthesis input). */
 export const getUnitTtsContext = internalQuery({
   args: { runId: v.id("runs"), unitId: v.id("microUnits") },
