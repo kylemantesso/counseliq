@@ -10,7 +10,7 @@ import {
   internalMutation,
   internalQuery,
 } from "../_generated/server";
-import type { MutationCtx } from "../_generated/server";
+import type { ActionCtx, MutationCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import { internal } from "../_generated/api";
 import { AppErrorCode, appError } from "../errors";
@@ -74,46 +74,85 @@ export const adminIngestAssets = action({
       internal.pipeline.queries.assertAdmin,
       {}
     );
+    return await ingestAssetsHelper(ctx, { ...args, createdBy: admin.email });
+  },
+});
 
-    const converterUrl = process.env.CONVERTER_URL;
-    const secret = process.env.CONVERTER_CALLBACK_SECRET;
-    const callbackUrl =
-      process.env.CONVERTER_ASSET_CALLBACK_URL ??
-      `${process.env.CONVEX_SITE_URL}/converter/asset-callback`;
-    if (!converterUrl || !secret) {
-      appError(AppErrorCode.CONVERTER_NOT_CONFIGURED);
+/** Internal sibling for scripts/eval (mirrors startRun's pattern). */
+export const ingestAssets = internalAction({
+  args: {
+    institutionId: v.id("institutions"),
+    files: v.array(
+      v.object({ sourceKey: v.string(), originalName: v.string() })
+    ),
+    createdBy: v.string(),
+  },
+  handler: async (ctx, args): Promise<{ jobId: Id<"assetIngestJobs"> }> => {
+    return await ingestAssetsHelper(ctx, args);
+  },
+});
+
+async function ingestAssetsHelper(
+  ctx: ActionCtx,
+  args: {
+    institutionId: Id<"institutions">;
+    files: { sourceKey: string; originalName: string }[];
+    createdBy: string;
+  }
+): Promise<{ jobId: Id<"assetIngestJobs"> }> {
+  const converterUrl = process.env.CONVERTER_URL;
+  const secret = process.env.CONVERTER_CALLBACK_SECRET;
+  const callbackUrl =
+    process.env.CONVERTER_ASSET_CALLBACK_URL ??
+    `${process.env.CONVEX_SITE_URL}/converter/asset-callback`;
+  if (!converterUrl || !secret) {
+    appError(AppErrorCode.CONVERTER_NOT_CONFIGURED);
+  }
+
+  const jobId: Id<"assetIngestJobs"> = await ctx.runMutation(
+    internal.pipeline.assetsIngest.createIngestJob,
+    {
+      institutionId: args.institutionId,
+      files: args.files,
+      createdBy: args.createdBy,
     }
+  );
 
-    const jobId: Id<"assetIngestJobs"> = await ctx.runMutation(
-      internal.pipeline.assetsIngest.createIngestJob,
-      {
-        institutionId: args.institutionId,
-        files: args.files,
-        createdBy: admin.email,
-      }
-    );
-
-    const body = JSON.stringify({ jobId, files: args.files, callbackUrl });
-    const signature = await hmacSha256Hex(body, secret);
-    const response = await fetch(
-      `${converterUrl.replace(/\/$/, "")}/ingest-assets`,
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          [SIGNATURE_HEADER]: signature,
-        },
-        body,
-      }
-    );
-    if (!response.ok) {
-      await ctx.runMutation(internal.pipeline.assetsIngest.markIngestJobFailed, {
-        jobId,
-        error: `converter dispatch failed: HTTP ${response.status}`,
-      });
-      appError(AppErrorCode.CONVERTER_NOT_CONFIGURED);
+  const body = JSON.stringify({ jobId, files: args.files, callbackUrl });
+  const signature = await hmacSha256Hex(body, secret);
+  const response = await fetch(
+    `${converterUrl.replace(/\/$/, "")}/ingest-assets`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        [SIGNATURE_HEADER]: signature,
+      },
+      body,
     }
-    return { jobId };
+  );
+  if (!response.ok) {
+    await ctx.runMutation(internal.pipeline.assetsIngest.markIngestJobFailed, {
+      jobId,
+      error: `converter dispatch failed: HTTP ${response.status}`,
+    });
+    appError(AppErrorCode.CONVERTER_NOT_CONFIGURED);
+  }
+  return { jobId };
+}
+
+/** Upload-job status for scripts/eval polling. */
+export const getIngestJobInternal = internalQuery({
+  args: { jobId: v.id("assetIngestJobs") },
+  handler: async (ctx, args) => {
+    const job = await ctx.db.get(args.jobId);
+    if (!job) appError(AppErrorCode.ASSET_JOB_NOT_FOUND);
+    return {
+      status: job.status,
+      acceptedCount: job.acceptedCount ?? null,
+      rejected: job.rejected ?? [],
+      error: job.error ?? null,
+    };
   },
 });
 

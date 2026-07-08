@@ -11,7 +11,14 @@ import {
 } from "../_generated/server";
 import type { Doc } from "../_generated/dataModel";
 import { requireAdmin } from "../admin";
-import { assetFitsTemplate } from "./compiler/rules";
+import {
+  assetFitsTemplate,
+  validateAssetRefs,
+  validateMediaPacing,
+  MEDIA_CARD_TEMPLATES,
+  type CatalogueAssetInfo,
+} from "./compiler/rules";
+import { getCourseRowsForRun } from "./courses";
 import { AppErrorCode, appError } from "../errors";
 
 /**
@@ -178,6 +185,147 @@ export const getAssetCaptions = internalQuery({
       if (asset?.caption !== undefined) out[id] = asset.caption;
     }
     return out;
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Script/eval support (internal — the admin page is the human path)
+// ---------------------------------------------------------------------------
+
+/**
+ * Bulk rights declaration for scripts/eval. Same audited fields as the
+ * admin mutation — declaredBy makes the automation visible ("eval:auto").
+ */
+export const declareAssetRightsInternal = internalMutation({
+  args: {
+    institutionId: v.id("institutions"),
+    rights: v.union(v.literal("institution_owned"), v.literal("licensed")),
+    declaredBy: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const assets = await ctx.db
+      .query("assets")
+      .withIndex("by_institution", (q) =>
+        q.eq("institutionId", args.institutionId)
+      )
+      .take(2000);
+    const declaredAt = Date.now();
+    let declared = 0;
+    for (const asset of assets) {
+      if (!isCatalogueAsset(asset)) continue;
+      await ctx.db.patch(asset._id, {
+        rights: args.rights,
+        rightsDeclaredBy: args.declaredBy,
+        rightsDeclaredAt: declaredAt,
+        // Fixture media shows no real people; automation may confirm.
+        ...(asset.identifiablePeople === true
+          ? { peopleConsentConfirmed: true, peopleConsentBy: args.declaredBy }
+          : {}),
+      });
+      declared += 1;
+    }
+    return { declared };
+  },
+});
+
+/** Tagging progress for scripts/eval polling. */
+export const getTaggingStatusInternal = internalQuery({
+  args: { institutionId: v.id("institutions") },
+  handler: async (ctx, args) => {
+    const assets = await ctx.db
+      .query("assets")
+      .withIndex("by_institution", (q) =>
+        q.eq("institutionId", args.institutionId)
+      )
+      .take(2000);
+    const catalogue = assets.filter(isCatalogueAsset);
+    return {
+      total: catalogue.length,
+      tagged: catalogue.filter((asset) => asset.taggedAt !== undefined).length,
+      cleared: catalogue.filter(isAssetCleared).length,
+      videos: catalogue.filter((asset) => asset.kind === "video").length,
+    };
+  },
+});
+
+/**
+ * Media compliance report for eval:compile — re-runs the SAME validators
+ * the compiler enforced, against the live catalogue (cleared flags real,
+ * so an unknown-rights ref shows up as a violation = leakage). Also the
+ * source of the printed media stats.
+ */
+export const getRunMediaReport = internalQuery({
+  args: { runId: v.id("runs") },
+  handler: async (ctx, args) => {
+    const rows = await getCourseRowsForRun(ctx, args.runId);
+    if (!rows) appError(AppErrorCode.COURSE_NOT_FOUND);
+    const run = await ctx.db.get(args.runId);
+    if (!run) appError(AppErrorCode.RUN_NOT_FOUND);
+
+    const assets = await ctx.db
+      .query("assets")
+      .withIndex("by_institution", (q) =>
+        q.eq("institutionId", run.institutionId)
+      )
+      .take(2000);
+    const catalogueById = new Map<string, CatalogueAssetInfo>(
+      assets.filter(isCatalogueAsset).map((asset) => [
+        String(asset._id),
+        {
+          kind: asset.kind as "image" | "video",
+          ...(asset.aspect !== undefined ? { aspect: asset.aspect } : {}),
+          cleared: isAssetCleared(asset),
+        },
+      ])
+    );
+    const availability = {
+      images: [...catalogueById.values()].filter(
+        (a) => a.cleared && a.kind === "image"
+      ).length,
+      videos: [...catalogueById.values()].filter(
+        (a) => a.cleared && a.kind === "video"
+      ).length,
+    };
+
+    const distinctAssets = new Set<string>();
+    let mediaCards = 0;
+    let videoCards = 0;
+    const units: Array<{
+      unitKey: string;
+      refViolations: string[];
+      pacingViolations: string[];
+      mediaCardCount: number;
+    }> = [];
+    for (const unit of rows.units) {
+      const cards = (unit.cards ?? []) as Array<{
+        template: string;
+        props: Record<string, unknown>;
+      }>;
+      const meta = unit.meta as
+        | { anchor?: { template: string; props: Record<string, unknown> } }
+        | undefined;
+      const withAnchor = meta?.anchor ? [...cards, meta.anchor] : cards;
+      for (const card of withAnchor) {
+        const ref = card.props.assetRef;
+        if (typeof ref !== "string") continue;
+        distinctAssets.add(ref);
+        if (MEDIA_CARD_TEMPLATES.includes(card.template)) {
+          mediaCards += 1;
+          if (card.template === "video-card") videoCards += 1;
+        }
+      }
+      units.push({
+        unitKey: unit.unitKey,
+        refViolations: validateAssetRefs(withAnchor, catalogueById),
+        pacingViolations: validateMediaPacing(cards, availability),
+        mediaCardCount: cards.filter(
+          (card) =>
+            MEDIA_CARD_TEMPLATES.includes(card.template) &&
+            typeof card.props.assetRef === "string"
+        ).length,
+      });
+    }
+    return { availability, units, mediaCards, videoCards, distinctAssets: distinctAssets.size };
   },
 });
 

@@ -1,4 +1,4 @@
-# CounselIQ pipeline (Milestone 5 — voice, timing, the playable preview & publish)
+# CounselIQ pipeline (Milestone 6 — media enrichment)
 
 Durable state machine that walks a course-generation "run" from upload to
 publication, pausing at three human review gates. As of M2, **ingestion is
@@ -98,6 +98,18 @@ workflow continues: EXTRACTING → EXTRACTED → GATE_1_KNOWLEDGE_REVIEW
 - **Idempotency:** artifacts are content-addressed (re-uploads skipped);
   slides are upserted by `(sourceDocId, n)`; assets by `objectKey`;
   re-delivered callbacks change nothing.
+- **M6 endpoints, same HMAC/202/queue/callback shape:** `POST
+  /ingest-assets` (asset-library media: image normalise + thumbnail, video
+  probe/caps/transcode-to-muted-mp4 + poster, zip expansion; per-file
+  accepted/rejected manifest → `/converter/asset-callback`) and `POST
+  /extract-pdf-images` (retroactive pdfimages pass over an already-converted
+  pdf → `/converter/pdf-images-callback`). The `/convert` pdf path now runs
+  the same pdfimages extraction inline, so new pdf conversions catalogue
+  their embedded images like pptx decks always did. ffmpeg ships in the
+  container (media caps env-tunable: `MAX_VIDEO_SECONDS`, `MAX_FILE_MB`,
+  `PDF_IMAGE_MIN_PX`, …). One-shot backfills after deploy:
+  `npx convex run pipeline/assetsIngest:backfillDeckExtractedAssets` and
+  `…:backfillPdfImages`.
 
 ## Extraction architecture (M3)
 
@@ -261,8 +273,11 @@ and the unit re-synthesises.
 
 `unitTimingSchema` in `packages/course-schema/src/timing.ts` — the single
 clock every downstream consumer reads. **Versioned**: the artifact carries
-`version` (`TIMING_VERSION`, currently 1); any field change bumps it and
-consumers must check it before reading. Shape (all times integer ms on the
+`version` (`TIMING_VERSION`, currently **2**); any field change bumps it and
+consumers must check it before reading (the gate-3 preview surfaces an
+older-version artifact as "needs re-synthesis" — the bump is inside
+`unitContentHash`, so the next GENERATING_ASSETS pass rebuilds it with zero
+TTS spend thanks to the sentence cache). Shape (all times integer ms on the
 **unit clock** — t=0 at the start of the unit's first sentence):
 
 ```
@@ -272,8 +287,19 @@ consumers must check it before reading. Shape (all times integer ms on the
                 startMs, durationMs,
                 words: [{ text, startMs, endMs }] }],   // word timestamps
   cardBeats: [{ cardIndex, atMs }],                     // enterAt resolved
+  media: [{ cardIndex, inMs, outMs }],                  // v2: media windows
   generatedAt }
 ```
+
+**v2 media windows** (M6): one entry per media card (`video-card`,
+`photo-kenburns`, `image-text-card` carrying an `assetRef`). `inMs` is the
+card's beat; `outMs` is the card's window end, additionally capped at
+`inMs + asset durationMs` for video — trim-if-longer; a shorter clip holds
+its last frame for the remainder of the card window. The player's
+`deriveActiveCard` turns the active card's window into
+`CardTiming.media {positionMs, durationMs}`, which is the ONLY thing that
+drives the `<video>` element (CardVideo — muted always, poster until the
+beat, poster under reduced motion, no internal timers).
 
 Card beats resolve each card's `enterAt {narration, word}` anchor through
 the alignment chain (original word span → speakText span → overlapping
@@ -377,6 +403,69 @@ service-token HTTP endpoint for the learner app and Remotion render workers
 is the M6 follow-up. Round-trip verification: `verifyPublishedArtifacts`
 re-parses the stored manifest and HEADs every `artifactKeys` entry — the
 walkthrough and `eval:assets` both run it.
+
+## Asset library & media enrichment (M6)
+
+One institution-scoped **media catalogue** on the `assets` table: images and
+videos, from two origins — `uploaded` (the `/admin/assets` library page:
+browser sha256 → presigned PUT → converter `/ingest-assets`) and
+`deck_extracted` (pptx embedded images since M2; pdf embedded images since
+M6 via `pdfimages`, filtered by a 200px shorter-edge floor + 5:1 aspect cap,
+SMask pairs alpha-merged best-effort, and images repeating on ≥3 distinct
+pages routed to the theme's logoCandidates instead of the catalogue).
+Ingestion normalises images (capped longest edge + thumbnail) and
+transcodes video to **muted** H.264 MP4 (`-an` strips any soundtrack —
+narration is the only audio in a course, mechanically) with a poster frame;
+caps (60s / 500MB / 1080p, env-tunable) reject absurd inputs per-file with
+operator-readable reasons.
+
+**Tagging** (`tag-asset@1`, vision, prompt-versioned): caption, tags,
+subjects, setting, text-in-image, qualityScore, suggestedUses, and a
+CONSERVATIVE `identifiablePeople` (any visible face ⇒ true). Code floors
+the model cannot cross: the output schema has **no rights field**, and
+`identifiablePeople` ratchets upward only — `adminSetIdentifiablePeople`
+(a human) is the sole lowering path. Re-tag = bump the prompt version (the
+per-asset `tagPromptVersion` stamp mismatches) or `adminRetagAsset`.
+
+**The rights model — the load-bearing invariant.** Every asset lands with
+`rights: "unknown"` and nothing but the operator's declaration
+(`adminDeclareAssetRights`, single or bulk, stamped with declarer + time)
+can change that. "Usable" is defined ONCE, in code
+(`isAssetCleared` in `assetsCatalogue.ts`): rights ∈ {institution_owned,
+licensed} AND (no identifiable people OR consent confirmed). The compiler's
+catalogue filter, the gate-2 swap picker, and the library page badge all
+import that one predicate — an unknown-rights asset cannot appear in any
+course **mechanically**: the model never sees its id (the compact catalogue
+is filtered in code before prompting), `validateAssetRefs` rejects it
+post-parse if hallucinated, and the swap mutation refuses it.
+
+**Asset-aware compilation.** `getClearedCatalogueForRun` injects a compact,
+deterministically-ordered catalogue (id, kind, caption, tags, aspect,
+duration, suggestedUses, deckPage) into `author-unit@2`; its hash joins the
+authoring cacheKey so new uploads/declarations re-author on recompile.
+Post-parse rules ride the existing retry-with-errors machinery:
+`validateAssetRefs` (dangling / uncleared / kind mismatch /
+image-text-card-portrait) and `validateMediaPacing` — **≥1 media card per
+3 content cards** where the cleared catalogue makes it satisfiable (capped
+by availability, min 1 from 3 cards), and never two consecutive text-dense
+cards while media headroom remains. An empty catalogue disables the rule:
+courses compile media-free, safely. The judge (`judge-course@2`) sees each
+media card's asset caption and flags `media-irrelevant` (warning — review
+material, never an error).
+
+**Gate-2/3 asset swap, no re-TTS.** `adminSwapCardAsset` re-validates
+(cleared + fit), patches the card's `assetRef`, and recomputes ONLY the
+timing artifact's media windows. `unitContentHash` strips visual-only props
+(`assetRef`/`imageRef`) before hashing, so the hash — and every sentence's
+audio — is untouched by construction; test-proven byte-identical audioKeys
+and zero new ttsCalls across a swap.
+
+**eval:compile** ingests fixture media, waits for tagging, declares rights
+as `eval:auto` (same audited mutation fields), and adds pass/fail media
+assertions: every assetRef cleared + kind/aspect-correct re-checked against
+the live library (zero unknown-rights leakage), pacing satisfied, plus
+printed media stats (media cards, distinct assets, video count,
+media-irrelevant flags).
 
 ## Demo script (10-minute pilot demo)
 
@@ -711,7 +800,7 @@ vars from "Operator setup" set on that deployment.
 
 ## What is stubbed, and which milestone makes it real
 
-| Stub | Today (M5) | Becomes real in |
+| Stub | Today (M6) | Becomes real in |
 |------|------------|-----------------|
 | `convert` stage | **real** (services/converter) | — |
 | `extract` stage | **real** (per-page LLM extraction → knowledge inventory) | — |
@@ -723,7 +812,8 @@ vars from "Operator setup" set on that deployment.
 | Gate-3 review | **real** (playable studio, blocked/failed enforcement, sentence editing) | — |
 | Publish | **real** (export + manifest + immutable `courseVersions`) | — |
 | `llmCalls` / `ttsCalls` tables | **real** (every call recorded; LLM/TTS cost split) | — |
-| Video rendering | none — the player is live-DOM only | M6 — Remotion consumes the timing artifacts + publish manifest |
-| Learner-facing serving | admin query + presign only | M6 — service-token HTTP endpoint for the learner app / render workers |
+| Asset library / media enrichment | **real** (ingest + tagging + rights model + pacing + muted video playback) | — |
+| Video rendering (export) | none — the player is live-DOM only; timing v2 media windows are designed for frame capture | later milestone (Remotion consumes the timing artifacts + publish manifest) |
+| Learner-facing serving | admin query + presign only | later milestone — service-token HTTP endpoint for the learner app / render workers |
 | Roleplay assessment | schema field only (`assessment`) | later milestone |
 | Adaptive scheduler / credential pulses | not started | later milestone |

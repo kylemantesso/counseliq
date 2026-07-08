@@ -61,7 +61,17 @@ const CONFIG = JSON.parse(readFileSync(path.join(ROOT, "eval.config.json"), "utf
 const CONTENT_TYPES = {
   pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
   pdf: "application/pdf",
+  jpg: "image/jpeg",
+  png: "image/png",
+  gif: "image/gif",
+  mp4: "video/mp4",
+  zip: "application/zip",
 };
+
+const MEDIA_FIXTURES_DIR = path.join(ROOT, "packages/course-schema/fixtures/media");
+// Small, varied set: two images + one short (audio-carrying) clip. The 90s
+// clip and junk zip stay out — rejection paths are converter-unit-tested.
+const MEDIA_FIXTURES = ["photo.jpg", "wide-huge.jpg", "logo.png", "clip-2s.mp4"];
 
 const GENERIC_TEMPLATES = new Set(["text-card"]);
 const STAT_TEMPLATES = new Set(["stat-card", "chart-card"]);
@@ -145,6 +155,8 @@ async function driveFreshRun(institutionName) {
     sourceDocIds.push(sourceDocId);
     console.log(`  ${fixture.name} -> ${sourceDocId}`);
   }
+  await setupAssetLibrary(institutionId);
+
   const runId = await convexRun("pipeline/runs:startRun", { institutionId, sourceDocIds });
   console.log(`  run: ${runId}\n`);
 
@@ -202,9 +214,87 @@ async function driveFreshRun(institutionName) {
   }
 }
 
+/**
+ * M6: ingest fixture media, wait for tagging, and declare rights so the
+ * compile weaves media through the golden course. Content-addressed and
+ * stamp-cached, so a repeat eval fast-paths through this in seconds.
+ * Rights are declared through the same audited mutation fields as the
+ * admin page, with declaredBy "eval:auto".
+ */
+async function setupAssetLibrary(institutionId) {
+  console.log("Ingesting fixture media into the asset library…");
+  const files = [];
+  for (const name of MEDIA_FIXTURES) {
+    const filePath = path.join(MEDIA_FIXTURES_DIR, name);
+    const bytes = readFileSync(filePath);
+    const ext = name.split(".").pop();
+    const hash = createHash("sha256").update(bytes).digest("hex");
+    const key = `sha256/${hash}.${ext}`;
+    const { url } = await convexRun("pipeline/objectStore:presignPut", {
+      key,
+      contentType: CONTENT_TYPES[ext],
+    });
+    const response = await fetch(url, {
+      method: "PUT",
+      headers: { "content-type": CONTENT_TYPES[ext] },
+      body: bytes,
+    });
+    if (!response.ok) throw new Error(`upload of ${name} failed: ${response.status}`);
+    files.push({ sourceKey: key, originalName: name });
+  }
+
+  const { jobId } = await convexRun("pipeline/assetsIngest:ingestAssets", {
+    institutionId,
+    files,
+    createdBy: "eval:auto",
+  });
+  const ingestDeadline = Date.now() + 180_000;
+  for (;;) {
+    const job = await convexRun("pipeline/assetsIngest:getIngestJobInternal", { jobId });
+    if (job.status === "complete") {
+      console.log(
+        `  ingest complete: ${job.acceptedCount} accepted` +
+          (job.rejected.length > 0 ? `, ${job.rejected.length} rejected` : "")
+      );
+      for (const entry of job.rejected) {
+        console.log(`    rejected ${entry.originalName}: ${entry.reason}`);
+      }
+      break;
+    }
+    if (job.status === "failed") throw new Error(`asset ingest failed: ${job.error}`);
+    if (Date.now() > ingestDeadline) {
+      throw new Error("asset ingest timed out — is the converter (with ffmpeg) running?");
+    }
+    await sleep(2000);
+  }
+
+  const tagDeadline = Date.now() + 300_000;
+  for (;;) {
+    const status = await convexRun("pipeline/assetsCatalogue:getTaggingStatusInternal", {
+      institutionId,
+    });
+    if (status.total > 0 && status.tagged === status.total) {
+      console.log(`  tagging complete: ${status.tagged}/${status.total} assets`);
+      break;
+    }
+    if (Date.now() > tagDeadline) {
+      throw new Error(
+        `asset tagging timed out (${status.tagged}/${status.total}) — OPENROUTER_API_KEY set?`
+      );
+    }
+    await sleep(3000);
+  }
+
+  const { declared } = await convexRun(
+    "pipeline/assetsCatalogue:declareAssetRightsInternal",
+    { institutionId, rights: "institution_owned", declaredBy: "eval:auto" }
+  );
+  console.log(`  rights declared (eval:auto): ${declared} asset(s) cleared\n`);
+}
+
 // --- Scoring ---
 
-function scoreCourse(golden, definition, courseRows) {
+function scoreCourse(golden, definition, courseRows, mediaReport) {
   const compiledUnits = definition.modules.flatMap((m) => m.microUnits);
   const questionIds = new Set(definition.questionBank.map((q) => q.id));
   const courseQa = courseRows.course.qa ?? null;
@@ -299,8 +389,29 @@ function scoreCourse(golden, definition, courseRows) {
     );
   }
 
+  // 3. Media (M6, pass/fail): every assetRef must resolve to a cleared,
+  //    kind/aspect-correct catalogue asset (zero unknown-rights leakage,
+  //    mechanically re-checked against the live library) and the pacing
+  //    rule must hold wherever the cleared catalogue made it satisfiable.
+  //    judge `media-irrelevant` flags surface via reviewFlags (not scored).
+  const mediaIssues = [];
+  for (const unit of mediaReport.units) {
+    for (const violation of unit.refViolations) {
+      mediaIssues.push(`${unit.unitKey}: ${violation}`);
+    }
+    for (const violation of unit.pacingViolations) {
+      mediaIssues.push(`${unit.unitKey}: ${violation}`);
+    }
+  }
+  if (mediaIssues.length > 0) failures.push(...mediaIssues);
+  const mediaIrrelevantCount = reviewFlags.filter((flag) =>
+    flag.includes("[media-irrelevant")
+  ).length;
+
   return {
     pass: failures.length === 0,
+    mediaIssues,
+    mediaIrrelevantCount,
     compiledConcepts: compiledUnits.map((unit) => unit.concept),
     compiledModuleCount: definition.modules.length,
     goldenModuleCount: golden.modules.length,
@@ -431,8 +542,11 @@ async function main() {
   });
   const { run } = await convexRun("pipeline/queries:getRunInternal", { runId });
   const cost = await convexRun("pipeline/llmCalls:getRunCostInternal", { runId });
+  const mediaReport = await convexRun("pipeline/assetsCatalogue:getRunMediaReport", {
+    runId,
+  });
 
-  const score = scoreCourse(golden, definition, courseRows);
+  const score = scoreCourse(golden, definition, courseRows, mediaReport);
 
   const compiledUnitCount = definition.modules.reduce(
     (sum, module) => sum + module.microUnits.length,
@@ -455,6 +569,17 @@ async function main() {
       ` (${score.errorFlags} error / ${score.warningFlags} warning judge flags)`
   );
   for (const issue of score.complianceIssues) console.log(`    ${issue}`);
+  console.log(
+    `  media: ${score.mediaIssues.length === 0 ? "all assetRefs cleared + kind/aspect-correct, pacing satisfied ok" : `${score.mediaIssues.length} issue(s) FAIL`}` +
+      ` (library: ${mediaReport.availability.images} image(s) + ${mediaReport.availability.videos} video(s) cleared)`
+  );
+  for (const issue of score.mediaIssues) console.log(`    ${issue}`);
+  console.log(
+    `  media stats: ${mediaReport.mediaCards} media card(s), ` +
+      `${mediaReport.distinctAssets} distinct asset(s) used, ` +
+      `${mediaReport.videoCards} video card(s), ` +
+      `${score.mediaIrrelevantCount} media-irrelevant judge flag(s)`
+  );
   if (score.reviewFlags.length > 0) {
     console.log(`  gate-2 review flags (not scored):`);
     for (const flag of score.reviewFlags) console.log(`    ${flag}`);
@@ -485,6 +610,14 @@ async function main() {
       unitCount: compiledUnitCount,
       structureIssues: score.structureIssues,
       complianceIssues: score.complianceIssues,
+      mediaIssues: score.mediaIssues,
+      mediaStats: {
+        mediaCards: mediaReport.mediaCards,
+        videoCards: mediaReport.videoCards,
+        distinctAssets: mediaReport.distinctAssets,
+        availability: mediaReport.availability,
+        mediaIrrelevantFlags: score.mediaIrrelevantCount,
+      },
       reviewFlags: score.reviewFlags,
       judgeFlags: { errors: score.errorFlags, warnings: score.warningFlags },
       costUsd: cost.totalUsd,
