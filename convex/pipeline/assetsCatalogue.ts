@@ -1,7 +1,13 @@
 import { v } from "convex/values";
 import { MEDIA_ASSET_KINDS } from "@counseliq/course-schema";
-import { internalMutation, internalQuery } from "../_generated/server";
+import {
+  internalMutation,
+  internalQuery,
+  mutation,
+  query,
+} from "../_generated/server";
 import type { Doc } from "../_generated/dataModel";
+import { requireAdmin } from "../admin";
 import { AppErrorCode, appError } from "../errors";
 
 /**
@@ -80,6 +86,137 @@ export const getAssetForTagging = internalQuery({
     const asset = await ctx.db.get(args.assetId);
     if (!asset) appError(AppErrorCode.ASSET_NOT_FOUND);
     return asset;
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Admin library surface (the rights-declaration session happens here)
+// ---------------------------------------------------------------------------
+
+export const adminListInstitutions = query({
+  args: {},
+  handler: async (ctx) => {
+    await requireAdmin(ctx);
+    const institutions = await ctx.db.query("institutions").take(200);
+    return institutions.map((inst) => ({ _id: inst._id, name: inst.name }));
+  },
+});
+
+/** The institution's media catalogue with the usable verdict precomputed. */
+export const adminListAssets = query({
+  args: { institutionId: v.id("institutions") },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+    const assets = await ctx.db
+      .query("assets")
+      .withIndex("by_institution", (q) =>
+        q.eq("institutionId", args.institutionId)
+      )
+      .order("desc")
+      .take(2000);
+    return assets
+      .filter(isCatalogueAsset)
+      .map((asset) => ({ ...asset, cleared: isAssetCleared(asset) }));
+  },
+});
+
+/** Recent upload jobs for the institution (progress + rejection reasons). */
+export const adminListIngestJobs = query({
+  args: { institutionId: v.id("institutions") },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+    return await ctx.db
+      .query("assetIngestJobs")
+      .withIndex("by_institution", (q) =>
+        q.eq("institutionId", args.institutionId)
+      )
+      .order("desc")
+      .take(20);
+  },
+});
+
+export const adminUpdateAssetMeta = mutation({
+  args: {
+    assetId: v.id("assets"),
+    caption: v.optional(v.string()),
+    tags: v.optional(v.array(v.string())),
+  },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+    const asset = await ctx.db.get(args.assetId);
+    if (!asset || !isCatalogueAsset(asset)) {
+      appError(AppErrorCode.ASSET_NOT_FOUND);
+    }
+    await ctx.db.patch(args.assetId, {
+      ...(args.caption !== undefined ? { caption: args.caption } : {}),
+      ...(args.tags !== undefined ? { tags: args.tags } : {}),
+    });
+    return null;
+  },
+});
+
+/**
+ * THE rights declaration path (single or bulk) — the only way any asset
+ * ever leaves "unknown". Stamped with the declaring admin and time.
+ */
+export const adminDeclareAssetRights = mutation({
+  args: {
+    assetIds: v.array(v.id("assets")),
+    rights: v.union(
+      v.literal("institution_owned"),
+      v.literal("licensed"),
+      v.literal("unknown")
+    ),
+  },
+  handler: async (ctx, args) => {
+    const admin = await requireAdmin(ctx);
+    const declaredAt = Date.now();
+    for (const assetId of args.assetIds) {
+      const asset = await ctx.db.get(assetId);
+      if (!asset || !isCatalogueAsset(asset)) {
+        appError(AppErrorCode.ASSET_NOT_FOUND);
+      }
+      await ctx.db.patch(assetId, {
+        rights: args.rights,
+        rightsDeclaredBy: admin.email,
+        rightsDeclaredAt: declaredAt,
+      });
+    }
+    return null;
+  },
+});
+
+/** Consent confirmation for assets showing identifiable people. */
+export const adminConfirmPeopleConsent = mutation({
+  args: { assetId: v.id("assets"), confirmed: v.boolean() },
+  handler: async (ctx, args) => {
+    const admin = await requireAdmin(ctx);
+    const asset = await ctx.db.get(args.assetId);
+    if (!asset || !isCatalogueAsset(asset)) {
+      appError(AppErrorCode.ASSET_NOT_FOUND);
+    }
+    await ctx.db.patch(args.assetId, {
+      peopleConsentConfirmed: args.confirmed,
+      peopleConsentBy: admin.email,
+    });
+    return null;
+  },
+});
+
+/**
+ * Human-only override of the identifiablePeople flag. This is the ONLY
+ * path that can lower it — the tagging pass ratchets upward only.
+ */
+export const adminSetIdentifiablePeople = mutation({
+  args: { assetId: v.id("assets"), value: v.boolean() },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+    const asset = await ctx.db.get(args.assetId);
+    if (!asset || !isCatalogueAsset(asset)) {
+      appError(AppErrorCode.ASSET_NOT_FOUND);
+    }
+    await ctx.db.patch(args.assetId, { identifiablePeople: args.value });
+    return null;
   },
 });
 
