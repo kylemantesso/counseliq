@@ -227,6 +227,13 @@ export const applyAssetManifest = internalMutation({
       acceptedCount,
       rejected,
     });
+    if (acceptedCount > 0) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.pipeline.assetsTagging.tagUntaggedAssets,
+        { institutionId: job.institutionId }
+      );
+    }
     return null;
   },
 });
@@ -315,6 +322,13 @@ export const applyPdfImagesManifest = internalMutation({
           ],
         },
       });
+    }
+    if (manifest.images.length > 0) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.pipeline.assetsTagging.tagUntaggedAssets,
+        { institutionId: doc.institutionId }
+      );
     }
     return null;
   },

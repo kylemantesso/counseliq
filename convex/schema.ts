@@ -354,7 +354,9 @@ export default defineSchema({
     .index("by_gate_and_status", ["gate", "status"]),
 
   llmCalls: defineTable({
-    runId: v.id("runs"),
+    /** Absent for run-less workloads (institution-scoped asset tagging). */
+    runId: v.optional(v.id("runs")),
+    institutionId: v.optional(v.id("institutions")),
     stage: v.string(),
     promptVersion: v.string(),
     model: v.string(),
@@ -362,7 +364,9 @@ export default defineSchema({
     tokensOut: v.number(),
     costUsd: v.number(),
     latencyMs: v.number(),
-  }).index("by_run", ["runId"]),
+  })
+    .index("by_run", ["runId"])
+    .index("by_institution", ["institutionId"]),
 
   /**
    * Per-sentence TTS cache (M5): content-addressed by the SPOKEN text (post

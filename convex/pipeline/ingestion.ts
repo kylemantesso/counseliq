@@ -112,6 +112,7 @@ export const applyConversionManifest = internalMutation({
 
     const manifest = args.manifest as ConversionManifest;
 
+    let catalogueTouched = false;
     for (const page of manifest.pages) {
       const provenanceId = pageProvenanceId(sourceDocId, page.n);
       const pageHash = page.pngKey.replace(/^sha256\//, "").split(".")[0];
@@ -159,12 +160,21 @@ export const applyConversionManifest = internalMutation({
           origin: "deck_extracted",
           sourceProvenance: provenanceId,
         });
+        catalogueTouched = true;
       }
     }
 
     const docProvenance = `doc:${sourceDocId}`;
     for (const logoKey of manifest.theme?.logoCandidates ?? []) {
       await insertAssetIfAbsent(ctx, logoKey, "logo-candidate", docProvenance);
+    }
+
+    if (catalogueTouched) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.pipeline.assetsTagging.tagUntaggedAssets,
+        { institutionId: doc.institutionId }
+      );
     }
 
     await ctx.db.patch(sourceDocId, {

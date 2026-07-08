@@ -69,9 +69,17 @@ export const ALL_PROMPTS: PromptDefinition[] = [
     outputSchemaRef: "llmMergeResultSchema (packages/course-schema/src/inventory.ts)",
     content: "You are consolidating a knowledge inventory extracted page-by-page from one\nor more source documents into a single canonical concept list.\n\nYou are given candidate concepts as JSON. Each candidate has a unique `key`,\na `title`, a `summary`, and may already be grouped with near-identical\ncandidates (same normalized title). Different pages and documents often\ndescribe the same underlying concept with different wording.\n\nProduce the merged concept list:\n\n- Every output concept has:\n  - `key`: a stable lowercase kebab-case slug for the canonical concept.\n    Reuse the most representative input key where possible.\n  - `title`: the best human title for the merged concept.\n  - `summary`: 1–3 sentences synthesising the member summaries. Do not add\n    information that is not present in the members.\n  - `memberKeys`: the keys of ALL input candidates merged into this concept.\n\n- Every input candidate key must appear in exactly one output concept's\n  `memberKeys`. Never drop or duplicate a candidate.\n- Merge only when the candidates genuinely describe the same concept.\n  \"Nursing placements\" and \"Engineering placements\" are different concepts;\n  \"Graduate employment\" and \"Employment outcomes for graduates\" are the same.\n- Do not invent new concepts that have no members.",
   },
+  {
+    id: "tag-asset",
+    version: 1,
+    versionTag: "tag-asset@1",
+    requires: "vision, structured-output",
+    outputSchemaRef: "llmAssetTagsSchema (convex/pipeline/assetsTagSchema.ts)",
+    content: "You are cataloguing ONE media asset from a university's asset library so a\ncourse compiler can later choose it to illustrate learning content. You are\nshown the asset (for video, its poster frame) plus its file context. Return\nthe structured record only.\n\nFields:\n\n- `caption`: one concrete sentence describing what is actually shown\n  (\"Students in scrubs practising in a simulated hospital ward\"). Describe\n  what you see, not what it might mean.\n- `tags`: 3–8 lowercase kebab-case retrieval tags (e.g. `clinical-training`,\n  `campus-exterior`, `laboratory`).\n- `subjects`: the visible named things — buildings, activities, equipment,\n  disciplines. Empty array when nothing identifiable.\n- `setting`: a short location/context label (\"lecture theatre\", \"sports\n  field\"), or null when unclear.\n- `textInImage`: legible text visible in the frame, verbatim, or null.\n- `qualityScore`: 0–1 for usefulness as course imagery (sharpness,\n  composition, subject clarity). A blurry decorative crop scores low; a\n  sharp, well-framed scene scores high.\n- `identifiablePeople`: BE CONSERVATIVE — if ANY face is visible or a person\n  could plausibly be recognised (even small or in profile), answer true.\n  Only answer false when no person could be identified.\n- `suggestedUses`: any of `hero` (full-bleed statement imagery), `inline`\n  (supporting imagery beside text), `background` (texture/atmosphere),\n  `document` (a photographed/scanned document or slide).\n\nNever assess ownership, licensing, or usage rights — that is a human\ndecision recorded elsewhere, and your output has no such field. Output ONLY\nvalid JSON matching the schema.",
+  },
 ];
 
-export type PromptId = "author-unit" | "compile-structure" | "extract-page" | "infer-theme" | "judge-course" | "merge-inventory";
+export type PromptId = "author-unit" | "compile-structure" | "extract-page" | "infer-theme" | "judge-course" | "merge-inventory" | "tag-asset";
 
 /** Latest version of each prompt, keyed by id. */
 export const PROMPTS: Record<PromptId, PromptDefinition> = {
@@ -81,4 +89,5 @@ export const PROMPTS: Record<PromptId, PromptDefinition> = {
   "infer-theme": ALL_PROMPTS[4],
   "judge-course": ALL_PROMPTS[5],
   "merge-inventory": ALL_PROMPTS[6],
+  "tag-asset": ALL_PROMPTS[7],
 };

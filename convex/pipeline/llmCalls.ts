@@ -18,7 +18,9 @@ import { currentModelRouting, modelForTask } from "./llm/models";
 
 export const recordLlmCall = internalMutation({
   args: {
-    runId: v.id("runs"),
+    /** Absent for run-less workloads (institution-scoped asset tagging). */
+    runId: v.optional(v.id("runs")),
+    institutionId: v.optional(v.id("institutions")),
     stage: v.string(),
     promptVersion: v.string(),
     model: v.string(),

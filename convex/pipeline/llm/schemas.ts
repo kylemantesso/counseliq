@@ -4,6 +4,7 @@ import {
   llmPageExtractionSchema,
 } from "@counseliq/course-schema";
 import { zodToJsonSchema } from "zod-to-json-schema";
+import { llmAssetTagsSchema } from "../assetsTagSchema";
 import {
   llmAuthoredUnitSchema,
   llmCompileStructureSchema,
@@ -59,3 +60,6 @@ export const COMPILE_STRUCTURE_JSON_SCHEMA = toJsonSchema(
 export const AUTHOR_UNIT_JSON_SCHEMA = toJsonSchema(llmAuthoredUnitSchema);
 export const JUDGE_COURSE_JSON_SCHEMA = toJsonSchema(llmJudgeCourseSchema);
 export const DRAFT_QUESTION_JSON_SCHEMA = toJsonSchema(llmDraftQuestionSchema);
+
+// M6 asset tagging (Zod source in ../assetsTagSchema.ts).
+export const ASSET_TAGS_JSON_SCHEMA = toJsonSchema(llmAssetTagsSchema);
