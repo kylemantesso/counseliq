@@ -211,9 +211,9 @@ function AdminGateOneReviewContent() {
                                   resolution: "approve_without_source",
                                 });
                                 setSelectedIds(new Set());
-                                if (outcome.skippedRisky > 0) {
+                                if (outcome.approvedRisky > 0) {
                                   setError(
-                                    `${outcome.skippedRisky} fact(s) skipped: unattributed superlatives/promises can never be authored — approve them WITH a source, or exclude.`
+                                    `${outcome.approvedRisky} unattributed superlative/promise fact(s) approved — the compiled units will carry compliance warnings at gate 2.`
                                   );
                                 }
                               } catch (err) {
@@ -263,9 +263,8 @@ function AdminGateOneReviewContent() {
                           <ButtonText>Exclude</ButtonText>
                         </Button>
                         <Text className="text-xs text-muted-foreground">
-                          Approving without source keeps the fact
-                          unattributed — source-less statistics cannot ride
-                          stat cards.
+                          Unattributed facts compile — flagged claims
+                          surface as compliance warnings at gate 2.
                         </Text>
                       </>
                     ) : null}
@@ -403,8 +402,8 @@ function ReviewItemCard({
           </Text>
           {pending && risky ? (
             <Text className="text-xs text-destructive font-semibold">
-              ⚠ {bannedHits[0].description} — approve WITH a source, or
-              exclude; without attribution this fact can never be authored.
+              ⚠ {bannedHits[0].description} — approving without a source
+              will compile with a compliance warning at gate 2.
             </Text>
           ) : null}
           {!pending ? (
@@ -450,11 +449,9 @@ function ReviewItemCard({
             size="sm"
             variant="outline"
             onPress={() => resolve("approve_without_source")}
-            disabled={busy || risky}
+            disabled={busy}
           >
-            <ButtonText>
-              {risky ? "Needs source or exclude" : "Approve without source"}
-            </ButtonText>
+            <ButtonText>Approve without source</ButtonText>
           </Button>
           <Button
             size="sm"

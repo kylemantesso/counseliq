@@ -58,6 +58,7 @@ interface UnitMeta {
   anchor: { template: string; props: Record<string, unknown> };
   conceptKey?: string;
   order: { module: number; unit: number };
+  complianceWarnings?: string[];
 }
 
 interface JudgeFlag {
@@ -456,6 +457,19 @@ function UnitDetail({
           </Text>
           {qa.flags.map((flag, index) => (
             <FlagRow key={`unit-flag-${index}`} flag={flag} />
+          ))}
+        </Box>
+      ) : null}
+
+      {(meta.complianceWarnings ?? []).length > 0 ? (
+        <Box className="bg-card border border-border rounded-xl p-3 gap-1">
+          <Text className="text-xs font-semibold uppercase text-muted-foreground">
+            Compliance warnings (fail-open — accepted at authoring)
+          </Text>
+          {(meta.complianceWarnings ?? []).map((warning, index) => (
+            <Text key={`cw-${index}`} className="text-xs text-destructive">
+              ⚠ {warning}
+            </Text>
           ))}
         </Box>
       ) : null}

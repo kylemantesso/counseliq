@@ -6,6 +6,7 @@ import {
   buildOutlineUserText,
   buildUnitUserText,
   mediaContextFromCatalogue,
+  partitionComplianceViolations,
   plansFromOutline,
   tryAssemble,
   unitComplianceViolations,
@@ -652,5 +653,29 @@ describe("buildUnitUserText brief + outline suggestions (M6.5)", () => {
     );
     expect(text).not.toContain("Course purpose (operator brief");
     expect(text).not.toContain("Outline-suggested assets");
+  });
+});
+
+describe("partitionComplianceViolations (fail-open policy)", () => {
+  test("only rights-uncleared asset refs block; everything else warns", () => {
+    const violations = [
+      'banned claim (unattributed-superlative): "Australia\'s largest" — superlative asserted without attribution',
+      "media pacing: 0 media card(s) in 4 — the cleared asset library supports at least 1",
+      'card 2 (photo-kenburns): assetRef "made-up" is not in the cleared asset library — use an id EXACTLY as listed, never invent one',
+      'card 1 (video-card): asset "j57abc" is not rights-cleared and cannot appear in a course',
+      "card 3 (stat-card) is missing a sourceLabel",
+    ];
+    const { blocking, warnings } = partitionComplianceViolations(violations);
+    expect(blocking).toEqual([
+      'card 1 (video-card): asset "j57abc" is not rights-cleared and cannot appear in a course',
+    ]);
+    expect(warnings).toHaveLength(4);
+  });
+
+  test("no violations partitions to empty on both sides", () => {
+    expect(partitionComplianceViolations([])).toEqual({
+      blocking: [],
+      warnings: [],
+    });
   });
 });

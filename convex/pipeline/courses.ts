@@ -131,6 +131,8 @@ export interface MicroUnitMeta {
   anchor: { template: string; props: Record<string, unknown> };
   conceptKey?: string;
   order: { module: number; unit: number };
+  /** Non-blocking code-rule violations, shown at gate 2 (fail-open). */
+  complianceWarnings?: string[];
 }
 
 /**
@@ -163,6 +165,9 @@ export const saveCompiledCourse = internalMutation({
     definition: v.any(),
     /** conceptKey per unitId (compiler bookkeeping, kept on meta). */
     conceptKeysByUnitId: v.optional(v.record(v.string(), v.string())),
+    complianceWarningsByUnitId: v.optional(
+      v.record(v.string(), v.array(v.string()))
+    ),
   },
   handler: async (ctx, args) => {
     const run = await ctx.db.get(args.runId);
@@ -171,6 +176,7 @@ export const saveCompiledCourse = internalMutation({
     // Schema gate: an invalid definition never reaches the database.
     const definition = parseCourseDefinition(definitionFromWire(args.definition));
     const conceptKeys = args.conceptKeysByUnitId ?? {};
+    const complianceWarnings = args.complianceWarningsByUnitId ?? {};
 
     const definitionMeta: CourseDefinitionMeta = {
       schemaRef: definition.$schema,
@@ -236,6 +242,9 @@ export const saveCompiledCourse = internalMutation({
             ? { conceptKey: conceptKeys[unit.unitId] }
             : {}),
           order: { module: moduleIndex, unit: unitIndex },
+          ...(complianceWarnings[unit.unitId] !== undefined
+            ? { complianceWarnings: complianceWarnings[unit.unitId] }
+            : {}),
         };
         await ctx.db.insert("microUnits", {
           courseId,

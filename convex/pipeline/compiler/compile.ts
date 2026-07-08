@@ -37,6 +37,7 @@ import {
   factForPrompt,
   mediaContextFromCatalogue,
   parseRange,
+  partitionComplianceViolations,
   plansFromOutline,
   tryAssemble,
   unitComplianceViolations,
@@ -107,7 +108,14 @@ function sha256(text: string): string {
 }
 
 type AuthoringRecord =
-  | { status: "ok"; authored: LlmAuthoredUnit; promptVersion: string; model: string }
+  | {
+      status: "ok";
+      authored: LlmAuthoredUnit;
+      promptVersion: string;
+      model: string;
+      /** Non-blocking rule violations, surfaced at gate 2. */
+      complianceWarnings?: string[];
+    }
   | { status: "error"; cause: string };
 
 // --- Per-unit authoring (used by the workpool action and direct retries) ---
@@ -215,10 +223,18 @@ async function authorOneUnit(
         return await callAuthorOnce(feedback);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        if (!message.includes("invalid JSON")) throw error;
+        // Re-roll decode flakes AND schema near-misses (e.g. a 162-char
+        // anchor): a fresh sample usually lands inside the caps, and a
+        // run must not die on one bad roll.
+        if (
+          !message.includes("invalid JSON") &&
+          !message.includes("failed validation")
+        ) {
+          throw error;
+        }
         lastError = error;
         console.log(
-          `[pipeline] run ${args.runId}: unit ${args.plan.unitId} author attempt ${attempt}/${AUTHOR_JSON_ATTEMPTS} returned broken JSON, re-issuing`
+          `[pipeline] run ${args.runId}: unit ${args.plan.unitId} author attempt ${attempt}/${AUTHOR_JSON_ATTEMPTS} failed (${message.includes("invalid JSON") ? "broken JSON" : "schema validation"}), re-issuing`
         );
       }
     }
@@ -242,13 +258,28 @@ async function authorOneUnit(
       );
       violations = unitComplianceViolations(authored, knownProvenanceIds, media);
     }
-    record =
-      violations.length > 0
-        ? {
-            status: "error",
-            cause: `unit ${args.plan.unitId} failed compliance after retry: ${violations.join("; ")}`,
-          }
-        : { status: "ok", authored, promptVersion, model };
+    // Fail-open: only a rights-uncleared asset ref blocks; every other
+    // remaining violation ships as a gate-2 warning on the unit.
+    const { blocking, warnings } = partitionComplianceViolations(violations);
+    if (blocking.length > 0) {
+      record = {
+        status: "error",
+        cause: `unit ${args.plan.unitId} failed compliance after retry: ${blocking.join("; ")}`,
+      };
+    } else {
+      if (warnings.length > 0) {
+        console.log(
+          `[pipeline] run ${args.runId}: unit ${args.plan.unitId} accepted with ${warnings.length} compliance warning(s) for gate-2 review`
+        );
+      }
+      record = {
+        status: "ok",
+        authored,
+        promptVersion,
+        model,
+        ...(warnings.length > 0 ? { complianceWarnings: warnings } : {}),
+      };
+    }
   } catch (error) {
     record = {
       status: "error",
@@ -710,7 +741,13 @@ async function runCompilationInner(
       failures.push(record.cause);
       failedPlans.push(plan);
     } else {
-      authoredUnits.push({ plan, authored: record.authored });
+      authoredUnits.push({
+        plan,
+        authored: record.authored,
+        ...(record.complianceWarnings !== undefined
+          ? { complianceWarnings: record.complianceWarnings }
+          : {}),
+      });
     }
   }
 
@@ -736,7 +773,13 @@ async function runCompilationInner(
         bypassCache: true,
       });
       if (record.status === "ok") {
-        authoredUnits.push({ plan, authored: record.authored });
+        authoredUnits.push({
+          plan,
+          authored: record.authored,
+          ...(record.complianceWarnings !== undefined
+            ? { complianceWarnings: record.complianceWarnings }
+            : {}),
+        });
       } else {
         remaining.push(record.cause);
       }
@@ -799,6 +842,11 @@ async function runCompilationInner(
     runId,
     definition: definitionToWire(assembly.definition),
     conceptKeysByUnitId: assembly.conceptKeysByUnitId,
+    complianceWarningsByUnitId: Object.fromEntries(
+      allUnits
+        .filter((unit) => (unit.complianceWarnings ?? []).length > 0)
+        .map((unit) => [unit.plan.unitId, unit.complianceWarnings ?? []])
+    ),
   });
   console.log(
     `[pipeline] run ${runId}: compiled course ${saved.courseId} — ` +

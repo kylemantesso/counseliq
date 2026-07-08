@@ -67,6 +67,8 @@ export interface UnitPlan {
 export interface AuthoredUnitWithPlan {
   plan: UnitPlan;
   authored: LlmAuthoredUnit;
+  /** Non-blocking code-rule violations, surfaced at gate 2 (M6.5). */
+  complianceWarnings?: string[];
 }
 
 export interface ReviewedInventory {
@@ -335,6 +337,27 @@ export function buildUnitUserText(
 }
 
 // --- Code-enforced compliance (per unit, post-parse) ---
+
+/**
+ * Fail-open policy (operator decision): compliance violations get ONE
+ * authoring retry, then the unit is ACCEPTED with the remaining
+ * violations attached as warnings for gate-2 review — a run must not die
+ * on an unattributed superlative or a pacing shortfall. The single
+ * blocking exception is a rights-uncleared asset reference: "no
+ * unknown-rights asset can appear in any course" stays mechanical.
+ */
+export function partitionComplianceViolations(violations: string[]): {
+  blocking: string[];
+  warnings: string[];
+} {
+  const blocking: string[] = [];
+  const warnings: string[] = [];
+  for (const violation of violations) {
+    if (violation.includes("not rights-cleared")) blocking.push(violation);
+    else warnings.push(violation);
+  }
+  return { blocking, warnings };
+}
 
 export function unitComplianceViolations(
   authored: LlmAuthoredUnit,

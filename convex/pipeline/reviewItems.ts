@@ -350,15 +350,14 @@ export const adminResolveReviewItemsBulk = mutation({
   handler: async (ctx, args) => {
     const admin = await requireAdmin(ctx);
     let resolved = 0;
-    let skippedRisky = 0;
+    let approvedRisky = 0;
     for (const reviewItemId of args.reviewItemIds) {
       const item = await ctx.db.get(reviewItemId);
       if (!item || item.status !== "pending") continue;
-      // An unattributed superlative/promise fact can NEVER be authored
-      // (the compiler's banned-claims rule refuses it and retries cannot
-      // fix the fact) — bulk approve-without-source skips these; they
-      // need an explicit per-item decision: approve WITH source, or
-      // exclude.
+      // Fail-open (operator decision): unattributed superlatives/promises
+      // are allowed through — the compiler accepts them and attaches
+      // compliance WARNINGS to the unit for gate-2 review. Count them so
+      // the UI can say what was let in.
       if (args.resolution === "approve_without_source") {
         const fact = (item.payload as { fact?: { statement?: string } }).fact;
         const statement = fact?.statement ?? "";
@@ -366,8 +365,7 @@ export const adminResolveReviewItemsBulk = mutation({
           findBannedClaimsInText(statement).length > 0 &&
           !textHasAttribution(statement)
         ) {
-          skippedRisky += 1;
-          continue;
+          approvedRisky += 1;
         }
       }
       await resolveReviewItemHelper(ctx, {
@@ -377,7 +375,7 @@ export const adminResolveReviewItemsBulk = mutation({
       });
       resolved += 1;
     }
-    return { resolved, skippedRisky };
+    return { resolved, approvedRisky };
   },
 });
 
