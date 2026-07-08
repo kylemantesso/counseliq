@@ -33,6 +33,7 @@ import type * as notificationDeliver from "../notificationDeliver.js";
 import type * as notificationOutbox from "../notificationOutbox.js";
 import type * as notificationPreferences from "../notificationPreferences.js";
 import type * as notificationQueries from "../notificationQueries.js";
+import type * as pipeline_assetsIngest from "../pipeline/assetsIngest.js";
 import type * as pipeline_compiler_assemble from "../pipeline/compiler/assemble.js";
 import type * as pipeline_compiler_compile from "../pipeline/compiler/compile.js";
 import type * as pipeline_compiler_judge from "../pipeline/compiler/judge.js";
@@ -115,6 +116,7 @@ declare const fullApi: ApiFromModules<{
   notificationOutbox: typeof notificationOutbox;
   notificationPreferences: typeof notificationPreferences;
   notificationQueries: typeof notificationQueries;
+  "pipeline/assetsIngest": typeof pipeline_assetsIngest;
   "pipeline/compiler/assemble": typeof pipeline_compiler_assemble;
   "pipeline/compiler/compile": typeof pipeline_compiler_compile;
   "pipeline/compiler/judge": typeof pipeline_compiler_judge;

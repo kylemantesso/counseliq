@@ -45,4 +45,14 @@ export const APP_ERROR_MESSAGES: Record<AppErrorCodeType, string> = {
     "This course is published and can no longer be edited. Re-run the pipeline to publish a new version.",
   [AppErrorCode.PUBLISH_VERSION_CONFLICT]:
     "A different snapshot of this course version was already published.",
+  [AppErrorCode.ASSET_KEY_INVALID]:
+    "That file's storage key is invalid. Re-select the file and try again.",
+  [AppErrorCode.ASSET_JOB_NOT_FOUND]: "That upload job could not be found.",
+  [AppErrorCode.ASSET_NOT_FOUND]: "That asset could not be found.",
+  [AppErrorCode.ASSET_NOT_CLEARED]:
+    "That asset's rights have not been cleared. Declare rights in the asset library first.",
+  [AppErrorCode.ASSET_KIND_MISMATCH]:
+    "That asset's type or shape does not fit this card template.",
+  [AppErrorCode.CONVERTER_NOT_CONFIGURED]:
+    "The media converter service is not reachable. Contact an administrator.",
 };

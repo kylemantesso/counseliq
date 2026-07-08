@@ -4,11 +4,13 @@
 #   fly deploy --config services/converter/fly.toml --dockerfile services/converter/Dockerfile .
 FROM node:22-slim
 
-# LibreOffice for pptx->pdf, poppler-utils for pdftoppm/pdfinfo.
+# LibreOffice for pptx->pdf, poppler-utils for pdftoppm/pdfinfo/pdfimages,
+# ffmpeg for asset ingestion (video transcode, posters, image resizing).
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
     libreoffice-impress \
     poppler-utils \
+    ffmpeg \
     fonts-liberation \
     fontconfig \
   && rm -rf /var/lib/apt/lists/*

@@ -460,6 +460,25 @@ export default defineSchema({
     .index("by_institution_and_object", ["institutionId", "objectKey"]),
 
   /**
+   * One row per dispatched asset-ingest job (M6) — the admin library page
+   * polls this for upload progress. jobId on the wire is the row _id.
+   */
+  assetIngestJobs: defineTable({
+    institutionId: v.id("institutions"),
+    files: v.array(
+      v.object({ sourceKey: v.string(), originalName: v.string() })
+    ),
+    /** "dispatched" | "complete" | "failed". */
+    status: v.string(),
+    acceptedCount: v.optional(v.number()),
+    rejected: v.optional(
+      v.array(v.object({ originalName: v.string(), reason: v.string() }))
+    ),
+    createdBy: v.string(),
+    error: v.optional(v.string()),
+  }).index("by_institution", ["institutionId"]),
+
+  /**
    * Immutable publish snapshots (M5): one row per published course version,
    * pointing at the content-addressed export.json + manifest.json in the
    * object store. Rows are never patched — a re-publish is a new version

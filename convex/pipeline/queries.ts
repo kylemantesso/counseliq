@@ -66,9 +66,9 @@ export const listRunsByStateInternal = internalQuery({
 /** Auth check for admin-only actions (actions have no db access). */
 export const assertAdmin = internalQuery({
   args: {},
-  handler: async (ctx) => {
-    await requireAdmin(ctx);
-    return null;
+  handler: async (ctx): Promise<{ email: string }> => {
+    const admin = await requireAdmin(ctx);
+    return { email: admin.email };
   },
 });
 

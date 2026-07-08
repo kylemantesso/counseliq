@@ -124,6 +124,42 @@ export const presignGet = internalAction({
 });
 
 /**
+ * Admin-only batch presign for browser uploads (asset library). Keys must
+ * be content-addressed — the browser hashes each file with crypto.subtle
+ * before asking, so re-uploads of identical bytes reuse the same object.
+ * URLs are short-lived and never logged.
+ */
+export const adminPresignPutBatch = action({
+  args: {
+    items: v.array(v.object({ key: v.string(), contentType: v.string() })),
+  },
+  handler: async (ctx, args): Promise<{ key: string; url: string }[]> => {
+    await ctx.runQuery(internal.pipeline.queries.assertAdmin, {});
+    const { client, bucket } = createClient();
+    const items = args.items.slice(0, 100);
+    for (const item of items) {
+      if (!/^sha256\/[0-9a-f]{64}\.[a-z0-9]+$/.test(item.key)) {
+        appError(AppErrorCode.ASSET_KEY_INVALID);
+      }
+    }
+    return await Promise.all(
+      items.map(async (item) => ({
+        key: item.key,
+        url: await getSignedUrl(
+          client,
+          new PutObjectCommand({
+            Bucket: bucket,
+            Key: item.key,
+            ContentType: item.contentType,
+          }),
+          { expiresIn: PRESIGN_TTL_SECONDS }
+        ),
+      }))
+    );
+  },
+});
+
+/**
  * Admin-only batch presign for the ingestion inspector page (page PNGs,
  * thumbnails, logo candidates). URLs are short-lived and never logged.
  */

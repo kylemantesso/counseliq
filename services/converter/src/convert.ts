@@ -141,14 +141,13 @@ export async function runConversion(
   return buildManifest({ sourceDocHash, theme, pages });
 }
 
-/** POSTs the HMAC-signed manifest back to Convex, with bounded retries. */
+/** POSTs an HMAC-signed callback body back to Convex, with bounded retries. */
 export async function deliverCallback(
   callbackUrl: string,
-  jobId: string,
-  manifest: ConversionManifest,
+  payload: Record<string, unknown>,
   secret: string
 ): Promise<void> {
-  const body = JSON.stringify({ jobId, manifest });
+  const body = JSON.stringify(payload);
   const signature = signBody(body, secret);
 
   const maxAttempts = 3;
