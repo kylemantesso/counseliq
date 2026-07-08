@@ -131,6 +131,20 @@ function AdminRunDetailContent() {
                     </Text>
                   </Link>
                 ) : null}
+                {run.state === "OUTLINING" && runId ? (
+                  <Link href={`/admin/runs/${runId}/outline`}>
+                    <Text className="text-muted-foreground font-semibold">
+                      Outline is being generated… →
+                    </Text>
+                  </Link>
+                ) : null}
+                {run.state === "OUTLINE_REVIEW" && runId ? (
+                  <Link href={`/admin/runs/${runId}/outline`}>
+                    <Text className="text-primary font-semibold">
+                      Review & edit the course outline →
+                    </Text>
+                  </Link>
+                ) : null}
                 {runId &&
                 (run.state === "GATE_2_COURSE_REVIEW" ||
                   (run.courseId &&

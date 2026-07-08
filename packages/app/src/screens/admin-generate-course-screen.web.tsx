@@ -92,6 +92,7 @@ function GenerateForInstitution({ institutionId }: { institutionId: Id<"institut
   const startRun = useMutation(api.pipeline.runs.adminStartRun);
 
   const [selectedKeys, setSelectedKeys] = useState<Set<string> | null>(null);
+  const [brief, setBrief] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -177,7 +178,11 @@ function GenerateForInstitution({ institutionId }: { institutionId: Id<"institut
           );
         }
       }
-      const runId = await startRun({ institutionId, sourceDocIds });
+      const runId = await startRun({
+        institutionId,
+        sourceDocIds,
+        ...(brief.trim() ? { brief: brief.trim() } : {}),
+      });
       router.push(`/admin/runs/${runId}`);
     } catch (startError) {
       setBusy(null);
@@ -276,11 +281,36 @@ function GenerateForInstitution({ institutionId }: { institutionId: Id<"institut
         </Button>
       </Box>
 
-      <Box className="bg-card border border-border rounded-xl p-4 gap-3">
-        <Text className="font-semibold">3 · Generate</Text>
+      <Box className="bg-card border border-border rounded-xl p-4 gap-2">
+        <Text className="font-semibold">3 · Course brief (optional)</Text>
         <Text className="text-sm text-muted-foreground">
-          Starts the full pipeline (convert → extract → gate 1 → compile →
-          judge → gate 2 → voice → gate 3 → publish). Uses real LLM calls.
+          Describe the course&apos;s purpose, audience emphasis, and desired
+          learning outcomes. The outline generator follows this brief when
+          choosing what the course should cover — source documents often
+          contain more than one course&apos;s worth of material.
+        </Text>
+        <textarea
+          value={brief}
+          onChange={(e) => setBrief(e.target.value)}
+          placeholder="e.g. Focus on clinical placements and rural health. Outcomes: the counsellor can match students to registration-track courses and explain placement requirements."
+          rows={4}
+          style={{
+            padding: 10,
+            borderRadius: 8,
+            border: "1px solid #d4d4d8",
+            fontSize: 14,
+            fontFamily: "inherit",
+            resize: "vertical",
+          }}
+        />
+      </Box>
+
+      <Box className="bg-card border border-border rounded-xl p-4 gap-3">
+        <Text className="font-semibold">4 · Generate</Text>
+        <Text className="text-sm text-muted-foreground">
+          Starts the pipeline: convert → extract → gate 1 (facts) → an
+          EDITABLE course outline you approve → compile → judge → gate 2 →
+          voice → gate 3 → publish. Uses real LLM calls.
         </Text>
         {error ? <Text className="text-sm text-destructive">{error}</Text> : null}
         <Button

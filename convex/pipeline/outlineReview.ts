@@ -209,12 +209,30 @@ export const adminGetOutline = query({
       };
     }
 
+    // Every cleared catalogue asset (compact), so the editor can add media
+    // suggestions — same clearance predicate as everywhere else.
+    const institutionAssets = await ctx.db
+      .query("assets")
+      .withIndex("by_institution", (q) =>
+        q.eq("institutionId", run.institutionId)
+      )
+      .take(2000);
+    const clearedAssets = institutionAssets
+      .filter((asset) => isCatalogueAsset(asset) && isAssetCleared(asset))
+      .slice(0, 150)
+      .map((asset) => ({
+        id: String(asset._id),
+        kind: asset.kind,
+        caption: asset.caption ?? null,
+      }));
+
     return {
       runState: run.state,
       brief: run.brief ?? null,
       outline,
       unusedConcepts,
       suggestedAssets,
+      clearedAssets,
     };
   },
 });
