@@ -4,10 +4,12 @@ import {
   internalAction,
   internalMutation,
   internalQuery,
+  mutation,
 } from "../_generated/server";
 import type { MutationCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
 import { internal } from "../_generated/api";
+import { requireAdmin } from "../admin";
 import { AppErrorCode, appError } from "../errors";
 import { upsertCatalogueAsset } from "./assetsIngest";
 import { applyRunTransition } from "./transitions";
@@ -44,6 +46,33 @@ export const registerSourceDoc = internalMutation({
       kind: args.kind,
       objectKey: args.objectKey,
       ...(args.shape !== undefined ? { shape: args.shape } : {}),
+      status: "pending",
+    });
+  },
+});
+
+/**
+ * Admin wrapper for the generate-course page: register an uploaded (or
+ * re-used, content-addressed) source document. Fresh rows per run keep
+ * old runs' doc history intact; conversion/extraction cache-hit on the
+ * unchanged bytes.
+ */
+export const adminRegisterSourceDoc = mutation({
+  args: {
+    institutionId: v.id("institutions"),
+    objectKey: v.string(),
+    kind: v.union(v.literal("pptx"), v.literal("pdf")),
+  },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+    const institution = await ctx.db.get(args.institutionId);
+    if (!institution) {
+      appError(AppErrorCode.INSTITUTION_NOT_FOUND);
+    }
+    return await ctx.db.insert("sourceDocs", {
+      institutionId: args.institutionId,
+      kind: args.kind,
+      objectKey: args.objectKey,
       status: "pending",
     });
   },

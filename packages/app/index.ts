@@ -18,6 +18,7 @@ export { AdminGateOneReviewScreen } from "./src/screens/admin-gate-one-review-sc
 export { AdminGateTwoReviewScreen } from "./src/screens/admin-gate-two-review-screen";
 export { AdminGateThreeReviewScreen } from "./src/screens/admin-gate-three-review-screen";
 export { AdminAssetLibraryScreen } from "./src/screens/admin-asset-library-screen";
+export { AdminGenerateCourseScreen } from "./src/screens/admin-generate-course-screen";
 export { ForceUpgradeScreen } from "./src/screens/force-upgrade-screen";
 export { CardsGalleryScreen } from "./src/screens/cards-gallery-screen";
 

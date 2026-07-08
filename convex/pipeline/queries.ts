@@ -72,6 +72,24 @@ export const assertAdmin = internalQuery({
   },
 });
 
+/** Recent runs of one institution, newest first (generate-course page). */
+export const adminListRuns = query({
+  args: { institutionId: v.id("institutions") },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+    const runs = await ctx.db.query("runs").order("desc").take(300);
+    return runs
+      .filter((run) => run.institutionId === args.institutionId)
+      .slice(0, 25)
+      .map((run) => ({
+        _id: run._id,
+        _creationTime: run._creationTime,
+        state: run.state,
+        error: run.error ?? null,
+      }));
+  },
+});
+
 /** Source documents, newest first — the admin ingestion inspector list. */
 export const listSourceDocs = query({
   args: {},

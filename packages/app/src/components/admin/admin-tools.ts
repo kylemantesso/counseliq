@@ -4,7 +4,9 @@ export type AdminToolKey =
   | "email-test"
   | "sentry-test"
   | "posthog-test"
-  | "source-docs";
+  | "source-docs"
+  | "asset-library"
+  | "generate-course";
 
 export type AdminTool = {
   key: AdminToolKey;
@@ -43,6 +45,18 @@ export const ADMIN_TOOLS: readonly AdminTool[] = [
     label: "Test PostHog",
     description: "Send test events to verify PostHog analytics.",
     href: "/admin/posthog-test",
+  },
+  {
+    key: "generate-course",
+    label: "Generate course",
+    description: "Compile a course from an institution's facts and cleared assets.",
+    href: "/admin/generate",
+  },
+  {
+    key: "asset-library",
+    label: "Asset library",
+    description: "Upload media, review tags, and declare usage rights.",
+    href: "/admin/assets",
   },
   {
     key: "source-docs",
