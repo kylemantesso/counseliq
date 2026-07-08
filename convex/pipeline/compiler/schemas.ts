@@ -139,6 +139,22 @@ const llmAnchorSchema = z.discriminatedUnion(
   llmAnchorBranches as any
 ) as unknown as z.ZodType<LlmAuthoredAnchor>;
 
+/**
+ * Character budgets for props that render as full-card display type. The
+ * render-side fitBlockFontSize keeps longer text on the card, but past
+ * these lengths it bottoms out at a wall of floor-size text — the fix is
+ * shorter copy, not a smaller font. Enforced in the superRefine below so
+ * violations ride completeStructured's validator-feedback retry.
+ */
+const DISPLAY_TEXT_CAPS: Partial<Record<CardTemplate, Record<string, number>>> = {
+  "text-card": { body: 200 },
+  "alert-card": { message: 180 },
+  "quote-card": { quote: 220 },
+  "myth-fact-card": { myth: 140, fact: 140 },
+  "photo-kenburns": { overlayText: 120 },
+  "takeaway-card": { text: 160 },
+};
+
 export const llmDraftQuestionSchema = z.object({
   prompt: z.string().min(1),
   /** 4 options; 2 allowed for true/false-style commit questions. */
@@ -215,15 +231,45 @@ export const llmAuthoredUnitSchema = z
       checkQuestion(question, ["retrieveQuestions", qIndex])
     );
 
+    const checkDisplayCaps = (
+      template: CardTemplate,
+      props: Record<string, unknown>,
+      basePath: (string | number)[]
+    ) => {
+      const caps = DISPLAY_TEXT_CAPS[template];
+      if (!caps) return;
+      for (const [prop, max] of Object.entries(caps)) {
+        const value = props[prop];
+        if (typeof value === "string" && value.length > max) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [...basePath, "props", prop],
+            message: `${template} ${prop} is ${value.length} characters; it renders as full-card display type and reads as a wall of text — compress it to at most ${max} characters (cards compress, narration speaks)`,
+          });
+        }
+      }
+    };
+    unit.cards.forEach((card, cIndex) =>
+      checkDisplayCaps(card.template, card.props as Record<string, unknown>, ["cards", cIndex])
+    );
+
     // The anchor renders full-screen display type; past ~160 characters no
-    // fittable font size keeps it on the card.
+    // fittable font size keeps it readable on the card.
     const anchorText = (unit.anchor.props as Record<string, unknown>).text;
-    if (typeof anchorText === "string" && anchorText.length > 160) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["anchor", "props", "text"],
-        message: `anchor takeaway text is ${anchorText.length} characters; rewrite it as one punchy sentence of at most 160 characters — state the single memorable point, not a summary of the unit`,
-      });
+    if (unit.anchor.template === "takeaway-card") {
+      if (typeof anchorText === "string" && anchorText.length > 160) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["anchor", "props", "text"],
+          message: `anchor takeaway text is ${anchorText.length} characters; rewrite it as one punchy sentence of at most 160 characters — state the single memorable point, not a summary of the unit`,
+        });
+      }
+    } else {
+      checkDisplayCaps(
+        unit.anchor.template,
+        unit.anchor.props as Record<string, unknown>,
+        ["anchor"]
+      );
     }
   });
 

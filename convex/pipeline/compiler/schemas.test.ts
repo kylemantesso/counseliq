@@ -116,6 +116,89 @@ describe("llmAuthoredUnitSchema card-prop enforcement", () => {
     }
   });
 
+  test("over-long text-card body is rejected with compress guidance", () => {
+    const unit = makeUnit();
+    (unit.cards as Array<Record<string, unknown>>)[0] = {
+      template: "text-card",
+      props: {
+        heading: "Commitment",
+        body:
+          "La Trobe University is committed to providing opportunities for " +
+          "Aboriginal and Torres Strait Islander people, both as individuals " +
+          "and communities, through teaching, learning, research, and " +
+          "partnerships across all its campuses.",
+      },
+      enterAt: { narration: "n1", word: "students" },
+      provenance: "doc:abc:page:1",
+    };
+    const result = llmAuthoredUnitSchema.safeParse(unit);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const issue = result.error.issues.find(
+        (entry) => entry.path.join(".") === "cards.0.props.body"
+      );
+      expect(issue?.message).toContain("200 characters");
+    }
+  });
+
+  test("text-card body within the cap parses", () => {
+    const unit = makeUnit();
+    (unit.cards as Array<Record<string, unknown>>)[0] = {
+      template: "text-card",
+      props: {
+        heading: "Commitment",
+        body: "Committed to opportunities for Aboriginal and Torres Strait Islander people across all campuses.",
+      },
+      enterAt: { narration: "n1", word: "students" },
+      provenance: "doc:abc:page:1",
+    };
+    expect(llmAuthoredUnitSchema.safeParse(unit).success).toBe(true);
+  });
+
+  test("over-long myth-fact halves are each rejected at their own path", () => {
+    const longHalf =
+      "International students who complete this degree are guaranteed " +
+      "permanent residency and immediate employment in Australia, according " +
+      "to persistent word-of-mouth among some counselling networks.";
+    const unit = makeUnit();
+    (unit.cards as Array<Record<string, unknown>>)[0] = {
+      template: "myth-fact-card",
+      props: { myth: longHalf, fact: longHalf },
+      enterAt: { narration: "n1", word: "students" },
+      provenance: "doc:abc:page:1",
+    };
+    const result = llmAuthoredUnitSchema.safeParse(unit);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const paths = result.error.issues.map((entry) => entry.path.join("."));
+      expect(paths).toContain("cards.0.props.myth");
+      expect(paths).toContain("cards.0.props.fact");
+    }
+  });
+
+  test("non-takeaway anchor display text is capped too", () => {
+    const unit = makeUnit({
+      anchor: {
+        template: "text-card",
+        props: {
+          body:
+            "La Trobe University is committed to providing opportunities for " +
+            "Aboriginal and Torres Strait Islander people, both as individuals " +
+            "and communities, through teaching, learning, research, and " +
+            "partnerships across all its campuses.",
+        },
+      },
+    });
+    const result = llmAuthoredUnitSchema.safeParse(unit);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const issue = result.error.issues.find(
+        (entry) => entry.path.join(".") === "anchor.props.body"
+      );
+      expect(issue?.message).toContain("200 characters");
+    }
+  });
+
   test("unknown card template is rejected", () => {
     const unit = makeUnit();
     (unit.cards as Array<{ template: string }>)[0].template = "hologram-card";

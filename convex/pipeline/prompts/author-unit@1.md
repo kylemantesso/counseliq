@@ -57,6 +57,11 @@ narration, cards, a hook question, retrieve questions, and an anchor.
   last resort. Do not repeat the narration verbatim on the card — cards
   compress and visualise (headline numbers, lists, comparisons), narration
   speaks.
+- Card text renders as large display type on a phone-sized card — keep it
+  tight. Hard caps (longer is rejected): `text-card` body ≤ 200 characters,
+  `quote-card` quote ≤ 220 (pick a shorter verbatim excerpt), `alert-card`
+  message ≤ 180, `myth-fact-card` myth and fact ≤ 140 each,
+  `photo-kenburns` overlayText ≤ 120, `takeaway-card` text ≤ 160.
 - **Every statistic narrated must appear on a card carrying its
   `sourceLabel`** (in the card props, e.g. `"sourceLabel": "QS 2024 by
   Subject"`), taken from the fact's approved attribution.
