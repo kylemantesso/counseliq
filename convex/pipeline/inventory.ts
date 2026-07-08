@@ -111,8 +111,15 @@ export const getPageExtraction = internalQuery({
         q.eq("sourceDocId", args.sourceDocId).eq("n", args.n)
       )
       .unique();
-    if (!row || row.cacheKey !== args.cacheKey) return null;
-    return row.result;
+    if (row && row.cacheKey === args.cacheKey) return row.result;
+    // Content-addressed fallback: the same page bytes were extracted under
+    // a different sourceDoc row (documents are re-registered per run).
+    // The caller re-stamps provenance onto THIS page and saves a copy.
+    const byContent = await ctx.db
+      .query("pageExtractions")
+      .withIndex("by_cache_key", (q) => q.eq("cacheKey", args.cacheKey))
+      .first();
+    return byContent?.result ?? null;
   },
 });
 

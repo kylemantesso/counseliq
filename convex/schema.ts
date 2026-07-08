@@ -251,7 +251,11 @@ export default defineSchema({
     cacheKey: v.string(),
     /** LlmPageExtraction after code-level flag floor + provenance stamping. */
     result: v.any(),
-  }).index("by_source_doc_and_n", ["sourceDocId", "n"]),
+  })
+    .index("by_source_doc_and_n", ["sourceDocId", "n"])
+    // Content-addressed reuse: re-registering the same document (fresh
+    // sourceDoc row per run) must not re-pay extraction for identical pages.
+    .index("by_cache_key", ["cacheKey"]),
 
   /**
    * The course outline (M6.5): the structure pass's output, persisted so

@@ -28,6 +28,7 @@ import { PROMPTS } from "./prompts";
 import {
   assembleInventory,
   preGroupConcepts,
+  restampPageExtraction,
   storePageExtraction,
   type StoredPageExtraction,
 } from "./extraction/assemble";
@@ -123,6 +124,17 @@ export const extractPage = internalAction({
       { sourceDocId: args.sourceDocId, n: args.n, cacheKey }
     );
     if (cached !== null) {
+      const cachedStored = cached as StoredPageExtraction;
+      if (cachedStored.provenanceId !== page.provenanceId) {
+        // Content-addressed hit from another sourceDoc row: re-stamp onto
+        // THIS page's provenance and persist so the next lookup is exact.
+        await ctx.runMutation(internal.pipeline.inventory.savePageExtraction, {
+          sourceDocId: args.sourceDocId,
+          n: args.n,
+          cacheKey,
+          result: restampPageExtraction(cachedStored, page.provenanceId),
+        });
+      }
       return { status: "cached" as const };
     }
 

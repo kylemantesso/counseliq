@@ -78,6 +78,37 @@ export function storePageExtraction(
   };
 }
 
+/**
+ * Rewrite a cached extraction's provenance onto a different page identity.
+ * The extraction cache is content-addressed (same rendered page bytes +
+ * prompt + model ⇒ same knowledge), but re-registering a document mints a
+ * fresh sourceDoc row — so a cross-document cache hit must carry THIS
+ * page's provenance id, not the row it was first extracted under.
+ */
+export function restampPageExtraction(
+  stored: StoredPageExtraction,
+  provenanceId: string
+): StoredPageExtraction {
+  const swap = (ids: string[]) =>
+    ids.map((id) => (id === stored.provenanceId ? provenanceId : id));
+  return {
+    ...stored,
+    provenanceId,
+    facts: stored.facts.map((fact) => ({
+      ...fact,
+      provenance: swap(fact.provenance),
+    })),
+    entities: stored.entities.map((entity) => ({
+      ...entity,
+      provenance: swap(entity.provenance),
+    })),
+    quotes: stored.quotes.map((quote) => ({
+      ...quote,
+      provenance: swap(quote.provenance),
+    })),
+  };
+}
+
 export interface ConceptGroupMember {
   provenanceId: string;
   conceptKey: string;
