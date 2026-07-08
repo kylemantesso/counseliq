@@ -92,6 +92,7 @@ function InstitutionLibrary({ institutionId }: { institutionId: Id<"institutions
   const [tagFilter, setTagFilter] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [uploading, setUploading] = useState<string | null>(null);
+  const [lightboxAsset, setLightboxAsset] = useState<LibraryAsset | null>(null);
 
   useEffect(() => {
     if (!assets || assets.length === 0) return;
@@ -324,11 +325,172 @@ function InstitutionLibrary({ institutionId }: { institutionId: Id<"institutions
                   return next;
                 });
               }}
+              onOpen={() => setLightboxAsset(asset)}
             />
           ))}
         </div>
       )}
+      {lightboxAsset ? (
+        <AssetLightbox
+          asset={lightboxAsset}
+          onClose={() => setLightboxAsset(null)}
+        />
+      ) : null}
     </Box>
+  );
+}
+
+/**
+ * Full-size viewer: presigns the asset's objectKey on open (the grid only
+ * holds thumbnails/posters), renders the full image or a playable video,
+ * closes on backdrop click or Escape. URLs are used in-place, never logged.
+ */
+function AssetLightbox({
+  asset,
+  onClose,
+}: {
+  asset: LibraryAsset;
+  onClose: () => void;
+}) {
+  const presignGetBatch = useAction(api.pipeline.objectStore.adminPresignGetBatch);
+  const [fullUrl, setFullUrl] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setFullUrl(null);
+    setFailed(false);
+    presignGetBatch({ keys: [asset.objectKey] })
+      .then((entries) => {
+        if (cancelled) return;
+        setFullUrl(entries[0]?.url ?? null);
+        if (!entries[0]?.url) setFailed(true);
+      })
+      .catch(() => {
+        if (!cancelled) setFailed(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [asset.objectKey, presignGetBatch]);
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const durationLabel =
+    asset.durationMs !== undefined
+      ? ` · ${Math.round(asset.durationMs / 1000)}s`
+      : "";
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={asset.caption ?? asset.originalName ?? "asset preview"}
+      onClick={onClose}
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 1000,
+        background: "rgba(9, 11, 14, 0.88)",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 12,
+        padding: 32,
+        cursor: "zoom-out",
+      }}
+    >
+      <div
+        onClick={(event) => event.stopPropagation()}
+        style={{
+          maxWidth: "92vw",
+          maxHeight: "82vh",
+          display: "flex",
+          cursor: "default",
+        }}
+      >
+        {failed ? (
+          <span style={{ color: "#e8e6e1", fontSize: 14 }}>
+            Could not load the full-size asset.
+          </span>
+        ) : !fullUrl ? (
+          <span style={{ color: "#9aa3ad", fontSize: 14 }}>Loading…</span>
+        ) : asset.kind === "video" ? (
+          // Transcoded library video has no audio track (-an) — controls are
+          // for scrubbing. autoPlay is safe: the click that opened this IS
+          // the user gesture.
+          <video
+            src={fullUrl}
+            controls
+            autoPlay
+            loop
+            muted
+            playsInline
+            style={{
+              maxWidth: "92vw",
+              maxHeight: "82vh",
+              borderRadius: 10,
+              background: "#000",
+            }}
+          />
+        ) : (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={fullUrl}
+            alt={asset.caption ?? asset.originalName ?? "asset"}
+            style={{
+              maxWidth: "92vw",
+              maxHeight: "82vh",
+              objectFit: "contain",
+              borderRadius: 10,
+            }}
+          />
+        )}
+      </div>
+      <div
+        onClick={(event) => event.stopPropagation()}
+        style={{
+          color: "#e8e6e1",
+          fontSize: 13,
+          maxWidth: "80vw",
+          textAlign: "center",
+          cursor: "default",
+        }}
+      >
+        {asset.caption ?? asset.originalName ?? "(untagged)"}
+        <span style={{ color: "#9aa3ad" }}>
+          {" "}
+          — {asset.kind}
+          {durationLabel}
+          {asset.width && asset.height ? ` · ${asset.width}×${asset.height}` : ""}
+          {asset.cleared ? " · usable" : " · unusable"}
+        </span>
+      </div>
+      <button
+        onClick={onClose}
+        aria-label="Close preview"
+        style={{
+          position: "fixed",
+          top: 16,
+          right: 20,
+          background: "none",
+          border: "none",
+          color: "#e8e6e1",
+          fontSize: 28,
+          cursor: "pointer",
+          lineHeight: 1,
+        }}
+      >
+        ×
+      </button>
+    </div>
   );
 }
 
@@ -337,11 +499,13 @@ function AssetCard({
   url,
   selected,
   onToggleSelect,
+  onOpen,
 }: {
   asset: LibraryAsset;
   url: string | null;
   selected: boolean;
   onToggleSelect: () => void;
+  onOpen: () => void;
 }) {
   const declareRights = useMutation(api.pipeline.assetsCatalogue.adminDeclareAssetRights);
   const confirmConsent = useMutation(api.pipeline.assetsCatalogue.adminConfirmPeopleConsent);
@@ -370,7 +534,9 @@ function AssetCard({
           <img
             src={url}
             alt={asset.caption ?? asset.originalName ?? "asset"}
-            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+            title="Click to view full size"
+            onClick={onOpen}
+            style={{ width: "100%", height: "100%", objectFit: "cover", cursor: "zoom-in" }}
           />
         ) : (
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "#a1a1aa", fontSize: 12 }}>
