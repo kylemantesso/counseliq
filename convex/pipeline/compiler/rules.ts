@@ -161,6 +161,156 @@ export function validateGenericCardCap(
   return violations;
 }
 
+// --- Media asset refs + pacing (M6) ---
+
+/** Templates that render a catalogued media asset via `assetRef`. */
+export const MEDIA_CARD_TEMPLATES: readonly string[] = [
+  "video-card",
+  "photo-kenburns",
+  "image-text-card",
+];
+
+/** Templates that read as dense text walls (pacing rule counterweight). */
+export const TEXT_DENSE_TEMPLATES: readonly string[] = [
+  "text-card",
+  "list-reveal",
+  "checklist-card",
+  "term-card",
+  "breakdown-card",
+];
+
+/** Catalogue view the validators need — built from cleared assets only. */
+export interface CatalogueAssetInfo {
+  kind: "image" | "video";
+  aspect?: string;
+  cleared: boolean;
+}
+
+/** Whether an asset's kind+aspect fits a media template's frame. */
+export function assetFitsTemplate(
+  template: string,
+  asset: Pick<CatalogueAssetInfo, "kind" | "aspect">
+): string | null {
+  if (template === "video-card" && asset.kind !== "video") {
+    return "video-card requires a video asset";
+  }
+  if (
+    (template === "photo-kenburns" || template === "image-text-card") &&
+    asset.kind !== "image"
+  ) {
+    return `${template} requires an image asset`;
+  }
+  // image-text-card's picture is a wide 46%-height panel; a portrait image
+  // crops to an unrecognisable center strip. Full-bleed templates
+  // (video-card, photo-kenburns) cover-crop any catalogue aspect
+  // acceptably — extreme slivers were already filtered at ingestion.
+  if (template === "image-text-card" && asset.aspect === "portrait") {
+    return "image-text-card's landscape panel cannot frame a portrait image";
+  }
+  return null;
+}
+
+/**
+ * Every `assetRef` must resolve to a catalogued, CLEARED asset whose kind
+ * and aspect fit the template. This is the mechanical no-unknown-rights
+ * gate on the authoring side (the prompt never saw uncleared assets; this
+ * catches hallucinated, stale, or mismatched ids). Same violation-message
+ * pattern as validateCardProvenance.
+ */
+export function validateAssetRefs(
+  cards: Array<{ template: string; props: Record<string, unknown> }>,
+  catalogueById: ReadonlyMap<string, CatalogueAssetInfo>
+): string[] {
+  const violations: string[] = [];
+  cards.forEach((card, index) => {
+    const assetRef = card.props.assetRef;
+    if (assetRef === undefined) return;
+    if (typeof assetRef !== "string" || assetRef.trim() === "") {
+      violations.push(
+        `card ${index + 1} (${card.template}): assetRef must be a catalogue asset id`
+      );
+      return;
+    }
+    if (!MEDIA_CARD_TEMPLATES.includes(card.template)) {
+      violations.push(
+        `card ${index + 1} (${card.template}): assetRef is only valid on media templates (${MEDIA_CARD_TEMPLATES.join(", ")})`
+      );
+      return;
+    }
+    const asset = catalogueById.get(assetRef);
+    if (!asset) {
+      violations.push(
+        `card ${index + 1} (${card.template}): assetRef "${assetRef}" is not in the cleared asset library — use an id EXACTLY as listed, never invent one`
+      );
+      return;
+    }
+    if (!asset.cleared) {
+      violations.push(
+        `card ${index + 1} (${card.template}): asset "${assetRef}" is not rights-cleared and cannot appear in a course`
+      );
+      return;
+    }
+    const fitProblem = assetFitsTemplate(card.template, asset);
+    if (fitProblem) {
+      violations.push(
+        `card ${index + 1} (${card.template}): ${fitProblem} (asset "${assetRef}" is ${asset.kind}${asset.aspect ? `, ${asset.aspect}` : ""})`
+      );
+    }
+  });
+  return violations;
+}
+
+/** What the cleared catalogue makes possible (pacing satisfiability). */
+export interface MediaAvailability {
+  images: number;
+  videos: number;
+}
+
+/**
+ * Code-enforced media pacing: where suitable cleared assets exist, at
+ * least 1 media card per 3 content cards (minimum one from 3 cards up),
+ * and never two consecutive text-dense cards while media headroom
+ * remains. Applied only when satisfiable — an empty catalogue silently
+ * disables the rule (courses stay media-free, mechanically).
+ */
+export function validateMediaPacing(
+  cards: Array<{ template: string; props: Record<string, unknown> }>,
+  availability: MediaAvailability
+): string[] {
+  const available = availability.images + availability.videos;
+  if (available === 0) return [];
+
+  const violations: string[] = [];
+  const isMediaCard = (card: { template: string; props: Record<string, unknown> }) =>
+    MEDIA_CARD_TEMPLATES.includes(card.template) &&
+    typeof card.props.assetRef === "string";
+  const mediaCount = cards.filter(isMediaCard).length;
+  const required = Math.min(
+    Math.max(Math.floor(cards.length / 3), cards.length >= 3 ? 1 : 0),
+    available
+  );
+  if (mediaCount < required) {
+    violations.push(
+      `media pacing: ${mediaCount} media card(s) in ${cards.length} — the cleared asset library supports at least ${required} (>= 1 media card per 3 content cards); add video-card / photo-kenburns / image-text-card cards referencing library assets`
+    );
+  }
+
+  if (mediaCount < available) {
+    const denseFlags = cards.map((card) =>
+      TEXT_DENSE_TEMPLATES.includes(card.template)
+    );
+    for (let i = 1; i < denseFlags.length; i++) {
+      if (denseFlags[i] && denseFlags[i - 1]) {
+        violations.push(
+          `media pacing: consecutive text-dense cards at positions ${i} and ${i + 1} (${cards[i - 1].template}, ${cards[i].template}) while cleared media assets were available — break them up with a media card`
+        );
+        break;
+      }
+    }
+  }
+  return violations;
+}
+
 // --- Card provenance ---
 
 export const DERIVED_PROVENANCE = "compiler:derived";

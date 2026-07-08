@@ -3,6 +3,8 @@ import type { Fact } from "@counseliq/course-schema";
 import type { LlmAuthoredUnit } from "./schemas";
 import {
   assembleCourseDefinition,
+  buildUnitUserText,
+  mediaContextFromCatalogue,
   tryAssemble,
   unitComplianceViolations,
   type AuthoredUnitWithPlan,
@@ -119,10 +121,12 @@ const INVENTORY: ReviewedInventory = {
   provenanceIds: [...KNOWN_PROVENANCE],
 };
 
+const NO_MEDIA = mediaContextFromCatalogue([]);
+
 describe("unitComplianceViolations", () => {
   test("a clean unit passes", () => {
     expect(
-      unitComplianceViolations(makeAuthoredUnit(), KNOWN_PROVENANCE)
+      unitComplianceViolations(makeAuthoredUnit(), KNOWN_PROVENANCE, NO_MEDIA)
     ).toEqual([]);
   });
 
@@ -136,14 +140,14 @@ describe("unitComplianceViolations", () => {
         { id: "n2", text: "Its Burwood campus is the largest by enrolment." },
       ],
     });
-    const violations = unitComplianceViolations(unit, KNOWN_PROVENANCE);
+    const violations = unitComplianceViolations(unit, KNOWN_PROVENANCE, NO_MEDIA);
     expect(violations.some((v) => v.includes("banned claim"))).toBe(true);
   });
 
   test("unknown card provenance is caught", () => {
     const unit = makeAuthoredUnit();
     unit.cards[0] = { ...unit.cards[0], provenance: "doc:zzz999:page:9" };
-    const violations = unitComplianceViolations(unit, KNOWN_PROVENANCE);
+    const violations = unitComplianceViolations(unit, KNOWN_PROVENANCE, NO_MEDIA);
     expect(violations.some((v) => v.includes("provenance"))).toBe(true);
   });
 
@@ -157,7 +161,7 @@ describe("unitComplianceViolations", () => {
         sourceLabel: "University marketing claim",
       },
     };
-    expect(unitComplianceViolations(unit, KNOWN_PROVENANCE)).toEqual([]);
+    expect(unitComplianceViolations(unit, KNOWN_PROVENANCE, NO_MEDIA)).toEqual([]);
   });
 
   test("a question quoting a superlative with attribution in the prompt is legal", () => {
@@ -170,7 +174,7 @@ describe("unitComplianceViolations", () => {
         explanation: "That is the university's own claim.",
       },
     });
-    expect(unitComplianceViolations(unit, KNOWN_PROVENANCE)).toEqual([]);
+    expect(unitComplianceViolations(unit, KNOWN_PROVENANCE, NO_MEDIA)).toEqual([]);
   });
 
   test("an unattributed superlative in a question is still caught", () => {
@@ -182,7 +186,7 @@ describe("unitComplianceViolations", () => {
         explanation: "It enrols the most students.",
       },
     });
-    const violations = unitComplianceViolations(unit, KNOWN_PROVENANCE);
+    const violations = unitComplianceViolations(unit, KNOWN_PROVENANCE, NO_MEDIA);
     expect(violations.some((v) => v.includes("banned claim"))).toBe(true);
   });
 
@@ -193,7 +197,7 @@ describe("unitComplianceViolations", () => {
       template: "text-card",
       props: { body: "Deakin University has five campuses across Victoria." },
     };
-    const violations = unitComplianceViolations(unit, KNOWN_PROVENANCE);
+    const violations = unitComplianceViolations(unit, KNOWN_PROVENANCE, NO_MEDIA);
     expect(violations.some((v) => v.includes("transcript"))).toBe(true);
   });
 
@@ -210,7 +214,7 @@ describe("unitComplianceViolations", () => {
         items: [{ text: "five campuses" }, { text: "Victoria" }],
       },
     };
-    const violations = unitComplianceViolations(unit, KNOWN_PROVENANCE);
+    const violations = unitComplianceViolations(unit, KNOWN_PROVENANCE, NO_MEDIA);
     expect(violations.filter((v) => v.includes("transcript"))).toEqual([]);
   });
 
@@ -239,7 +243,7 @@ describe("unitComplianceViolations", () => {
         ],
       },
     };
-    const violations = unitComplianceViolations(unit, KNOWN_PROVENANCE);
+    const violations = unitComplianceViolations(unit, KNOWN_PROVENANCE, NO_MEDIA);
     expect(violations.filter((v) => v.includes("transcript"))).toEqual([]);
   });
 
@@ -253,7 +257,7 @@ describe("unitComplianceViolations", () => {
         fact: "No outcome is promised; graduates compete in the open market.",
       },
     };
-    expect(unitComplianceViolations(unit, KNOWN_PROVENANCE)).toEqual([]);
+    expect(unitComplianceViolations(unit, KNOWN_PROVENANCE, NO_MEDIA)).toEqual([]);
   });
 
   test("a bare employment guarantee on a card is still caught", () => {
@@ -267,7 +271,7 @@ describe("unitComplianceViolations", () => {
         sourceLabel: "Marketing",
       },
     };
-    const violations = unitComplianceViolations(unit, KNOWN_PROVENANCE);
+    const violations = unitComplianceViolations(unit, KNOWN_PROVENANCE, NO_MEDIA);
     expect(violations.some((v) => v.includes("employment-guarantee"))).toBe(true);
   });
 
@@ -281,7 +285,7 @@ describe("unitComplianceViolations", () => {
         body: "Deakin University has five campuses across Victoria.",
       },
     };
-    const violations = unitComplianceViolations(unit, KNOWN_PROVENANCE);
+    const violations = unitComplianceViolations(unit, KNOWN_PROVENANCE, NO_MEDIA);
     expect(violations.some((v) => v.includes("transcript"))).toBe(true);
   });
 
@@ -291,7 +295,7 @@ describe("unitComplianceViolations", () => {
       ...unit.cards[1],
       props: { value: "5", label: "campuses" },
     };
-    const violations = unitComplianceViolations(unit, KNOWN_PROVENANCE);
+    const violations = unitComplianceViolations(unit, KNOWN_PROVENANCE, NO_MEDIA);
     expect(violations.some((v) => v.includes("sourceLabel"))).toBe(true);
   });
 });
@@ -396,5 +400,129 @@ describe("tryAssemble", () => {
     ]);
     expect(outcome.status).toBe("failed");
     expect(outcome.duplicatePromptUnitIds).toEqual(["mu-102"]);
+  });
+});
+
+// --- M6 media-aware authoring ---
+
+const CATALOGUE = [
+  {
+    id: "asset-vid-1",
+    kind: "video" as const,
+    caption: "Drone flyover of the Burwood campus",
+    tags: ["campus", "aerial"],
+    aspect: "landscape" as const,
+    durationMs: 8000,
+    suggestedUses: ["hero" as const],
+    deckPage: 2,
+  },
+  {
+    id: "asset-img-1",
+    kind: "image" as const,
+    caption: "Students outside the library",
+    tags: ["campus", "students"],
+    aspect: "landscape" as const,
+    suggestedUses: ["inline" as const],
+  },
+];
+
+describe("buildUnitUserText media catalogue section", () => {
+  test("cleared catalogue is injected as JSON lines with exact-id guidance", () => {
+    const text = buildUnitUserText(
+      makePlan("mu-101"),
+      INVENTORY.concepts[0],
+      INVENTORY.facts,
+      "Deakin Health 101",
+      "Deakin University",
+      [],
+      CATALOGUE
+    );
+    expect(text).toContain("Cleared asset library");
+    expect(text).toContain("EXACTLY as listed");
+    expect(text).toContain('"id":"asset-vid-1"');
+    expect(text).toContain("Drone flyover of the Burwood campus");
+  });
+
+  test("empty catalogue instructs no media cards and no assetRefs", () => {
+    const text = buildUnitUserText(
+      makePlan("mu-101"),
+      INVENTORY.concepts[0],
+      INVENTORY.facts,
+      "Deakin Health 101",
+      "Deakin University",
+      [],
+      []
+    );
+    expect(text).toContain("No cleared media assets are available");
+    expect(text).not.toContain("Cleared asset library");
+  });
+});
+
+describe("unitComplianceViolations media composition", () => {
+  const WITH_MEDIA = mediaContextFromCatalogue(CATALOGUE);
+
+  test("a unit weaving valid cleared assets passes", () => {
+    const unit = makeAuthoredUnit({
+      cards: [
+        {
+          template: "video-card",
+          props: {
+            assetRef: "asset-vid-1",
+            overlayText: "Burwood from above",
+          },
+          enterAt: { narration: "n1", word: "campuses" },
+          provenance: "compiler:derived",
+        },
+        {
+          template: "stat-card",
+          props: { value: "5", label: "campuses", sourceLabel: "Deakin facts 2024" },
+          enterAt: { narration: "n2", word: "Burwood" },
+          provenance: "doc:abc123:page:3",
+        },
+      ],
+    });
+    expect(unitComplianceViolations(unit, KNOWN_PROVENANCE, WITH_MEDIA)).toEqual([]);
+  });
+
+  test("a hallucinated assetRef fails the unit through the same rule path", () => {
+    const unit = makeAuthoredUnit({
+      cards: [
+        {
+          template: "photo-kenburns",
+          props: { assetRef: "asset:invented:99" },
+          enterAt: { narration: "n1", word: "campuses" },
+          provenance: "compiler:derived",
+        },
+        {
+          template: "stat-card",
+          props: { value: "5", label: "campuses", sourceLabel: "Deakin facts 2024" },
+          enterAt: { narration: "n2", word: "Burwood" },
+          provenance: "doc:abc123:page:3",
+        },
+      ],
+    });
+    const violations = unitComplianceViolations(unit, KNOWN_PROVENANCE, WITH_MEDIA);
+    expect(violations.some((v) => v.includes("not in the cleared asset library"))).toBe(true);
+  });
+
+  test("media-free three-card unit violates pacing when assets were available", () => {
+    const unit = makeAuthoredUnit({
+      cards: [
+        ...makeAuthoredUnit().cards,
+        {
+          template: "quote-card",
+          props: {
+            quote: "The campuses feel connected.",
+            sourceLabel: "Student survey 2024",
+          },
+          enterAt: { narration: "n2", word: "largest" },
+          provenance: "doc:abc123:page:3",
+        },
+      ],
+    });
+    const violations = unitComplianceViolations(unit, KNOWN_PROVENANCE, WITH_MEDIA);
+    expect(violations.some((v) => v.includes("media pacing"))).toBe(true);
+    // The exact same unit is legal when the catalogue is empty.
+    expect(unitComplianceViolations(unit, KNOWN_PROVENANCE, NO_MEDIA)).toEqual([]);
   });
 });

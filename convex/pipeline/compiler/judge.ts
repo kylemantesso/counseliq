@@ -61,6 +61,22 @@ async function runQaJudgeInner(
     { runId }
   );
 
+  // Resolve media-card asset captions so the judge can assess relevance
+  // (media-irrelevant flags) without seeing pixels.
+  const assetRefs = definition.modules.flatMap((module) =>
+    module.microUnits.flatMap((unit) =>
+      unit.content.cards
+        .map((card) => card.props.assetRef)
+        .filter((ref): ref is string => typeof ref === "string")
+    )
+  );
+  const assetCaptions: Record<string, string> =
+    assetRefs.length > 0
+      ? await ctx.runQuery(internal.pipeline.assetsCatalogue.getAssetCaptions, {
+          assetIds: assetRefs,
+        })
+      : {};
+
   const judgeModel = modelForTask("judge-course");
   const result = await judgeCourse(
     createOpenRouterClient(),
@@ -70,7 +86,7 @@ async function runQaJudgeInner(
       facts: inventory.facts,
       excludedFacts: inventory.excludedFacts,
     },
-    { judgeModel }
+    { judgeModel, assetCaptions }
   );
 
   for (const usage of result.usages) {

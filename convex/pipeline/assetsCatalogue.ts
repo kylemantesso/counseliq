@@ -1,5 +1,8 @@
 import { v } from "convex/values";
-import { MEDIA_ASSET_KINDS } from "@counseliq/course-schema";
+import {
+  MEDIA_ASSET_KINDS,
+  type CompactCatalogueAsset,
+} from "@counseliq/course-schema";
 import {
   internalMutation,
   internalQuery,
@@ -86,6 +89,94 @@ export const getAssetForTagging = internalQuery({
     const asset = await ctx.db.get(args.assetId);
     if (!asset) appError(AppErrorCode.ASSET_NOT_FOUND);
     return asset;
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Compiler-facing catalogue (M6 asset-aware compilation)
+// ---------------------------------------------------------------------------
+
+/** Prompt-size cap: the compact catalogue never exceeds this many assets. */
+export const CATALOGUE_PROMPT_CAP = 150;
+
+/** Deck page number from a `doc:{id}:page:{n}` provenance id. */
+export function deckPageFromProvenance(
+  sourceProvenance: string | undefined
+): number | undefined {
+  const match = sourceProvenance?.match(/:page:(\d+)$/);
+  return match ? Number(match[1]) : undefined;
+}
+
+/** Compact prompt form of one CLEARED, TAGGED asset. Pure. */
+export function toCompactCatalogueAsset(
+  asset: Doc<"assets">
+): CompactCatalogueAsset | null {
+  if (
+    asset.caption === undefined ||
+    asset.aspect === undefined ||
+    (asset.kind !== "image" && asset.kind !== "video")
+  ) {
+    return null;
+  }
+  const deckPage = deckPageFromProvenance(asset.sourceProvenance);
+  return {
+    id: asset._id,
+    kind: asset.kind,
+    caption: asset.caption,
+    tags: asset.tags ?? [],
+    aspect: asset.aspect as CompactCatalogueAsset["aspect"],
+    ...(asset.durationMs !== undefined ? { durationMs: asset.durationMs } : {}),
+    suggestedUses:
+      (asset.suggestedUses as CompactCatalogueAsset["suggestedUses"]) ?? [],
+    ...(deckPage !== undefined ? { deckPage } : {}),
+  };
+}
+
+/**
+ * The cleared catalogue the authoring pass sees for a run's institution.
+ * Filtered IN CODE to cleared + tagged assets — an unknown-rights asset id
+ * can never reach the model. Deterministically ordered (quality desc, id)
+ * and capped so re-compiles hash identically for an unchanged library.
+ */
+export const getClearedCatalogueForRun = internalQuery({
+  args: { runId: v.id("runs") },
+  handler: async (ctx, args): Promise<CompactCatalogueAsset[]> => {
+    const run = await ctx.db.get(args.runId);
+    if (!run) appError(AppErrorCode.RUN_NOT_FOUND);
+    const assets = await ctx.db
+      .query("assets")
+      .withIndex("by_institution", (q) =>
+        q.eq("institutionId", run.institutionId)
+      )
+      .take(2000);
+    const qualityById = new Map(
+      assets.map((asset) => [String(asset._id), asset.qualityScore ?? 0])
+    );
+    return assets
+      .filter((asset) => isCatalogueAsset(asset) && isAssetCleared(asset))
+      .map(toCompactCatalogueAsset)
+      .filter((entry): entry is CompactCatalogueAsset => entry !== null)
+      .sort((a, b) => {
+        const qa = qualityById.get(a.id) ?? 0;
+        const qb = qualityById.get(b.id) ?? 0;
+        return qb - qa || (a.id < b.id ? -1 : 1);
+      })
+      .slice(0, CATALOGUE_PROMPT_CAP);
+  },
+});
+
+/** Captions for the assetRefs used in a compiled course (judge input). */
+export const getAssetCaptions = internalQuery({
+  args: { assetIds: v.array(v.string()) },
+  handler: async (ctx, args): Promise<Record<string, string>> => {
+    const out: Record<string, string> = {};
+    for (const id of new Set(args.assetIds)) {
+      const normalized = ctx.db.normalizeId("assets", id);
+      if (!normalized) continue;
+      const asset = await ctx.db.get(normalized);
+      if (asset?.caption !== undefined) out[id] = asset.caption;
+    }
+    return out;
   },
 });
 

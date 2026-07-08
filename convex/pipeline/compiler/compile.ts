@@ -33,6 +33,7 @@ import {
   buildStructureUserText,
   buildUnitUserText,
   factForPrompt,
+  mediaContextFromCatalogue,
   tryAssemble,
   unitComplianceViolations,
   type AuthoredUnitWithPlan,
@@ -146,6 +147,15 @@ async function authorOneUnit(
       ? Object.keys(lexicon as Record<string, unknown>)
       : [];
 
+  // The cleared catalogue is part of the authoring input: new uploads or
+  // rights declarations change its hash, so a recompile re-authors with
+  // the richer library instead of hitting a stale cache entry.
+  const catalogue = await ctx.runQuery(
+    internal.pipeline.assetsCatalogue.getClearedCatalogueForRun,
+    { runId: args.runId }
+  );
+  const media = mediaContextFromCatalogue(catalogue);
+
   const promptVersion = PROMPTS["author-unit"].versionTag;
   const model = modelForTask("author-unit");
   const cacheKey = sha256(
@@ -155,6 +165,7 @@ async function authorOneUnit(
       promptVersion,
       model,
       feedback: args.feedback ?? null,
+      catalogueHash: sha256(JSON.stringify(catalogue)),
     })
   );
 
@@ -176,6 +187,7 @@ async function authorOneUnit(
     args.courseTitle,
     inventory.institution.name,
     lexiconNames,
+    catalogue,
     args.feedback
   );
 
@@ -222,7 +234,11 @@ async function authorOneUnit(
   let record: AuthoringRecord;
   try {
     let authored = await callAuthor();
-    let violations = unitComplianceViolations(authored, knownProvenanceIds);
+    let violations = unitComplianceViolations(
+      authored,
+      knownProvenanceIds,
+      media
+    );
     if (violations.length > 0) {
       console.log(
         `[pipeline] run ${args.runId}: unit ${args.plan.unitId} failed compliance, retrying once — ${violations.join("; ")}`
@@ -230,7 +246,7 @@ async function authorOneUnit(
       authored = await callAuthor(
         `Your previous draft violated these code-enforced rules — fix ALL of them and output the full corrected unit:\n- ${violations.join("\n- ")}`
       );
-      violations = unitComplianceViolations(authored, knownProvenanceIds);
+      violations = unitComplianceViolations(authored, knownProvenanceIds, media);
     }
     record =
       violations.length > 0

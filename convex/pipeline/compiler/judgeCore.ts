@@ -90,7 +90,8 @@ export function mechanicalPrePass(
 export function buildJudgeUserText(
   definition: CourseDefinition,
   inventory: JudgeInventory,
-  redundancyCandidates: RedundancyCandidate[]
+  redundancyCandidates: RedundancyCandidate[],
+  assetCaptions: Record<string, string> = {}
 ): string {
   const questionById = new Map(
     definition.questionBank.map((question) => [question.id, question])
@@ -115,12 +116,20 @@ export function buildJudgeUserText(
       unitId: unit.unitId,
       concept: unit.concept,
       narration: unit.content.narration,
-      cards: unit.content.cards.map((card) => ({
-        template: card.template,
-        props: card.props,
-        enterAt: card.enterAt,
-        provenance: card.provenance,
-      })),
+      cards: unit.content.cards.map((card) => {
+        // Media cards carry the catalogued asset's caption so the judge can
+        // assess relevance (media-irrelevant flag) without seeing pixels.
+        const assetRef = card.props.assetRef;
+        const assetCaption =
+          typeof assetRef === "string" ? assetCaptions[assetRef] : undefined;
+        return {
+          template: card.template,
+          props: card.props,
+          enterAt: card.enterAt,
+          provenance: card.provenance,
+          ...(assetCaption !== undefined ? { assetCaption } : {}),
+        };
+      }),
       hookQuestion: questionForPrompt(unit.hook.questionRef),
       retrieveQuestions: unit.retrieve.map(questionForPrompt),
       anchor: unit.anchor,
@@ -254,7 +263,11 @@ export async function judgeCourse(
   client: LlmClient,
   definition: CourseDefinition,
   inventory: JudgeInventory,
-  options: { judgeModel: string; now?: number }
+  options: {
+    judgeModel: string;
+    now?: number;
+    assetCaptions?: Record<string, string>;
+  }
 ): Promise<JudgeRunResult> {
   const { leaks, redundancyCandidates } = mechanicalPrePass(
     definition,
@@ -270,7 +283,12 @@ export async function judgeCourse(
         user: [
           {
             type: "text",
-            text: buildJudgeUserText(definition, inventory, redundancyCandidates),
+            text: buildJudgeUserText(
+              definition,
+              inventory,
+              redundancyCandidates,
+              options.assetCaptions ?? {}
+            ),
           },
         ],
         schemaName: "judge_course",

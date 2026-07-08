@@ -1,4 +1,5 @@
 import type {
+  CompactCatalogueAsset,
   Concept,
   CourseDefinition,
   Fact,
@@ -17,11 +18,15 @@ import {
   longestFragmentTokens,
   textHasAttribution,
   textHasNegation,
+  validateAssetRefs,
   validateCardProvenance,
   validateGenericCardCap,
+  validateMediaPacing,
   validateQuestionConceptTags,
   validateStatisticCardsHaveSource,
   validateUniqueQuestionPrompts,
+  type CatalogueAssetInfo,
+  type MediaAvailability,
 } from "./rules";
 
 /**
@@ -107,6 +112,34 @@ export function buildStructureUserText(
   ].join("\n");
 }
 
+/**
+ * Media context for authoring + validation, built ONLY from cleared assets
+ * (getClearedCatalogueForRun filters in code — the model and these
+ * validators never see an unknown-rights asset except as "missing").
+ */
+export interface UnitMediaContext {
+  catalogueById: ReadonlyMap<string, CatalogueAssetInfo>;
+  availability: MediaAvailability;
+}
+
+/** Derive the validation context from the compact prompt catalogue. */
+export function mediaContextFromCatalogue(
+  catalogue: readonly CompactCatalogueAsset[]
+): UnitMediaContext {
+  return {
+    catalogueById: new Map(
+      catalogue.map((asset) => [
+        asset.id,
+        { kind: asset.kind, aspect: asset.aspect, cleared: true },
+      ])
+    ),
+    availability: {
+      images: catalogue.filter((asset) => asset.kind === "image").length,
+      videos: catalogue.filter((asset) => asset.kind === "video").length,
+    },
+  };
+}
+
 export function buildUnitUserText(
   plan: UnitPlan,
   concept: Concept | undefined,
@@ -114,6 +147,7 @@ export function buildUnitUserText(
   courseTitle: string,
   institutionName: string,
   lexiconNames: string[],
+  catalogue: readonly CompactCatalogueAsset[],
   feedback?: string
 ): string {
   const parts = [
@@ -141,6 +175,18 @@ export function buildUnitUserText(
       `Names with pronunciation-lexicon entries (use exactly as spelled): ${lexiconNames.join(", ")}`
     );
   }
+  if (catalogue.length > 0) {
+    parts.push(
+      ``,
+      `Cleared asset library (reference by "assetRef" = the id string EXACTLY as listed; never invent an id; video-card needs a video, photo-kenburns/image-text-card need an image):`,
+      ...catalogue.map((asset) => JSON.stringify(asset))
+    );
+  } else {
+    parts.push(
+      ``,
+      `No cleared media assets are available for this institution — do not emit video-card cards, and do not put an assetRef on any card.`
+    );
+  }
   if (feedback) {
     parts.push(
       ``,
@@ -155,7 +201,8 @@ export function buildUnitUserText(
 
 export function unitComplianceViolations(
   authored: LlmAuthoredUnit,
-  knownProvenanceIds: ReadonlySet<string>
+  knownProvenanceIds: ReadonlySet<string>,
+  media: UnitMediaContext
 ): string[] {
   const violations: string[] = [];
 
@@ -222,6 +269,18 @@ export function unitComplianceViolations(
     ...validateCardProvenance(authored.cards, knownProvenanceIds)
   );
   violations.push(...validateStatisticCardsHaveSource(authored.cards));
+  // Media refs on the anchor are validated too (an anchor card can carry
+  // an assetRef); pacing applies to the content cards only.
+  violations.push(
+    ...validateAssetRefs(
+      [
+        ...authored.cards,
+        { template: authored.anchor.template, props: authored.anchor.props },
+      ],
+      media.catalogueById
+    )
+  );
+  violations.push(...validateMediaPacing(authored.cards, media.availability));
 
   // Mayer's redundancy principle, enforced in code for the egregious case:
   // a card that is a (near-)transcript of its narration sentence is

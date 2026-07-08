@@ -10,6 +10,9 @@ import {
   validateQuestionConceptTags,
   validateStatisticCardsHaveSource,
   validateUniqueQuestionPrompts,
+  validateAssetRefs,
+  validateMediaPacing,
+  type CatalogueAssetInfo,
 } from "./rules";
 
 describe("banned-claims lexicon", () => {
@@ -276,6 +279,145 @@ describe("excluded-fact leak", () => {
       findExcludedFactLeaks("Deakin has five campuses across Victoria.", [
         { statement: "The chancellor resigned amid a governance scandal." },
       ])
+    ).toEqual([]);
+  });
+});
+
+// --- M6 media rules ---
+
+describe("validateAssetRefs", () => {
+  const CATALOGUE: ReadonlyMap<string, CatalogueAssetInfo> = new Map([
+    ["vid1", { kind: "video", aspect: "landscape", cleared: true }],
+    ["img1", { kind: "image", aspect: "landscape", cleared: true }],
+    ["img2", { kind: "image", aspect: "portrait", cleared: true }],
+    ["dirty", { kind: "image", aspect: "landscape", cleared: false }],
+  ]);
+
+  const card = (template: string, assetRef?: unknown) => ({
+    template,
+    props: assetRef !== undefined ? { assetRef } : {},
+  });
+
+  test("valid refs pass; cards without refs are ignored", () => {
+    expect(
+      validateAssetRefs(
+        [
+          card("video-card", "vid1"),
+          card("photo-kenburns", "img1"),
+          card("photo-kenburns", "img2"), // portrait OK full-bleed
+          card("image-text-card", "img1"),
+          card("stat-card"),
+          card("photo-kenburns"), // media template without ref: allowed
+        ],
+        CATALOGUE
+      )
+    ).toEqual([]);
+  });
+
+  test("dangling id is rejected with never-invent guidance", () => {
+    const violations = validateAssetRefs([card("video-card", "made-up")], CATALOGUE);
+    expect(violations).toHaveLength(1);
+    expect(violations[0]).toMatch(/not in the cleared asset library/);
+  });
+
+  test("uncleared asset is rejected (belt-and-braces leakage gate)", () => {
+    const violations = validateAssetRefs([card("photo-kenburns", "dirty")], CATALOGUE);
+    expect(violations).toHaveLength(1);
+    expect(violations[0]).toMatch(/not rights-cleared/);
+  });
+
+  test("kind mismatches are rejected both ways", () => {
+    expect(validateAssetRefs([card("video-card", "img1")], CATALOGUE)[0]).toMatch(
+      /requires a video asset/
+    );
+    expect(
+      validateAssetRefs([card("photo-kenburns", "vid1")], CATALOGUE)[0]
+    ).toMatch(/requires an image asset/);
+  });
+
+  test("image-text-card rejects portrait images; non-media templates reject refs", () => {
+    expect(
+      validateAssetRefs([card("image-text-card", "img2")], CATALOGUE)[0]
+    ).toMatch(/cannot frame a portrait image/);
+    expect(validateAssetRefs([card("stat-card", "img1")], CATALOGUE)[0]).toMatch(
+      /only valid on media templates/
+    );
+  });
+});
+
+describe("validateMediaPacing", () => {
+  const media = (template: string, assetRef = "a1") => ({
+    template,
+    props: { assetRef },
+  });
+  const text = (template: string) => ({ template, props: {} });
+
+  test("empty catalogue disables the rule entirely (unsatisfiable)", () => {
+    expect(
+      validateMediaPacing(
+        [text("text-card"), text("list-reveal"), text("term-card")],
+        { images: 0, videos: 0 }
+      )
+    ).toEqual([]);
+  });
+
+  test("1-per-3 cadence: 3+ cards with available media need at least one", () => {
+    const cards = [text("stat-card"), text("quote-card"), text("date-card")];
+    const violations = validateMediaPacing(cards, { images: 5, videos: 1 });
+    expect(violations).toHaveLength(1);
+    expect(violations[0]).toMatch(/media pacing: 0 media card/);
+  });
+
+  test("cadence scales with card count and is capped by availability", () => {
+    const six = [
+      media("photo-kenburns"),
+      text("stat-card"),
+      text("quote-card"),
+      text("date-card"),
+      text("map-card"),
+      text("timeline-card"),
+    ];
+    // floor(6/3)=2 required, but only 1 asset exists — 1 satisfies.
+    expect(validateMediaPacing(six, { images: 1, videos: 0 })).toEqual([]);
+    // With 2+ assets, 1 media card in 6 falls short.
+    expect(validateMediaPacing(six, { images: 2, videos: 0 })).toHaveLength(1);
+  });
+
+  test("two cards never require media", () => {
+    expect(
+      validateMediaPacing([text("stat-card"), text("quote-card")], {
+        images: 9,
+        videos: 0,
+      })
+    ).toEqual([]);
+  });
+
+  test("consecutive text-dense cards flagged only while media headroom remains", () => {
+    const cards = [
+      media("video-card"),
+      text("text-card"),
+      text("list-reveal"),
+    ];
+    const withHeadroom = validateMediaPacing(cards, { images: 3, videos: 1 });
+    expect(withHeadroom).toHaveLength(1);
+    expect(withHeadroom[0]).toMatch(/consecutive text-dense/);
+    // Every available asset already used: no consecutive violation.
+    expect(validateMediaPacing(cards, { images: 0, videos: 1 })).toEqual([]);
+  });
+
+  test("a satisfied unit passes clean", () => {
+    expect(
+      validateMediaPacing(
+        [
+          text("stat-card"),
+          media("photo-kenburns"),
+          text("list-reveal"),
+          media("video-card"),
+          text("quote-card"),
+          text("date-card"),
+        ],
+        { images: 4, videos: 2 }
+      )
     ).toEqual([]);
   });
 });
