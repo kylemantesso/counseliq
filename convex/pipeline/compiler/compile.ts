@@ -427,7 +427,14 @@ async function runCompilationInner(
 
   const partial = reAuthorUnitIds !== undefined && reAuthorUnitIds.length > 0;
 
-  // --- Plan: structure pass (full) or stored structure (re-authoring) ---
+  // --- Plan: approved outline (M6.5), structure pass (legacy full), or
+  // stored structure (re-authoring) ---
+  const approvedOutline = partial
+    ? null
+    : await ctx.runQuery(
+        internal.pipeline.outlineReview.getApprovedOutlineForRun,
+        { runId }
+      );
   let courseTitle: string;
   let moduleOrder: Array<{ moduleId: string; title: string }>;
   let plans: UnitPlan[];
@@ -535,28 +542,17 @@ async function runCompilationInner(
     console.log(
       `[pipeline] run ${runId}: re-authoring ${plans.length} unit(s), preserving ${preserved.length}`
     );
-  } else if (
-    await (async () => {
-      // M6.5: an approved outline (edited by the operator) IS the plan —
-      // skip the inline structure LLM pass entirely. Legacy runs without
-      // one fall through to the old inline pass below.
-      const outline = await ctx.runQuery(
-        internal.pipeline.outlineReview.getApprovedOutlineForRun,
-        { runId }
-      );
-      if (!outline) return false;
-      const mapped = plansFromOutline(outline);
-      courseTitle = mapped.courseTitle;
-      moduleOrder = mapped.moduleOrder;
-      plans = mapped.plans;
-      orderedUnitIds.push(...plans.map((plan) => plan.unitId));
-      console.log(
-        `[pipeline] run ${runId}: authoring from the approved outline — ${plans.length} unit(s) across ${moduleOrder.length} module(s)`
-      );
-      return true;
-    })()
-  ) {
-    // planned from the approved outline above
+  } else if (approvedOutline) {
+    // M6.5: an approved outline (edited by the operator) IS the plan —
+    // skip the inline structure LLM pass entirely.
+    const mapped = plansFromOutline(approvedOutline);
+    courseTitle = mapped.courseTitle;
+    moduleOrder = mapped.moduleOrder;
+    plans = mapped.plans;
+    orderedUnitIds.push(...plans.map((plan) => plan.unitId));
+    console.log(
+      `[pipeline] run ${runId}: authoring from the approved outline — ${plans.length} unit(s) across ${moduleOrder.length} module(s)`
+    );
   } else {
     const unitRange = parseRange(
       process.env.COMPILE_UNIT_RANGE,
