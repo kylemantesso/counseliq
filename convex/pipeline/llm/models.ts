@@ -22,6 +22,10 @@
  * - tag-asset:         vision (asset image / video poster), structured
  *                      output. Batch workload — cheap model. NEVER outputs
  *                      rights (the output schema has no such field).
+ * - outline-course:    structured output, long context (reviewed inventory
+ *                      + cleared asset summary + operator brief). The M6.5
+ *                      editable outline pass, replacing compile-structure
+ *                      in the gated flow.
  */
 
 export type LlmTask =
@@ -31,7 +35,8 @@ export type LlmTask =
   | "compile-structure"
   | "author-unit"
   | "judge-course"
-  | "tag-asset";
+  | "tag-asset"
+  | "outline-course";
 
 const DEFAULT_MODELS: Record<LlmTask, string> = {
   "extract-page": "google/gemini-2.5-flash",
@@ -42,6 +47,7 @@ const DEFAULT_MODELS: Record<LlmTask, string> = {
   // Different family than the Gemini authoring tasks, deliberately.
   "judge-course": "anthropic/claude-sonnet-4.5",
   "tag-asset": "google/gemini-2.5-flash",
+  "outline-course": "google/gemini-2.5-flash",
 };
 
 const ENV_OVERRIDES: Record<LlmTask, string> = {
@@ -52,6 +58,7 @@ const ENV_OVERRIDES: Record<LlmTask, string> = {
   "author-unit": "MODEL_AUTHOR_UNIT",
   "judge-course": "MODEL_JUDGE_COURSE",
   "tag-asset": "MODEL_TAG_ASSET",
+  "outline-course": "MODEL_OUTLINE_COURSE",
 };
 
 /**
@@ -70,6 +77,7 @@ const MAX_OUTPUT_TOKENS: Record<LlmTask, number> = {
   "author-unit": 16384,
   "judge-course": 16384,
   "tag-asset": 2048,
+  "outline-course": 16384,
 };
 
 /** OpenRouter model string for a task (env override > default). */
@@ -95,5 +103,6 @@ export function currentModelRouting(): Record<LlmTask, string> {
     "author-unit": modelForTask("author-unit"),
     "judge-course": modelForTask("judge-course"),
     "tag-asset": modelForTask("tag-asset"),
+    "outline-course": modelForTask("outline-course"),
   };
 }

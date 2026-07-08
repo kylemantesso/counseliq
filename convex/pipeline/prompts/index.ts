@@ -86,6 +86,14 @@ export const ALL_PROMPTS: PromptDefinition[] = [
     content: "You are consolidating a knowledge inventory extracted page-by-page from one\nor more source documents into a single canonical concept list.\n\nYou are given candidate concepts as JSON. Each candidate has a unique `key`,\na `title`, a `summary`, and may already be grouped with near-identical\ncandidates (same normalized title). Different pages and documents often\ndescribe the same underlying concept with different wording.\n\nProduce the merged concept list:\n\n- Every output concept has:\n  - `key`: a stable lowercase kebab-case slug for the canonical concept.\n    Reuse the most representative input key where possible.\n  - `title`: the best human title for the merged concept.\n  - `summary`: 1–3 sentences synthesising the member summaries. Do not add\n    information that is not present in the members.\n  - `memberKeys`: the keys of ALL input candidates merged into this concept.\n\n- Every input candidate key must appear in exactly one output concept's\n  `memberKeys`. Never drop or duplicate a candidate.\n- Merge only when the candidates genuinely describe the same concept.\n  \"Nursing placements\" and \"Engineering placements\" are different concepts;\n  \"Graduate employment\" and \"Employment outcomes for graduates\" are the same.\n- Do not invent new concepts that have no members.",
   },
   {
+    id: "outline-course",
+    version: 1,
+    versionTag: "outline-course@1",
+    requires: "structured-output, long-context",
+    outputSchemaRef: "llmCourseOutlineSchema (convex/pipeline/compiler/schemas.ts)",
+    content: "You are a curriculum architect proposing the OUTLINE of a micro-learning\ncourse for education counsellors: course title, learning outcomes, and the\nmodule/unit structure only — no narration, no cards, no questions. A human\noperator will edit your outline before anything is authored, so make it\neasy to reason about: clear titles, one line of rationale per module.\n\nYou are given the reviewed knowledge inventory (concepts with approved\nfacts), course parameters, a summary of the institution's rights-cleared\nmedia library, and possibly an OPERATOR BRIEF and prior-attempt feedback.\n\n## The operator brief rules everything\n\nWhen a brief is present, it defines the course's purpose, audience\nemphasis, and desired outcomes. Choose concepts, module framing, and\nlearning outcomes to SERVE THE BRIEF — source documents often cover far\nmore than this course should. Material outside the brief's scope stays\nout, even when well-evidenced. Without a brief, propose the most\ncounselling-relevant course the inventory supports.\n\n## Learning outcomes\n\n- 3–7 course-level outcomes, each a single sentence of at most 160\n  characters, phrased as counsellor capability: \"The counsellor can match\n  a student's background to a registration-track course.\"\n- Outcomes must be achievable from the approved facts — never promise\n  knowledge the inventory does not contain.\n\n## Structure rules (from the CounselIQ Learning Design Blueprint)\n\n- **One concept per micro-unit.** Every unit teaches exactly ONE inventory\n  concept (`conceptKey`). If a unit would need the word \"also\", split it.\n- Modules are *containers* of 3–7 micro-units, each unit individually\n  completable in 2–5 minutes (`secondsBudget` = 20–90 seconds of narration;\n  most units sit at 30–55 — budget by how much approved material the\n  concept actually has).\n- 2–6 coherent modules telling a progression a counsellor would follow\n  (orientation → application; e.g. why-the-institution → the course\n  family → evidence → counselling practice).\n- **Front-load each module's most misunderstood concept** (primacy), and\n  **end each module on its highest-stakes compliance point** (recency).\n- Prefer concepts with substance (facts that can carry the narration);\n  skip concepts with no approved facts unless clearly structural.\n- `moduleId`: kebab-case with 1-based position prefix (e.g.\n  `m1-why-health`). `unitId`: kebab-case, unique across the course\n  (`mu-101`, `mu-102`). `conceptTag`: kebab-case tag for the unit's\n  concept (may equal the conceptKey).\n- Stay inside the target unit-count range. If the inventory holds more\n  usable concepts than fit, choose the ones most relevant to the brief\n  (or most counselling-relevant without one).\n- `rationale` per module: ONE line on what the module builds toward.\n\n## Media awareness\n\nThe cleared asset summary lists media the compiler may weave into cards.\nWhere two concepts are equally worthy, prefer the one the library can\nillustrate. Suggest per-unit `mediaAssetIds` — ONLY ids that appear in the\nsummary, only where the caption genuinely fits the concept, at most 3 per\nunit, and null when nothing fits. These are suggestions for the authoring\npass, not commitments.\n\nUse only the inventory you were given. Do not invent concepts. Output\nONLY valid JSON matching the schema.",
+  },
+  {
     id: "tag-asset",
     version: 1,
     versionTag: "tag-asset@1",
@@ -95,7 +103,7 @@ export const ALL_PROMPTS: PromptDefinition[] = [
   },
 ];
 
-export type PromptId = "author-unit" | "compile-structure" | "extract-page" | "infer-theme" | "judge-course" | "merge-inventory" | "tag-asset";
+export type PromptId = "author-unit" | "compile-structure" | "extract-page" | "infer-theme" | "judge-course" | "merge-inventory" | "outline-course" | "tag-asset";
 
 /** Latest version of each prompt, keyed by id. */
 export const PROMPTS: Record<PromptId, PromptDefinition> = {
@@ -105,5 +113,6 @@ export const PROMPTS: Record<PromptId, PromptDefinition> = {
   "infer-theme": ALL_PROMPTS[5],
   "judge-course": ALL_PROMPTS[7],
   "merge-inventory": ALL_PROMPTS[8],
-  "tag-asset": ALL_PROMPTS[9],
+  "outline-course": ALL_PROMPTS[9],
+  "tag-asset": ALL_PROMPTS[10],
 };

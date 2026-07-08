@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { llmAuthoredUnitSchema } from "./schemas";
+import { llmAuthoredUnitSchema, llmCourseOutlineSchema } from "./schemas";
 import { AUTHOR_UNIT_JSON_SCHEMA } from "../llm/schemas";
 
 /**
@@ -269,5 +269,90 @@ describe("AUTHOR_UNIT_JSON_SCHEMA wire shape", () => {
   test("stat-card headline is required on the wire", () => {
     const branch = branchFor("stat-card");
     expect(branch?.properties?.props?.required ?? []).toContain("headline");
+  });
+});
+
+describe("llmCourseOutlineSchema (M6.5 outline pass)", () => {
+  function makeOutline(overrides: Record<string, unknown> = {}) {
+    return {
+      courseTitle: "La Trobe Health Essentials",
+      learningOutcomes: [
+        "The counsellor can explain the health portfolio's registration tracks.",
+        "The counsellor can match a student profile to a course family.",
+        "The counsellor can attribute every ranking claim to its source.",
+      ],
+      modules: [
+        {
+          moduleId: "m1-why-health",
+          title: "Why La Trobe for Health",
+          rationale: "Orientation: the evidence behind the portfolio.",
+          units: [
+            {
+              unitId: "mu-101",
+              conceptKey: "nursing-ranking",
+              conceptTag: "nursing-ranking",
+              title: "Nursing's world ranking",
+              secondsBudget: 45,
+              mediaAssetIds: ["asset-1"],
+            },
+            {
+              unitId: "mu-102",
+              conceptKey: "clinical-school",
+              conceptTag: "clinical-school",
+              title: "The Rural Health School",
+              secondsBudget: 40,
+              mediaAssetIds: null,
+            },
+          ],
+        },
+      ],
+      ...overrides,
+    };
+  }
+
+  test("valid outline parses (nullish media/rationale both ways)", () => {
+    expect(llmCourseOutlineSchema.safeParse(makeOutline()).success).toBe(true);
+    // Operator-edit shape: optional fields omitted instead of null.
+    const outline = makeOutline();
+    delete (outline.modules as Array<Record<string, unknown>>)[0].rationale;
+    const units = (outline.modules as Array<{ units: Array<Record<string, unknown>> }>)[0].units;
+    delete units[1].mediaAssetIds;
+    expect(llmCourseOutlineSchema.safeParse(outline).success).toBe(true);
+  });
+
+  test("learning outcomes: 3-7 required, 160-char display cap", () => {
+    expect(
+      llmCourseOutlineSchema.safeParse(
+        makeOutline({ learningOutcomes: ["one", "two"] })
+      ).success
+    ).toBe(false);
+    expect(
+      llmCourseOutlineSchema.safeParse(
+        makeOutline({
+          learningOutcomes: ["ok", "ok too", "x".repeat(161)],
+        })
+      ).success
+    ).toBe(false);
+  });
+
+  test("duplicate unitIds are rejected at the offending path", () => {
+    const outline = makeOutline();
+    const units = (outline.modules as Array<{ units: Array<{ unitId: string }> }>)[0].units;
+    units[1].unitId = units[0].unitId;
+    const result = llmCourseOutlineSchema.safeParse(outline);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(
+        result.error.issues.some(
+          (issue) => issue.path.join(".") === "modules.0.units.1.unitId"
+        )
+      ).toBe(true);
+    }
+  });
+
+  test("secondsBudget stays within the 20-90 narration range", () => {
+    const outline = makeOutline();
+    (outline.modules as Array<{ units: Array<{ secondsBudget: number }> }>)[0].units[0].secondsBudget = 300;
+    expect(llmCourseOutlineSchema.safeParse(outline).success).toBe(false);
   });
 });

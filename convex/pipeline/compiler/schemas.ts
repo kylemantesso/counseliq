@@ -59,6 +59,58 @@ export type LlmUnitPlan = z.infer<typeof llmUnitPlanSchema>;
 export type LlmModulePlan = z.infer<typeof llmModulePlanSchema>;
 export type LlmCompileStructure = z.infer<typeof llmCompileStructureSchema>;
 
+// --- Outline pass (outline-course, M6.5) ---
+
+/**
+ * The editable course outline: the structure-pass shape enriched with
+ * course-level learning outcomes (brief-directed) and per-unit media
+ * suggestions from the CLEARED catalogue. Optional fields are `nullish`
+ * so the same schema validates both the LLM wire output (strict providers
+ * emit null) and operator edits from the review UI (fields omitted).
+ */
+export const llmOutlineUnitSchema = llmUnitPlanSchema.extend({
+  /** Cleared catalogue asset ids that could illustrate this unit. */
+  mediaAssetIds: z.array(z.string().min(1)).nullish(),
+});
+
+export const llmOutlineModuleSchema = z.object({
+  moduleId: z.string().min(1),
+  title: z.string().min(1),
+  /** One line on why this module exists / what it builds toward. */
+  rationale: z.string().min(1).nullish(),
+  units: z.array(llmOutlineUnitSchema).min(1),
+});
+
+export const llmCourseOutlineSchema = z
+  .object({
+    courseTitle: z.string().min(1),
+    /**
+     * 3-7 course-level outcomes ("The counsellor can …"), derived from the
+     * operator brief where one exists. Display-capped like takeaways.
+     */
+    learningOutcomes: z.array(z.string().min(1).max(160)).min(3).max(7),
+    modules: z.array(llmOutlineModuleSchema).min(1),
+  })
+  .superRefine((outline, ctx) => {
+    const unitIds = new Set<string>();
+    outline.modules.forEach((module, mIndex) => {
+      module.units.forEach((unit, uIndex) => {
+        if (unitIds.has(unit.unitId)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["modules", mIndex, "units", uIndex, "unitId"],
+            message: `duplicate unitId "${unit.unitId}"`,
+          });
+        }
+        unitIds.add(unit.unitId);
+      });
+    });
+  });
+
+export type LlmOutlineUnit = z.infer<typeof llmOutlineUnitSchema>;
+export type LlmOutlineModule = z.infer<typeof llmOutlineModuleSchema>;
+export type LlmCourseOutline = z.infer<typeof llmCourseOutlineSchema>;
+
 // --- Authoring pass (author-unit) ---
 
 /**

@@ -37,9 +37,21 @@ async function setupRun(
 }
 
 describe("M4 state machine resequencing", () => {
-  test("EXTRACTED goes to GATE_1 before COMPILING", () => {
+  test("EXTRACTED goes to GATE_1 before compilation", () => {
     expect(ALLOWED_TRANSITIONS.EXTRACTED).toEqual(["GATE_1_KNOWLEDGE_REVIEW"]);
-    expect(ALLOWED_TRANSITIONS.GATE_1_KNOWLEDGE_REVIEW).toEqual(["COMPILING"]);
+    // M6.5: gate-1 approval routes to the outline pass; the direct
+    // COMPILING edge stays legal for legacy runs mid-flight.
+    expect(ALLOWED_TRANSITIONS.GATE_1_KNOWLEDGE_REVIEW).toEqual([
+      "OUTLINING",
+      "COMPILING",
+    ]);
+  });
+
+  test("M6.5: outline parks for review; approve compiles, regenerate loops", () => {
+    expect(ALLOWED_TRANSITIONS.OUTLINING).toEqual(["OUTLINE_REVIEW"]);
+    expect(ALLOWED_TRANSITIONS.OUTLINE_REVIEW).toEqual(["COMPILING", "OUTLINING"]);
+    // The outline step cannot skip straight to asset generation.
+    expect(isTransitionAllowed("OUTLINE_REVIEW", "GENERATING_SCRIPT")).toBe(false);
   });
 
   test("QA judge runs on the compiled course, before gate 2 and asset generation", () => {

@@ -14,6 +14,11 @@ export type ReviewGate = Infer<typeof reviewGateValidator>;
  * the QA judge runs on the compiled course BEFORE any asset money is spent;
  * gate 2 reviews the compiled course as a whole (judge flags attached) and
  * may send flagged units back to COMPILING for re-authoring.
+ *
+ * M6.5: an OUTLINE step sits between gate 1 and compilation — the structure
+ * pass runs alone (brief + approved facts + cleared assets), parks at
+ * OUTLINE_REVIEW for operator editing, and only approval starts the
+ * authoring spend. OUTLINE_REVIEW → OUTLINING is regenerate-with-feedback.
  */
 export const ALLOWED_TRANSITIONS: Record<RunState, RunState[]> = {
   UPLOADED: ["CONVERTING"],
@@ -21,7 +26,11 @@ export const ALLOWED_TRANSITIONS: Record<RunState, RunState[]> = {
   CONVERTED: ["EXTRACTING"],
   EXTRACTING: ["EXTRACTED"],
   EXTRACTED: ["GATE_1_KNOWLEDGE_REVIEW"],
-  GATE_1_KNOWLEDGE_REVIEW: ["COMPILING"],
+  // OUTLINING is the M6.5 path (decideGate routes there); the direct
+  // COMPILING edge remains legal for legacy/parked runs mid-flight.
+  GATE_1_KNOWLEDGE_REVIEW: ["OUTLINING", "COMPILING"],
+  OUTLINING: ["OUTLINE_REVIEW"],
+  OUTLINE_REVIEW: ["COMPILING", "OUTLINING"],
   COMPILING: ["COMPILED"],
   COMPILED: ["QA_RUNNING"],
   QA_RUNNING: ["QA_PASSED", "QA_FLAGGED"],

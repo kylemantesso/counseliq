@@ -28,6 +28,10 @@ export const runStateValidator = v.union(
   v.literal("EXTRACTING"),
   v.literal("EXTRACTED"),
   v.literal("GATE_1_KNOWLEDGE_REVIEW"),
+  /** M6.5: outline pass running (brief + approved facts + cleared assets). */
+  v.literal("OUTLINING"),
+  /** M6.5: outline parked for operator editing/approval. */
+  v.literal("OUTLINE_REVIEW"),
   v.literal("COMPILING"),
   v.literal("COMPILED"),
   v.literal("QA_RUNNING"),
@@ -249,11 +253,38 @@ export default defineSchema({
     result: v.any(),
   }).index("by_source_doc_and_n", ["sourceDocId", "n"]),
 
+  /**
+   * The course outline (M6.5): the structure pass's output, persisted so
+   * the operator can edit it at OUTLINE_REVIEW before any authoring spend.
+   * `modules` is zod-validated against llmCourseOutlineSchema's module
+   * shape on every write (saveCourseOutline / adminUpdateOutline). One row
+   * per run; regenerations and edits patch it in place.
+   */
+  courseOutlines: defineTable({
+    runId: v.id("runs"),
+    /** Operator brief copied from the run at generation time. */
+    brief: v.optional(v.string()),
+    courseTitle: v.string(),
+    learningOutcomes: v.array(v.string()),
+    modules: v.any(),
+    /** "draft" (editable) | "approved" (consumed by compilation). */
+    status: v.string(),
+    generatedAt: v.number(),
+    promptVersion: v.string(),
+    model: v.string(),
+    editedAt: v.optional(v.number()),
+    editedBy: v.optional(v.string()),
+    /** Operator regenerate-with-feedback notes, oldest first. */
+    regenFeedback: v.optional(v.array(v.string())),
+  }).index("by_run", ["runId"]),
+
   runs: defineTable({
     institutionId: v.id("institutions"),
     courseId: v.optional(v.id("courses")),
     state: runStateValidator,
     promptVersions: v.any(),
+    /** M6.5: operator brief directing the course's purpose and outcomes. */
+    brief: v.optional(v.string()),
     error: v.optional(
       v.object({
         retryable: v.boolean(),

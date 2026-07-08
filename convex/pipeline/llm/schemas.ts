@@ -8,6 +8,7 @@ import { llmAssetTagsSchema } from "../assetsTagSchema";
 import {
   llmAuthoredUnitSchema,
   llmCompileStructureSchema,
+  llmCourseOutlineSchema,
   llmDraftQuestionSchema,
   llmJudgeCourseSchema,
 } from "../compiler/schemas";
@@ -63,3 +64,6 @@ export const DRAFT_QUESTION_JSON_SCHEMA = toJsonSchema(llmDraftQuestionSchema);
 
 // M6 asset tagging (Zod source in ../assetsTagSchema.ts).
 export const ASSET_TAGS_JSON_SCHEMA = toJsonSchema(llmAssetTagsSchema);
+
+// M6.5 course outline (Zod source in ../compiler/schemas.ts).
+export const COURSE_OUTLINE_JSON_SCHEMA = toJsonSchema(llmCourseOutlineSchema);
