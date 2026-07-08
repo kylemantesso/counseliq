@@ -36,6 +36,8 @@ export const AppErrorCode = {
   ASSET_NOT_CLEARED: "ASSET_NOT_CLEARED",
   ASSET_KIND_MISMATCH: "ASSET_KIND_MISMATCH",
   CONVERTER_NOT_CONFIGURED: "CONVERTER_NOT_CONFIGURED",
+  OUTLINE_NOT_FOUND: "OUTLINE_NOT_FOUND",
+  OUTLINE_INVALID: "OUTLINE_INVALID",
 } as const;
 
 export type AppErrorCodeType = (typeof AppErrorCode)[keyof typeof AppErrorCode];

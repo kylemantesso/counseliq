@@ -42,6 +42,7 @@ import type * as pipeline_compiler_compile from "../pipeline/compiler/compile.js
 import type * as pipeline_compiler_judge from "../pipeline/compiler/judge.js";
 import type * as pipeline_compiler_judgeCore from "../pipeline/compiler/judgeCore.js";
 import type * as pipeline_compiler_judgeEval from "../pipeline/compiler/judgeEval.js";
+import type * as pipeline_compiler_outline from "../pipeline/compiler/outline.js";
 import type * as pipeline_compiler_rules from "../pipeline/compiler/rules.js";
 import type * as pipeline_compiler_schemas from "../pipeline/compiler/schemas.js";
 import type * as pipeline_courses from "../pipeline/courses.js";
@@ -56,6 +57,7 @@ import type * as pipeline_llm_pricing from "../pipeline/llm/pricing.js";
 import type * as pipeline_llm_schemas from "../pipeline/llm/schemas.js";
 import type * as pipeline_llmCalls from "../pipeline/llmCalls.js";
 import type * as pipeline_objectStore from "../pipeline/objectStore.js";
+import type * as pipeline_outlineReview from "../pipeline/outlineReview.js";
 import type * as pipeline_prompts_index from "../pipeline/prompts/index.js";
 import type * as pipeline_publish from "../pipeline/publish.js";
 import type * as pipeline_publishCore from "../pipeline/publishCore.js";
@@ -128,6 +130,7 @@ declare const fullApi: ApiFromModules<{
   "pipeline/compiler/judge": typeof pipeline_compiler_judge;
   "pipeline/compiler/judgeCore": typeof pipeline_compiler_judgeCore;
   "pipeline/compiler/judgeEval": typeof pipeline_compiler_judgeEval;
+  "pipeline/compiler/outline": typeof pipeline_compiler_outline;
   "pipeline/compiler/rules": typeof pipeline_compiler_rules;
   "pipeline/compiler/schemas": typeof pipeline_compiler_schemas;
   "pipeline/courses": typeof pipeline_courses;
@@ -142,6 +145,7 @@ declare const fullApi: ApiFromModules<{
   "pipeline/llm/schemas": typeof pipeline_llm_schemas;
   "pipeline/llmCalls": typeof pipeline_llmCalls;
   "pipeline/objectStore": typeof pipeline_objectStore;
+  "pipeline/outlineReview": typeof pipeline_outlineReview;
   "pipeline/prompts/index": typeof pipeline_prompts_index;
   "pipeline/publish": typeof pipeline_publish;
   "pipeline/publishCore": typeof pipeline_publishCore;

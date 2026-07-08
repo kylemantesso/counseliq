@@ -55,4 +55,7 @@ export const APP_ERROR_MESSAGES: Record<AppErrorCodeType, string> = {
     "That asset's type or shape does not fit this card template.",
   [AppErrorCode.CONVERTER_NOT_CONFIGURED]:
     "The media converter service is not reachable. Contact an administrator.",
+  [AppErrorCode.OUTLINE_NOT_FOUND]: "This run has no course outline yet.",
+  [AppErrorCode.OUTLINE_INVALID]:
+    "The outline is invalid: every unit needs a real inventory concept, the unit count must stay within range, media suggestions must be cleared assets, and regenerate feedback cannot be empty.",
 };

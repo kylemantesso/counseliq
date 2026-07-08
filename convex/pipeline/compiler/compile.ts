@@ -30,10 +30,13 @@ import {
   type LlmCompileStructure,
 } from "./schemas";
 import {
+  MODULE_RANGE_DEFAULT,
+  UNIT_RANGE_DEFAULT,
   buildStructureUserText,
   buildUnitUserText,
   factForPrompt,
   mediaContextFromCatalogue,
+  parseRange,
   tryAssemble,
   unitComplianceViolations,
   type AuthoredUnitWithPlan,
@@ -57,23 +60,11 @@ import {
 const DEFAULT_PARALLELISM = 3;
 const COMPILE_TIMEOUT_MS_DEFAULT = 15 * 60 * 1000;
 const POLL_INTERVAL_MS = 2000;
-const UNIT_RANGE_DEFAULT: [number, number] = [8, 12];
-const MODULE_RANGE_DEFAULT: [number, number] = [3, 5];
-
 function compileParallelism(): number {
   const raw = Number(process.env.COMPILE_PARALLELISM);
   return Number.isFinite(raw) && raw >= 1
     ? Math.floor(raw)
     : DEFAULT_PARALLELISM;
-}
-
-function parseRange(
-  raw: string | undefined,
-  fallback: [number, number]
-): [number, number] {
-  const match = raw?.match(/^(\d+)-(\d+)$/);
-  if (!match) return fallback;
-  return [Number(match[1]), Number(match[2])];
 }
 
 export const compilePool = new Workpool(components.compilePool, {

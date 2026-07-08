@@ -12,6 +12,45 @@ const ACTOR = "workflow";
  * compiler runs AFTER gate 1 (M4 resequencing) so it only ever consumes the
  * reviewed inventory.
  */
+/**
+ * M6.5: the outline step. Runs the outline pass (brief + approved facts +
+ * cleared assets) and parks the run at OUTLINE_REVIEW for operator
+ * editing/approval. Started by gate-1 approval and by
+ * regenerate-with-feedback; authoring spend only begins when the operator
+ * approves the outline (approveOutline → compileAndJudge).
+ */
+export const generateOutline = workflow
+  .define({
+    args: { runId: v.id("runs") },
+  })
+  .handler(async (step, args): Promise<void> => {
+    const { runId } = args;
+
+    const outline: { status: string; cause?: string } = await step.runAction(
+      internal.pipeline.compiler.outline.runOutlineGeneration,
+      { runId }
+    );
+    if (outline.status !== "ok") {
+      await step.runMutation(internal.pipeline.transitions.transitionRun, {
+        runId,
+        toState: "FAILED",
+        actor: ACTOR,
+        detail: "generateOutline: outline pass failed",
+        error: {
+          retryable: true,
+          cause: outline.cause ?? "outline pass failed",
+        },
+      });
+      return;
+    }
+    await step.runMutation(internal.pipeline.transitions.transitionRun, {
+      runId,
+      toState: "OUTLINE_REVIEW",
+      actor: ACTOR,
+      detail: "generateOutline: outline ready for review",
+    });
+  });
+
 export const ingestAndExtract = workflow
   .define({
     args: { runId: v.id("runs") },

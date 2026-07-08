@@ -36,6 +36,22 @@ import {
  * unit-testable. The orchestration lives in compile.ts ("use node").
  */
 
+export const UNIT_RANGE_DEFAULT: [number, number] = [8, 12];
+export const MODULE_RANGE_DEFAULT: [number, number] = [3, 5];
+
+/** "8-12" → [8, 12]; anything malformed falls back. */
+export function parseRange(
+  raw: string | undefined,
+  fallback: [number, number]
+): [number, number] {
+  const match = raw?.match(/^(\d+)-(\d+)$/);
+  if (!match) return fallback;
+  const low = Number(match[1]);
+  const high = Number(match[2]);
+  if (low < 1 || high < low) return fallback;
+  return [low, high];
+}
+
 export interface UnitPlan {
   unitId: string;
   conceptKey: string;
@@ -110,6 +126,62 @@ export function buildStructureUserText(
     `Reviewed knowledge inventory (concepts with their approved facts):`,
     JSON.stringify(conceptListing, null, 2),
   ].join("\n");
+}
+
+/** Prompt-size cap for the outline pass's cleared-asset summary. */
+export const OUTLINE_ASSET_SUMMARY_CAP = 100;
+
+/**
+ * User text for the outline pass (M6.5): the structure-pass input enriched
+ * with the operator brief (which rules concept selection), a cleared-asset
+ * summary (media-aware concept preference + per-unit mediaAssetIds
+ * suggestions), and any regenerate feedback from the review step.
+ */
+export function buildOutlineUserText(
+  inventory: ReviewedInventory,
+  unitRange: [number, number],
+  moduleRange: [number, number],
+  brief: string | undefined,
+  catalogue: readonly CompactCatalogueAsset[],
+  regenFeedback: readonly string[] = []
+): string {
+  const parts = [buildStructureUserText(inventory, unitRange, moduleRange)];
+  if (brief !== undefined && brief.trim() !== "") {
+    parts.push(
+      ``,
+      `OPERATOR BRIEF (the course's intended purpose — this rules concept selection and the learning outcomes):`,
+      brief.trim()
+    );
+  }
+  if (catalogue.length > 0) {
+    const summary = catalogue.slice(0, OUTLINE_ASSET_SUMMARY_CAP);
+    parts.push(
+      ``,
+      `Cleared media library (${summary.length} asset(s); suggest per-unit mediaAssetIds ONLY from these ids, only where the caption fits the concept):`,
+      ...summary.map((asset) =>
+        JSON.stringify({
+          id: asset.id,
+          kind: asset.kind,
+          caption: asset.caption,
+          tags: asset.tags,
+          ...(asset.deckPage !== undefined ? { deckPage: asset.deckPage } : {}),
+        })
+      )
+    );
+  } else {
+    parts.push(
+      ``,
+      `No cleared media assets are available — set mediaAssetIds to null everywhere.`
+    );
+  }
+  if (regenFeedback.length > 0) {
+    parts.push(
+      ``,
+      `The operator reviewed previous outline attempt(s) and asked for changes — follow ALL of these:`,
+      ...regenFeedback.map((note, index) => `${index + 1}. ${note}`)
+    );
+  }
+  return parts.join("\n");
 }
 
 /**

@@ -16,7 +16,8 @@ type GateDecision = "approve" | "reject";
 async function startRunHelper(
   ctx: MutationCtx,
   institutionId: Id<"institutions">,
-  sourceDocIds: Id<"sourceDocs">[] = []
+  sourceDocIds: Id<"sourceDocs">[] = [],
+  brief?: string
 ): Promise<Id<"runs">> {
   const institution = await ctx.db.get(institutionId);
   if (!institution) {
@@ -26,10 +27,12 @@ async function startRunHelper(
   // Creation is the one place a run's state is set outside transitionRun:
   // every run is born UPLOADED; all subsequent changes go through the
   // transition mutation.
+  const trimmedBrief = brief?.trim();
   const runId = await ctx.db.insert("runs", {
     institutionId,
     state: "UPLOADED",
     promptVersions: {},
+    ...(trimmedBrief ? { brief: trimmedBrief } : {}),
   });
 
   // Link registered source docs to this run (a run may ingest several).
@@ -148,14 +151,15 @@ async function decideGateHelper(
 
   switch (args.gate) {
     case 1: {
-      // M4 resequencing: knowledge review feeds the compiler.
+      // M6.5: knowledge review feeds the OUTLINE pass; compilation only
+      // starts once the operator approves the (editable) outline.
       await applyRunTransition(ctx, {
         runId: args.runId,
-        toState: "COMPILING",
+        toState: "OUTLINING",
         actor: args.reviewer,
-        detail: "gate 1 approved: compiling course from reviewed inventory",
+        detail: "gate 1 approved: proposing course outline from reviewed inventory",
       });
-      await start(ctx, internal.pipeline.workflows.compileAndJudge, {
+      await start(ctx, internal.pipeline.workflows.generateOutline, {
         runId: args.runId,
       });
       break;
@@ -192,9 +196,15 @@ export const startRun = internalMutation({
   args: {
     institutionId: v.id("institutions"),
     sourceDocIds: v.optional(v.array(v.id("sourceDocs"))),
+    brief: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    return await startRunHelper(ctx, args.institutionId, args.sourceDocIds);
+    return await startRunHelper(
+      ctx,
+      args.institutionId,
+      args.sourceDocIds,
+      args.brief
+    );
   },
 });
 
@@ -224,10 +234,16 @@ export const adminStartRun = mutation({
   args: {
     institutionId: v.id("institutions"),
     sourceDocIds: v.optional(v.array(v.id("sourceDocs"))),
+    brief: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
-    return await startRunHelper(ctx, args.institutionId, args.sourceDocIds);
+    return await startRunHelper(
+      ctx,
+      args.institutionId,
+      args.sourceDocIds,
+      args.brief
+    );
   },
 });
 
