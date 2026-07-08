@@ -30,6 +30,10 @@ re-synthesis), and approval assembles the canonical Course Definition export
 UPLOADED → CONVERTING → CONVERTED
   → EXTRACTING → EXTRACTED
   → GATE_1_KNOWLEDGE_REVIEW   (waits for decideGate(1))
+  → OUTLINING                 (M6.5: brief-directed outline pass — approved
+                               facts + cleared assets, no authoring spend)
+  → OUTLINE_REVIEW            (editable outline; approve → COMPILING,
+                               regenerate-with-feedback → OUTLINING)
   → COMPILING → COMPILED
   → QA_RUNNING → QA_PASSED | QA_FLAGGED
   → GATE_2_COURSE_REVIEW      (waits for decideGate(2);
@@ -58,6 +62,35 @@ with the flags attached so a human decides: send flagged units back to
 COMPILING for re-authoring, or approve. Gate 2 (renamed from
 `GATE_2_QUIZ_REVIEW`) reviews the compiled course as a whole — narration
 provenance, cards, questions, and judge flags — in the course viewer.
+
+## Course outline step (M6.5)
+
+Gate-1 approval no longer starts compilation directly. The **outline
+pass** (`outline-course@1`, `compiler/outline.ts`) proposes course title,
+3–7 learning outcomes, and the module/unit structure from the approved
+inventory, the CLEARED asset catalogue (per-unit `mediaAssetIds`
+suggestions), and the **operator brief** entered on the generate page —
+source documents often contain more than one course's worth of material,
+and the brief rules what this course is about. The prompt distils the
+outline rules from **`docs/learning-design-blueprint.md`** (the canonical
+pedagogy source): one concept per unit, 3–7 units per module, front-load
+the most misunderstood concept, end modules on the highest-stakes
+compliance point, orientation → application.
+
+The outline persists on `courseOutlines` (one row per run, zod-validated
+on every write) and parks at **OUTLINE_REVIEW** —
+`/admin/runs/{id}/outline` — where it is fully editable (title, outcomes,
+module/unit rename/reorder/delete, add units from unused concepts,
+budgets, media suggestions) with the same code checks as generation, or
+regenerable with feedback (feedback accumulates across attempts; a
+regenerate replaces manual edits, and the UI says so). **Approval is the
+only door into authoring spend**: it marks the outline approved,
+transitions to COMPILING, and `runCompilationInner` consumes the stored
+outline verbatim (`plansFromOutline`), skipping the inline structure LLM
+pass; legacy runs without an outline fall back to the old inline pass.
+The brief and per-unit suggestions also thread into every authoring
+prompt. Scripts (`walkthrough.mjs`, `eval-compile.mjs`) auto-approve the
+outline unedited via `pipeline/outlineReview:approveOutline`.
 
 ## Converter architecture
 

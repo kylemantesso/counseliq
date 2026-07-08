@@ -519,6 +519,20 @@ async function driveRun(runId, { sourceDocIds, docNamesById }) {
       return;
     }
 
+    // M6.5: the editable outline step — the walkthrough approves the
+    // proposed outline unchanged (a human would edit it in /admin/runs/
+    // {id}/outline before approving).
+    if (run.state === "OUTLINE_REVIEW" && !decidedGates.has("outline")) {
+      decidedGates.add("outline");
+      console.log("  outline: auto-approving the proposed course outline…");
+      await convexRun("pipeline/outlineReview:approveOutline", {
+        runId,
+        reviewer: "walkthrough-script",
+      });
+      await sleep(POLL_INTERVAL_MS);
+      continue;
+    }
+
     const gate = GATE_STATES[run.state];
     if (gate && !decidedGates.has(gate)) {
       decidedGates.add(gate);

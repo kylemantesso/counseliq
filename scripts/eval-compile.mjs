@@ -165,6 +165,7 @@ async function driveFreshRun(institutionName) {
   let lastState = null;
   let lastCost = 0;
   let gate1Resolved = false;
+  let outlineApproved = false;
   for (;;) {
     if (Date.now() - startedAt > timeoutMs) {
       throw new Error(`timed out waiting for gate 2 (last state: ${lastState})`);
@@ -177,7 +178,7 @@ async function driveFreshRun(institutionName) {
     if (run.state === "FAILED") {
       throw new Error(`run FAILED: ${JSON.stringify(run.error)}`);
     }
-    if (["EXTRACTING", "COMPILING", "QA_RUNNING"].includes(run.state)) {
+    if (["EXTRACTING", "OUTLINING", "COMPILING", "QA_RUNNING"].includes(run.state)) {
       const cost = await convexRun("pipeline/llmCalls:getRunCostInternal", { runId });
       if (cost.totalCalls > 0 && cost.totalUsd !== lastCost) {
         lastCost = cost.totalUsd;
@@ -206,6 +207,14 @@ async function driveFreshRun(institutionName) {
         runId,
         gate: 1,
         decision: "approve",
+        reviewer: "eval-compile-script",
+      });
+    }
+    if (run.state === "OUTLINE_REVIEW" && !outlineApproved) {
+      outlineApproved = true;
+      console.log("  outline ready: auto-approving (eval runs it unedited)…");
+      await convexRun("pipeline/outlineReview:approveOutline", {
+        runId,
         reviewer: "eval-compile-script",
       });
     }
