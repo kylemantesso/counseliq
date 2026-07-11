@@ -2,6 +2,8 @@ import { v } from "convex/values";
 import {
   unitScriptSchema,
   unitTimingSchema,
+  contentEndMsForTiming,
+  typedCardContentSchema,
   type UnitScript,
   type UnitTiming,
   type ScriptSentence,
@@ -14,9 +16,17 @@ import { AppErrorCode, appError } from "../../errors";
 import { requireAdmin } from "../../admin";
 import { normalizeSentence } from "./normalize";
 import { findBlockedTerms } from "./lexicon";
-import { computeMediaWindows, MEDIA_WINDOW_TEMPLATES } from "./beats";
+import {
+  computeMediaWindows,
+  MEDIA_WINDOW_TEMPLATES,
+  resolveCardBeats,
+} from "./beats";
 import { assertCourseMutable } from "../courses";
-import { isAssetCleared, isCatalogueAsset } from "../assetsCatalogue";
+import {
+  getExplicitRunAssetIds,
+  isAssetCleared,
+  isCatalogueAsset,
+} from "../assetsCatalogue";
 import { assetFitsTemplate } from "../compiler/rules";
 import {
   replaceGate3BlockedUnitItems,
@@ -40,18 +50,27 @@ interface EditArgs {
 }
 
 type EditStatus = "updated" | "blocked" | "resynthesizing";
+type RunState = Doc<"runs">["state"];
+
+type UnitCard = {
+  template: string;
+  props: Record<string, unknown>;
+  enterAt: { narration: string; word: string };
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 
 async function loadEditableRunUnit(
   ctx: MutationCtx,
   runId: Id<"runs">,
-  unitId: Id<"microUnits">
+  unitId: Id<"microUnits">,
+  allowedStates: RunState[] = ["GATE_2_COURSE_REVIEW", "GATE_3_PREVIEW"]
 ): Promise<{ run: Doc<"runs">; unit: Doc<"microUnits"> }> {
   const run = await ctx.db.get(runId);
   if (!run) appError(AppErrorCode.RUN_NOT_FOUND);
-  if (
-    run.state !== "GATE_2_COURSE_REVIEW" &&
-    run.state !== "GATE_3_PREVIEW"
-  ) {
+  if (!allowedStates.includes(run.state)) {
     appError(AppErrorCode.RUN_NOT_EDITABLE);
   }
   const unit = await ctx.db.get(unitId);
@@ -187,6 +206,192 @@ async function updateNarrationSentenceHelper(
   return { status: "updated" };
 }
 
+async function assetDurationsForCards(
+  ctx: MutationCtx,
+  cards: UnitCard[]
+): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  for (const card of cards) {
+    const ref = card.props.assetRef;
+    if (typeof ref !== "string") continue;
+    const refId = ctx.db.normalizeId("assets", ref);
+    if (!refId) continue;
+    const refAsset = await ctx.db.get(refId);
+    if (refAsset?.durationMs !== undefined) {
+      out.set(ref, refAsset.durationMs);
+    }
+  }
+  return out;
+}
+
+async function updateCardEnterAtWordHelper(
+  ctx: MutationCtx,
+  args: {
+    runId: Id<"runs">;
+    unitId: Id<"microUnits">;
+    cardIndex: number;
+    word: string;
+  },
+  allowedStates?: RunState[]
+): Promise<{ status: "updated" }> {
+  const { unit } = await loadEditableRunUnit(ctx, args.runId, args.unitId, allowedStates);
+
+  const word = args.word.trim();
+  if (word.length === 0) {
+    appError(AppErrorCode.CARD_ENTER_AT_WORD_INVALID);
+  }
+
+  const cards = (unit.cards ?? []) as UnitCard[];
+  const target = cards[args.cardIndex];
+  if (!target) {
+    appError(AppErrorCode.CARD_NOT_FOUND);
+  }
+
+  const narration = (unit.narration ?? []) as Array<{ id: string; text: string }>;
+  const targetSentence = narration.find((entry) => entry.id === target.enterAt.narration);
+  if (!targetSentence || !targetSentence.text.includes(word)) {
+    appError(AppErrorCode.CARD_ENTER_AT_WORD_INVALID);
+  }
+
+  const updatedCards = cards.map((card, index) =>
+    index === args.cardIndex
+      ? {
+          ...card,
+          enterAt: { ...card.enterAt, word },
+        }
+      : card
+  );
+
+  const patch: {
+    cards: UnitCard[];
+    timing?: UnitTiming;
+    contentHash?: string;
+  } = {
+    cards: updatedCards,
+    contentHash: undefined,
+  };
+
+  const scriptRaw = unit.script as UnitScript | undefined;
+  const timingRaw = unit.timing as UnitTiming | undefined;
+  if (scriptRaw && timingRaw) {
+    const script = unitScriptSchema.parse(scriptRaw);
+    const timing = unitTimingSchema.parse(timingRaw);
+    const cardBeats = resolveCardBeats(updatedCards, script, timing.sentences);
+    const media = computeMediaWindows(
+      updatedCards,
+      cardBeats,
+      contentEndMsForTiming(timing),
+      await assetDurationsForCards(ctx, updatedCards)
+    );
+    patch.timing = unitTimingSchema.parse({
+      ...timing,
+      totalDurationMs: contentEndMsForTiming(timing),
+      cardBeats,
+      media,
+      generatedAt: Date.now(),
+    });
+  }
+
+  await ctx.db.patch(unit._id, patch);
+  return { status: "updated" };
+}
+
+async function updateCardPropsHelper(
+  ctx: MutationCtx,
+  args: {
+    runId: Id<"runs">;
+    unitId: Id<"microUnits">;
+    cardIndex: number;
+    props: unknown;
+  },
+  allowedStates?: RunState[]
+): Promise<{ status: EditStatus }> {
+  const { run, unit } = await loadEditableRunUnit(ctx, args.runId, args.unitId, allowedStates);
+  const cards = (unit.cards ?? []) as UnitCard[];
+  const target = cards[args.cardIndex];
+  if (!target) appError(AppErrorCode.CARD_NOT_FOUND);
+  if (!isRecord(args.props)) appError(AppErrorCode.CARD_PROPS_INVALID);
+
+  const parsed = typedCardContentSchema.safeParse({
+    template: target.template,
+    props: args.props,
+  });
+  if (!parsed.success) appError(AppErrorCode.CARD_PROPS_INVALID);
+
+  const updatedCards = cards.map((card, index) =>
+    index === args.cardIndex
+      ? {
+          ...card,
+          props: parsed.data.props as Record<string, unknown>,
+        }
+      : card
+  );
+
+  const patch: {
+    cards: UnitCard[];
+    contentHash?: string;
+    state?: Doc<"microUnits">["state"];
+    error?: undefined;
+  } = {
+    cards: updatedCards,
+    contentHash: undefined,
+  };
+
+  if (run.state === "GATE_3_PREVIEW" && unit.state !== "blocked") {
+    patch.state = "script_ready";
+    patch.error = undefined;
+  }
+
+  await ctx.db.patch(unit._id, patch);
+
+  if (run.state === "GATE_3_PREVIEW" && unit.state !== "blocked") {
+    await ctx.scheduler.runAfter(
+      0,
+      internal.pipeline.tts.synthesize.synthesizeUnit,
+      { runId: args.runId, unitId: args.unitId }
+    );
+    return { status: "resynthesizing" };
+  }
+  return { status: unit.state === "blocked" ? "blocked" : "updated" };
+}
+
+async function updateAnchorPropsHelper(
+  ctx: MutationCtx,
+  args: {
+    runId: Id<"runs">;
+    unitId: Id<"microUnits">;
+    props: unknown;
+  },
+  allowedStates?: RunState[]
+): Promise<{ status: "updated" }> {
+  const { unit } = await loadEditableRunUnit(ctx, args.runId, args.unitId, allowedStates);
+  const meta = unit.meta as
+    | { anchor?: { template?: unknown; props?: unknown } }
+    | undefined;
+  const anchor = meta?.anchor;
+  if (!anchor || typeof anchor.template !== "string") {
+    appError(AppErrorCode.CARD_NOT_FOUND);
+  }
+  if (!isRecord(args.props)) appError(AppErrorCode.CARD_PROPS_INVALID);
+
+  const parsed = typedCardContentSchema.safeParse({
+    template: anchor.template,
+    props: args.props,
+  });
+  if (!parsed.success) appError(AppErrorCode.CARD_PROPS_INVALID);
+
+  await ctx.db.patch(unit._id, {
+    meta: {
+      ...((unit.meta ?? {}) as Record<string, unknown>),
+      anchor: {
+        ...anchor,
+        props: parsed.data.props as Record<string, unknown>,
+      },
+    },
+  });
+  return { status: "updated" };
+}
+
 /** Internal variant for scripts/walkthroughs (mirrors decideGate). */
 export const updateNarrationSentence = internalMutation({
   args: {
@@ -227,19 +432,78 @@ export const adminUpdateNarrationSentence = mutation({
   },
 });
 
+/** Internal variant for scripts/tests. */
+export const updateCardEnterAtWord = internalMutation({
+  args: {
+    runId: v.id("runs"),
+    unitId: v.id("microUnits"),
+    cardIndex: v.number(),
+    word: v.string(),
+  },
+  handler: async (ctx, args) => {
+    return await updateCardEnterAtWordHelper(ctx, args);
+  },
+});
+
+/** Admin: update one card beat anchor word (enterAt.word) at gate 2/3. */
+export const adminUpdateCardEnterAtWord = mutation({
+  args: {
+    runId: v.id("runs"),
+    unitId: v.id("microUnits"),
+    cardIndex: v.number(),
+    word: v.string(),
+  },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+    return await updateCardEnterAtWordHelper(ctx, args, ["GATE_3_PREVIEW"]);
+  },
+});
+
+/** Admin: edit the text/content props of one card at gate 2/3. */
+export const adminUpdateCardProps = mutation({
+  args: {
+    runId: v.id("runs"),
+    unitId: v.id("microUnits"),
+    cardIndex: v.number(),
+    props: v.any(),
+  },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+    return await updateCardPropsHelper(ctx, args, ["GATE_2_COURSE_REVIEW"]);
+  },
+});
+
+/** Admin: edit the text/content props of a unit's anchor card at gate 2/3. */
+export const adminUpdateAnchorProps = mutation({
+  args: {
+    runId: v.id("runs"),
+    unitId: v.id("microUnits"),
+    props: v.any(),
+  },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+    return await updateAnchorPropsHelper(ctx, args, ["GATE_2_COURSE_REVIEW"]);
+  },
+});
+
 async function retryUnitTtsHelper(
   ctx: MutationCtx,
-  args: { runId: Id<"runs">; unitId: Id<"microUnits"> }
+  args: { runId: Id<"runs">; unitId: Id<"microUnits"> },
+  allowedStates?: RunState[]
 ): Promise<{ status: "scheduled" }> {
   const run = await ctx.db.get(args.runId);
   if (!run) appError(AppErrorCode.RUN_NOT_FOUND);
-  if (run.state !== "GATE_3_PREVIEW") {
+  if (allowedStates && !allowedStates.includes(run.state)) {
+    appError(AppErrorCode.RUN_NOT_EDITABLE);
+  }
+  if (!(await canRetryUnitTtsForRun(ctx, run))) {
     appError(AppErrorCode.RUN_NOT_AT_GATE);
   }
   const unit = await ctx.db.get(args.unitId);
   if (!unit || !run.courseId || unit.courseId !== run.courseId) {
     appError(AppErrorCode.UNITS_REQUIRED);
   }
+  await assertCourseMutable(ctx, unit.courseId);
   // synthesizeUnit is idempotent (content-hash + sentence cache), so retry
   // is safe whatever the unit's current condition; success clears the error
   // and the failed_unit review item inside saveUnitTiming.
@@ -251,6 +515,35 @@ async function retryUnitTtsHelper(
   return { status: "scheduled" };
 }
 
+const TTS_RETRY_ACTIVE_STATES = new Set<Doc<"runs">["state"]>([
+  "GENERATING_ASSETS",
+  "GATE_3_PREVIEW",
+]);
+
+async function canRetryUnitTtsForRun(
+  ctx: MutationCtx,
+  run: Doc<"runs">
+): Promise<boolean> {
+  if (TTS_RETRY_ACTIVE_STATES.has(run.state)) {
+    return true;
+  }
+  if (run.state !== "FAILED") {
+    return false;
+  }
+
+  const events = await ctx.db
+    .query("runEvents")
+    .withIndex("by_run", (q) => q.eq("runId", run._id))
+    .order("desc")
+    .take(200);
+  const lastFailure = events.find((event) => event.toState === "FAILED");
+
+  return (
+    lastFailure !== undefined &&
+    TTS_RETRY_ACTIVE_STATES.has(lastFailure.fromState)
+  );
+}
+
 // --- Gate-2/3 asset swap (M6) — never touches narration audio ---
 
 async function swapCardAssetHelper(
@@ -260,9 +553,10 @@ async function swapCardAssetHelper(
     unitId: Id<"microUnits">;
     cardIndex: number;
     assetId: Id<"assets">;
-  }
+  },
+  allowedStates?: RunState[]
 ): Promise<{ status: "swapped" }> {
-  const { unit } = await loadEditableRunUnit(ctx, args.runId, args.unitId);
+  const { run, unit } = await loadEditableRunUnit(ctx, args.runId, args.unitId, allowedStates);
 
   const cards = (unit.cards ?? []) as Array<{
     template: string;
@@ -275,7 +569,13 @@ async function swapCardAssetHelper(
   }
 
   const asset = await ctx.db.get(args.assetId);
-  if (!asset || !isCatalogueAsset(asset)) {
+  const explicitAssetIds = await getExplicitRunAssetIds(ctx, run);
+  if (
+    !asset ||
+    !isCatalogueAsset(asset) ||
+    asset.institutionId !== run.institutionId ||
+    (explicitAssetIds !== null && !explicitAssetIds.has(args.assetId))
+  ) {
     appError(AppErrorCode.ASSET_NOT_FOUND);
   }
   // The mechanical rights gate applies to swaps exactly as to compilation.
@@ -353,7 +653,7 @@ export const adminSwapCardAsset = mutation({
   },
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
-    return await swapCardAssetHelper(ctx, args);
+    return await swapCardAssetHelper(ctx, args, ["GATE_2_COURSE_REVIEW"]);
   },
 });
 
@@ -370,6 +670,6 @@ export const adminRetryUnitTts = mutation({
   args: { runId: v.id("runs"), unitId: v.id("microUnits") },
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
-    return await retryUnitTtsHelper(ctx, args);
+    return await retryUnitTtsHelper(ctx, args, ["GATE_3_PREVIEW"]);
   },
 });

@@ -12,7 +12,7 @@ import {
   mutation,
   query,
 } from "../_generated/server";
-import type { QueryCtx } from "../_generated/server";
+import type { MutationCtx, QueryCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import { internal } from "../_generated/api";
 import { AppErrorCode, appError } from "../errors";
@@ -589,9 +589,67 @@ export const adminRegenerateQuestion = mutation({
   },
 });
 
+async function loadEditableRunCourse(
+  ctx: MutationCtx,
+  runId: Id<"runs">
+): Promise<{ run: Doc<"runs">; course: Doc<"courses"> }> {
+  const run = await ctx.db.get(runId);
+  if (!run) appError(AppErrorCode.RUN_NOT_FOUND);
+  if (run.state !== "GATE_2_COURSE_REVIEW") {
+    appError(AppErrorCode.RUN_NOT_EDITABLE);
+  }
+  if (!run.courseId) appError(AppErrorCode.COURSE_NOT_FOUND);
+  const course = await ctx.db.get(run.courseId);
+  if (!course) appError(AppErrorCode.COURSE_NOT_FOUND);
+  await assertCourseMutable(ctx, course._id);
+  return { run, course };
+}
+
+/** Admin: edit the compiled course title during course review / preview. */
+export const adminUpdateCourseTitle = mutation({
+  args: {
+    runId: v.id("runs"),
+    title: v.string(),
+  },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+    const { course } = await loadEditableRunCourse(ctx, args.runId);
+    const title = args.title.trim();
+    if (title.length === 0) appError(AppErrorCode.COURSE_TITLE_REQUIRED);
+    await ctx.db.patch(course._id, { title });
+    return null;
+  },
+});
+
+/** Admin: edit a compiled module title on every unit in that module. */
+export const adminUpdateModuleTitle = mutation({
+  args: {
+    runId: v.id("runs"),
+    moduleKey: v.string(),
+    title: v.string(),
+  },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+    const { course } = await loadEditableRunCourse(ctx, args.runId);
+    const title = args.title.trim();
+    if (title.length === 0) appError(AppErrorCode.MODULE_TITLE_REQUIRED);
+    const units = await ctx.db
+      .query("microUnits")
+      .withIndex("by_course", (q) => q.eq("courseId", course._id))
+      .take(1000);
+    const moduleUnits = units.filter((unit) => unit.moduleKey === args.moduleKey);
+    if (moduleUnits.length === 0) appError(AppErrorCode.MODULE_NOT_FOUND);
+    for (const unit of moduleUnits) {
+      await ctx.db.patch(unit._id, { moduleTitle: title });
+    }
+    return null;
+  },
+});
+
 /** Admin: edit one question in place (prompt/options/answer/explanation). */
 export const adminUpdateQuestion = mutation({
   args: {
+    runId: v.id("runs"),
     questionId: v.id("questions"),
     prompt: v.string(),
     options: v.array(v.string()),
@@ -600,8 +658,9 @@ export const adminUpdateQuestion = mutation({
   },
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
+    const { course } = await loadEditableRunCourse(ctx, args.runId);
     const row = await ctx.db.get(args.questionId);
-    if (!row) appError(AppErrorCode.QUESTION_NOT_FOUND);
+    if (!row || row.courseId !== course._id) appError(AppErrorCode.QUESTION_NOT_FOUND);
     await assertCourseMutable(ctx, row.courseId);
     const body = row.body as QuestionBankItem;
     if (

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { useParams, useRouter } from "solito/navigation";
 import type { UnitScript, UnitTiming } from "@counseliq/course-schema";
@@ -8,12 +8,11 @@ import {
   Box,
   Button,
   ButtonText,
-  Heading,
-  ScrollView,
   Text,
 } from "@counseliq/ui";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import { AdminGuard } from "../components/admin-guard";
+import { AdminWorkspaceFrame } from "../components/admin-workspace-frame";
 import { CoursePlayer } from "../components/course-player/course-player";
 import { formatMs } from "../components/course-player/timeline-helpers";
 import type {
@@ -24,16 +23,14 @@ import type {
   PreviewUnitState,
   RunPreviewData,
 } from "../components/course-player/types";
-import { Screen } from "../components/screen";
 import { api } from "../db/api";
 import { getUserFacingErrorMessage } from "../errors/get-user-facing-message";
 
 /**
- * Gate 3 — the playable preview studio. The course player fills the main
+ * Step 3 — the playable preview studio. The course player fills the main
  * pane (module rail, phase pills, audio-driven cards); above it sit the
- * approve/reject actions and the blocked/failed banner that gates approval.
- * A per-unit strip under the player carries synthesis facts (duration,
- * characters, beat coverage) plus narration-edit and retry entry points.
+ * approve/reject actions and a blocked/failed warning banner.
+ * The right rail inside the studio holds always-on narration + beat editing.
  */
 export function AdminGateThreeReviewScreen() {
   return (
@@ -50,6 +47,13 @@ type PreviewPayload = NonNullable<
 >;
 
 type PayloadUnit = PreviewPayload["modules"][number]["units"][number];
+
+function runStepLabel(state: string): string {
+  if (state === "OUTLINE_REVIEW") return "Outline approval";
+  if (state === "GATE_2_COURSE_REVIEW") return "Step 2 - course review";
+  if (state === "GATE_3_PREVIEW") return "Step 3 - preview and publish";
+  return state;
+}
 
 function toPreviewUnit(u: PayloadUnit): PreviewUnit {
   return {
@@ -70,7 +74,11 @@ function toRunPreviewData(preview: PreviewPayload, runId: string): RunPreviewDat
   return {
     runId,
     runState: preview.run.state,
-    course: { title: preview.course.title, version: preview.course.version },
+    course: {
+      title: preview.course.title,
+      version: preview.course.version,
+      brandRef: preview.course.brandRef ?? null,
+    },
     institution: {
       name: preview.institution?.name ?? "CounselIQ",
       brandTokens: preview.institution?.brandTokens,
@@ -120,6 +128,9 @@ function AdminGateThreeReviewContent() {
   const updateSentence = useMutation(
     api.pipeline.tts.edit.adminUpdateNarrationSentence
   );
+  const updateCardEnterAtWord = useMutation(
+    api.pipeline.tts.edit.adminUpdateCardEnterAtWord
+  );
   const retryUnit = useMutation(api.pipeline.tts.edit.adminRetryUnitTts);
   const presignBatch = useAction(api.pipeline.objectStore.adminPresignGetBatch);
 
@@ -127,7 +138,8 @@ function AdminGateThreeReviewContent() {
   const [busy, setBusy] = useState(false);
   const [rejecting, setRejecting] = useState(false);
   const [rejectNotes, setRejectNotes] = useState("");
-  const [editTarget, setEditTarget] = useState<{
+  const [activeUnitId, setActiveUnitId] = useState<string | null>(null);
+  const [focusTarget, setFocusTarget] = useState<{
     unitId: string;
     narrationId: string | null;
   } | null>(null);
@@ -196,51 +208,68 @@ function AdminGateThreeReviewContent() {
     [preview]
   );
 
+  useEffect(() => {
+    if (allUnits.length === 0) {
+      if (activeUnitId !== null) setActiveUnitId(null);
+      return;
+    }
+    if (
+      activeUnitId === null ||
+      !allUnits.some((unit) => String(unit._id) === activeUnitId)
+    ) {
+      setActiveUnitId(String(allUnits[0]._id));
+    }
+  }, [allUnits, activeUnitId]);
+
+  const atGate = preview?.run.state === "GATE_3_PREVIEW";
+  useEffect(() => {
+    if (!atGate) setRejecting(false);
+  }, [atGate]);
+
   if (preview === undefined) {
     return (
-      <Screen className="flex-1 bg-background">
+      <AdminWorkspaceFrame activeNav="runs" title="Step 3 — preview & publish">
         <Box className="p-6">
           <Text>Loading...</Text>
         </Box>
-      </Screen>
+      </AdminWorkspaceFrame>
     );
   }
   if (preview === null || !runId || !data) {
     return (
-      <Screen className="flex-1 bg-background">
+      <AdminWorkspaceFrame activeNav="runs" title="Step 3 — preview & publish">
         <Box className="p-6">
           <Text className="text-muted-foreground">
             Run not found, or it has no compiled course yet.
           </Text>
         </Box>
-      </Screen>
+      </AdminWorkspaceFrame>
     );
   }
 
-  const atGate = preview.run.state === "GATE_3_PREVIEW";
   const blockedUnits = allUnits.filter((u) => u.state === "blocked");
   const failedUnits = allUnits.filter((u) => u.error);
   const approveBlockedReason = !atGate
-    ? `Run is at ${preview.run.state}, not GATE_3_PREVIEW.`
-    : blockedUnits.length > 0
-      ? "Blocked units must be resolved before publishing."
-      : failedUnits.length > 0
-        ? "Failed units must synthesise before publishing."
-        : null;
+    ? `Run is at ${runStepLabel(preview.run.state)}, not step 3 preview.`
+    : null;
 
   const onApprove = async () => {
+    if (!atGate) return;
     setError(null);
     setBusy(true);
     try {
       await decideGate({ runId, gate: 3, decision: "approve" });
     } catch (err) {
-      setError(getUserFacingErrorMessage(err, "Gate decision failed. Try again."));
+      setError(
+        getUserFacingErrorMessage(err, "Review decision failed. Try again.")
+      );
     } finally {
       setBusy(false);
     }
   };
 
   const onReject = async () => {
+    if (!atGate) return;
     const notes = rejectNotes.trim();
     if (!notes) return;
     setError(null);
@@ -251,13 +280,16 @@ function AdminGateThreeReviewContent() {
       setRejectNotes("");
       router.push(`/admin/runs/${runId}/gate-2`);
     } catch (err) {
-      setError(getUserFacingErrorMessage(err, "Gate decision failed. Try again."));
+      setError(
+        getUserFacingErrorMessage(err, "Review decision failed. Try again.")
+      );
     } finally {
       setBusy(false);
     }
   };
 
   const onRetryUnit = async (unitId: Id<"microUnits">) => {
+    if (!atGate) return;
     setError(null);
     try {
       await retryUnit({ runId, unitId });
@@ -267,180 +299,309 @@ function AdminGateThreeReviewContent() {
     }
   };
 
-  const editUnit = editTarget
-    ? allUnits.find((u) => String(u._id) === editTarget.unitId) ?? null
-    : null;
+  const activeUnit =
+    activeUnitId === null
+      ? allUnits[0] ?? null
+      : allUnits.find((unit) => String(unit._id) === activeUnitId) ?? null;
+
+  const focusedNarrationId =
+    focusTarget && activeUnit && focusTarget.unitId === String(activeUnit._id)
+      ? focusTarget.narrationId
+      : null;
+
+  const rejectPanel = rejecting ? (
+    <div
+      style={{
+        borderTop: "1px solid #202833",
+        background: "#0c1218",
+        padding: "14px 22px 16px",
+      }}
+    >
+      <Text className="text-sm font-semibold" style={{ color: "#f2efe8" }}>
+        Reject and send back to step 2 (course review)
+      </Text>
+      <textarea
+        value={rejectNotes}
+        onChange={(e) => setRejectNotes(e.target.value)}
+        placeholder="Reviewer notes (required) - what must change before this course can publish?"
+        rows={3}
+        style={{
+          width: "100%",
+          resize: "vertical",
+          marginTop: 10,
+          borderRadius: 10,
+          border: "1px solid #303946",
+          background: "#080d12",
+          color: "#f2efe8",
+          padding: 12,
+          fontSize: 13,
+          fontFamily: "inherit",
+          outline: "none",
+        }}
+      />
+      <Box className="mt-3 flex-row gap-2">
+        <Button
+          size="sm"
+          onPress={onReject}
+          isDisabled={!atGate || busy || rejectNotes.trim().length === 0}
+          className="bg-[#d6ad2f] data-[hover=true]:bg-[#cba126] data-[active=true]:bg-[#cba126]"
+        >
+          <ButtonText className="text-[#101419]">
+            Confirm reject
+          </ButtonText>
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onPress={() => setRejecting(false)}
+          className="border-[#303946] bg-[#111820]"
+        >
+          <ButtonText className="text-[#f2efe8]">Cancel</ButtonText>
+        </Button>
+      </Box>
+    </div>
+  ) : null;
+
+  const warningPanel = blockedUnits.length > 0 || failedUnits.length > 0 ? (
+    <div
+      style={{
+        borderTop: "1px solid #35232a",
+        background: "rgba(126, 35, 35, .16)",
+        padding: "12px 22px",
+      }}
+    >
+      <Text className="text-sm font-semibold" style={{ color: "#ff8c8c" }}>
+        Publishing warning
+      </Text>
+      <Box className="mt-2 gap-2">
+        {blockedUnits.map((unit) => (
+          <Box key={String(unit._id)} className="flex-row flex-wrap items-center gap-2">
+            <Chip label="BLOCKED" tone="bad" />
+            <Text className="text-sm font-semibold" style={{ color: "#f2efe8" }}>{unit.unitKey}</Text>
+            <Text className="text-sm" style={{ color: "#8f98a4" }}>{unit.concept}</Text>
+            <Text className="text-sm" style={{ color: "#ff8c8c" }}>
+              Unconfirmed pronunciation: {unitBlockedTerms(unit.script as UnitScript | null).join(", ") || "(see lexicon)"}
+            </Text>
+          </Box>
+        ))}
+        {failedUnits.map((unit) => (
+          <Box key={String(unit._id)} className="flex-row flex-wrap items-center gap-2">
+            <Chip label="FAILED" tone="bad" />
+            <Text className="text-sm font-semibold" style={{ color: "#f2efe8" }}>{unit.unitKey}</Text>
+            <Text className="text-sm" style={{ color: "#ff8c8c" }}>
+              {(unit.error?.cause ?? "synthesis failed").slice(0, 140)}
+            </Text>
+            {resynth.has(String(unit._id)) ? (
+              <Chip label="re-synthesising" tone="accent" />
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                onPress={() => onRetryUnit(unit._id)}
+                isDisabled={!atGate}
+                className="border-[#303946] bg-[#111820]"
+              >
+                <ButtonText className="text-[#f2efe8]">Retry</ButtonText>
+              </Button>
+            )}
+          </Box>
+        ))}
+      </Box>
+    </div>
+  ) : null;
 
   return (
-    <Screen className="flex-1 flex-col bg-background">
-      <Box className="bg-card border-b border-border px-6 py-4 flex-row justify-between items-center flex-wrap gap-3">
-        <Box className="flex-row items-center gap-3 flex-wrap">
-          <Heading size="md">Gate 3 — preview &amp; publish</Heading>
-          <Chip label={preview.run.state} tone={atGate ? "accent" : "muted"} />
-          <Chip
-            label={`${preview.summary.ready}/${preview.summary.total} ready`}
-            tone={preview.summary.ready === preview.summary.total ? "ok" : "muted"}
-          />
-          {preview.summary.blocked > 0 ? (
-            <Chip label={`${preview.summary.blocked} blocked`} tone="bad" />
-          ) : null}
-          {preview.summary.failed > 0 ? (
-            <Chip label={`${preview.summary.failed} failed`} tone="bad" />
-          ) : null}
-          <Chip label={formatMs(preview.summary.totalDurationMs)} tone="muted" />
-        </Box>
-        <Box className="flex-row items-center gap-2">
-          <Button variant="outline" size="sm" onPress={() => router.back()}>
-            <ButtonText>Back</ButtonText>
-          </Button>
+    <AdminWorkspaceFrame
+      activeNav="runs"
+      title="Step 3 - preview & publish"
+      topbarTrail={["All runs", preview.course.title]}
+      showPageHeader={false}
+      contentClassName="flex-1 min-h-0 bg-[#090d12]"
+      contentStyle={{ overflow: "hidden" }}
+    >
+      <Box className="flex-1 min-h-0">
+        <CoursePlayer
+          data={data}
+          presignedUrls={urls}
+          onRequestUrls={requestUrls}
+          studioHeader={
+            <GateThreeStudioHeader
+              courseTitle={preview.course.title}
+              meta={`CDU · voice ${preview.institution?.voiceConfig?.voiceRef ?? "default"} · ${preview.summary.totalCharacters.toLocaleString()} chars`}
+              stateLabel={runStepLabel(preview.run.state)}
+              atGate={atGate}
+              readyLabel={`${preview.summary.ready}/${preview.summary.total} ready`}
+              durationLabel={formatMs(preview.summary.totalDurationMs)}
+              blockedCount={preview.summary.blocked}
+              failedCount={preview.summary.failed}
+              busy={busy}
+              approveBlockedReason={approveBlockedReason}
+              onToggleReject={() => setRejecting((r) => !r)}
+              onApprove={onApprove}
+            >
+              {error ? (
+                <div style={{ borderTop: "1px solid #35232a", background: "rgba(126,35,35,.16)", padding: "10px 22px" }}>
+                  <Text className="text-sm" style={{ color: "#ff8c8c" }}>{error}</Text>
+                </div>
+              ) : null}
+              {rejectPanel}
+              {warningPanel}
+            </GateThreeStudioHeader>
+          }
+          onActiveUnitChange={setActiveUnitId}
+          onEditSentence={(unitId, narrationId) => {
+            if (!atGate) return;
+            setActiveUnitId(unitId);
+            setFocusTarget({ unitId, narrationId });
+          }}
+          rightRail={
+            <PreviewEditorRail
+              runId={runId}
+              unit={activeUnit}
+              focusNarrationId={focusedNarrationId}
+              resynthesizing={
+                activeUnit ? resynth.has(String(activeUnit._id)) : false
+              }
+              editable={atGate}
+              onSaved={(unitId, prevGeneratedAt, status) => {
+                if (status === "resynthesizing") {
+                  setResynth((current) =>
+                    new Map(current).set(unitId, prevGeneratedAt)
+                  );
+                }
+              }}
+              onRetry={onRetryUnit}
+              updateSentence={updateSentence}
+              updateCardEnterAtWord={updateCardEnterAtWord}
+            />
+          }
+        />
+      </Box>
+    </AdminWorkspaceFrame>
+  );
+}
+
+// --- pieces -----------------------------------------------------------------
+
+function GateThreeStudioHeader({
+  courseTitle,
+  meta,
+  stateLabel,
+  atGate,
+  readyLabel,
+  durationLabel,
+  blockedCount,
+  failedCount,
+  busy,
+  approveBlockedReason,
+  onToggleReject,
+  onApprove,
+  children,
+}: {
+  courseTitle: string;
+  meta: string;
+  stateLabel: string;
+  atGate: boolean;
+  readyLabel: string;
+  durationLabel: string;
+  blockedCount: number;
+  failedCount: number;
+  busy: boolean;
+  approveBlockedReason: string | null;
+  onToggleReject: () => void;
+  onApprove: () => void;
+  children?: ReactNode;
+}) {
+  return (
+    <div style={{ borderBottom: "1px solid #202833", background: "#090d12" }}>
+      <div
+        style={{
+          minHeight: 62,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 18,
+          padding: "12px 22px",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 16, minWidth: 0 }}>
+          <div
+            style={{
+              fontFamily: "'IBM Plex Mono', monospace",
+              color: "#d6ad2f",
+              fontSize: 10,
+              fontWeight: 800,
+              letterSpacing: ".18em",
+              textTransform: "uppercase",
+              whiteSpace: "nowrap",
+            }}
+          >
+            Step 3 / 3 - Preview & publish
+          </div>
+          <div style={{ width: 1, height: 22, background: "#26303c" }} />
+          <div style={{ minWidth: 0 }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                minWidth: 0,
+                color: "#f4f1e8",
+                fontSize: 13,
+                fontWeight: 800,
+              }}
+            >
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {courseTitle}
+              </span>
+              <span style={{ color: "#53606d" }}>·</span>
+              <span
+                style={{
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                  color: "#818b98",
+                  fontFamily: "'IBM Plex Mono', monospace",
+                  fontSize: 10,
+                  fontWeight: 600,
+                }}
+              >
+                {meta}
+              </span>
+            </div>
+          </div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flex: "0 0 auto" }}>
+          <Chip label={stateLabel} tone={atGate ? "accent" : "muted"} />
+          <Chip label={readyLabel} tone={readyLabel.startsWith("0/") ? "muted" : "ok"} />
+          {blockedCount > 0 ? <Chip label={`${blockedCount} blocked`} tone="bad" /> : null}
+          {failedCount > 0 ? <Chip label={`${failedCount} failed`} tone="bad" /> : null}
+          <Chip label={durationLabel} tone="muted" />
           <Button
             variant="outline"
             size="sm"
-            onPress={() => setRejecting((r) => !r)}
+            onPress={onToggleReject}
             isDisabled={busy || !atGate}
+            className="border-[#303946] bg-[#111820]"
           >
-            <ButtonText>Reject to gate 2</ButtonText>
+            <ButtonText className="text-[#f4f1e8]">Reject to step 2</ButtonText>
           </Button>
           <div title={approveBlockedReason ?? "Publish this course"}>
             <Button
               size="sm"
               onPress={onApprove}
-              isDisabled={busy || approveBlockedReason !== null}
+              isDisabled={busy || !atGate}
+              className="bg-[#54d486] data-[hover=true]:bg-[#48c978] data-[active=true]:bg-[#48c978]"
             >
-              <ButtonText>Approve &amp; publish</ButtonText>
+              <ButtonText className="font-bold text-[#07110b]">Approve &amp; publish</ButtonText>
             </Button>
           </div>
-        </Box>
-      </Box>
-
-      <Box className="px-6 pt-3 flex-col gap-3">
-        <Text className="text-muted-foreground text-xs">
-          {preview.course.title} · v{preview.course.version} ·{" "}
-          {preview.institution?.name ?? "CounselIQ"} · voice{" "}
-          {preview.institution?.voiceConfig?.voiceRef ?? "(default)"} ·{" "}
-          {preview.summary.totalCharacters.toLocaleString()} characters
-        </Text>
-
-        {error ? <Text className="text-destructive text-sm">{error}</Text> : null}
-
-        {rejecting ? (
-          <Box className="bg-card border border-border rounded-lg p-4 flex-col gap-2">
-            <Text className="font-semibold text-sm">
-              Reject and send back to gate 2
-            </Text>
-            <textarea
-              value={rejectNotes}
-              onChange={(e) => setRejectNotes(e.target.value)}
-              placeholder="Reviewer notes (required) — what must change before this course can publish?"
-              rows={3}
-              style={{
-                width: "100%",
-                resize: "vertical",
-                borderRadius: 8,
-                border: "1px solid var(--border, #d3d5da)",
-                padding: 10,
-                fontSize: 13,
-                fontFamily: "inherit",
-              }}
-            />
-            <Box className="flex-row gap-2">
-              <Button
-                size="sm"
-               
-                onPress={onReject}
-                isDisabled={busy || rejectNotes.trim().length === 0}
-              >
-                <ButtonText>Confirm reject</ButtonText>
-              </Button>
-              <Button variant="outline" size="sm" onPress={() => setRejecting(false)}>
-                <ButtonText>Cancel</ButtonText>
-              </Button>
-            </Box>
-          </Box>
-        ) : null}
-
-        {blockedUnits.length > 0 || failedUnits.length > 0 ? (
-          <Box className="bg-destructive/10 border border-destructive rounded-lg p-4 flex-col gap-2">
-            <Text className="font-semibold text-destructive text-sm">
-              Approval is blocked
-            </Text>
-            {blockedUnits.map((unit) => (
-              <Box key={String(unit._id)} className="flex-row items-center gap-2 flex-wrap">
-                <Chip label="BLOCKED" tone="bad" />
-                <Text className="text-sm font-semibold">{unit.unitKey}</Text>
-                <Text className="text-sm text-muted-foreground">{unit.concept}</Text>
-                <Text className="text-sm text-destructive">
-                  Unconfirmed pronunciation:{" "}
-                  {unitBlockedTerms(unit.script as UnitScript | null).join(", ") ||
-                    "(see lexicon)"}
-                  {" — resolve CONFIRM_WITH_INSTITUTION in the institution lexicon."}
-                </Text>
-              </Box>
-            ))}
-            {failedUnits.map((unit) => (
-              <Box key={String(unit._id)} className="flex-row items-center gap-2 flex-wrap">
-                <Chip label="FAILED" tone="bad" />
-                <Text className="text-sm font-semibold">{unit.unitKey}</Text>
-                <Text className="text-sm text-destructive">
-                  {(unit.error?.cause ?? "synthesis failed").slice(0, 140)}
-                </Text>
-                {resynth.has(String(unit._id)) ? (
-                  <Chip label="re-synthesising…" tone="accent" />
-                ) : (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onPress={() => onRetryUnit(unit._id)}
-                  >
-                    <ButtonText>Retry</ButtonText>
-                  </Button>
-                )}
-              </Box>
-            ))}
-          </Box>
-        ) : null}
-      </Box>
-
-      <Box className="flex-1 px-6 py-4" style={{ minHeight: 620 }}>
-        <CoursePlayer
-          data={data}
-          presignedUrls={urls}
-          onRequestUrls={requestUrls}
-          onEditSentence={(unitId, narrationId) =>
-            setEditTarget({ unitId, narrationId })
-          }
-        />
-      </Box>
-
-      <UnitInfoStrip
-        units={allUnits}
-        resynth={resynth}
-        onEdit={(unitId) => setEditTarget({ unitId, narrationId: null })}
-        onRetry={onRetryUnit}
-      />
-
-      {editUnit ? (
-        <NarrationEditPanel
-          runId={runId}
-          unit={editUnit}
-          focusNarrationId={editTarget?.narrationId ?? null}
-          resynthesizing={resynth.has(String(editUnit._id))}
-          onClose={() => setEditTarget(null)}
-          onSaved={(unitId, prevGeneratedAt, status) => {
-            if (status === "resynthesizing") {
-              setResynth((current) =>
-                new Map(current).set(unitId, prevGeneratedAt)
-              );
-            }
-          }}
-          updateSentence={updateSentence}
-        />
-      ) : null}
-    </Screen>
+        </div>
+      </div>
+      {children}
+    </div>
   );
 }
-
-// --- pieces -----------------------------------------------------------------
 
 function Chip({
   label,
@@ -449,22 +610,24 @@ function Chip({
   label: string;
   tone: "ok" | "bad" | "accent" | "muted";
 }) {
-  const palette: Record<string, { border: string; color: string }> = {
-    ok: { border: "#3f8f5f", color: "#3f8f5f" },
-    bad: { border: "#c0392b", color: "#c0392b" },
-    accent: { border: "#2f6feb", color: "#2f6feb" },
-    muted: { border: "#9aa3ad", color: "#6a737d" },
+  const palette: Record<string, { border: string; color: string; bg: string }> = {
+    ok: { border: "#215b39", color: "#62d991", bg: "rgba(36, 127, 75, .22)" },
+    bad: { border: "#6c2d32", color: "#ff8c8c", bg: "rgba(126, 35, 35, .18)" },
+    accent: { border: "#77611f", color: "#d6ad2f", bg: "rgba(214, 173, 47, .13)" },
+    muted: { border: "#2f3945", color: "#8a94a1", bg: "#111820" },
   };
-  const { border, color } = palette[tone];
+  const { border, color, bg } = palette[tone];
   return (
     <span
       style={{
         border: `1px solid ${border}`,
         color,
+        background: bg,
         borderRadius: 999,
-        padding: "2px 10px",
+        padding: "4px 10px",
         fontFamily: "'IBM Plex Mono', monospace",
         fontSize: 10,
+        fontWeight: 800,
         letterSpacing: ".08em",
         textTransform: "uppercase",
         whiteSpace: "nowrap",
@@ -475,137 +638,125 @@ function Chip({
   );
 }
 
-/** Studio facts per unit: duration, characters, beat coverage, edit/retry. */
-function UnitInfoStrip({
-  units,
-  resynth,
-  onEdit,
-  onRetry,
-}: {
-  units: Array<{
-    _id: Id<"microUnits">;
-    unitKey: string;
-    state: string;
-    error?: { retryable: boolean; cause: string } | null;
-    cards: unknown;
-    script: unknown;
-    timing: unknown;
-  }>;
-  resynth: Map<string, number>;
-  onEdit: (unitId: string) => void;
-  onRetry: (unitId: Id<"microUnits">) => void;
-}) {
-  return (
-    <ScrollView horizontal className="border-t border-border bg-card px-6 py-3">
-      <Box className="flex-row gap-3">
-        {units.map((unit) => {
-          const timing = unit.timing as UnitTiming | null;
-          const script = unit.script as UnitScript | null;
-          const cards = (unit.cards as unknown[]) ?? [];
-          const beats = timing?.cardBeats.length ?? 0;
-          const beatsMismatch = timing !== null && beats !== cards.length;
-          const busyChip = resynth.has(String(unit._id));
-          return (
-            <Box
-              key={String(unit._id)}
-              className="border border-border rounded-lg px-3 py-2 flex-col gap-1"
-              style={{ minWidth: 190 }}
-            >
-              <Box className="flex-row items-center gap-2">
-                <Text className="font-semibold text-xs">{unit.unitKey}</Text>
-                <Chip
-                  label={busyChip ? "re-synthesising…" : unit.state}
-                  tone={
-                    busyChip
-                      ? "accent"
-                      : unit.state === "assets_ready" || unit.state === "published"
-                        ? "ok"
-                        : unit.state === "blocked" || unit.error
-                          ? "bad"
-                          : "muted"
-                  }
-                />
-              </Box>
-              <Text className="text-muted-foreground text-xs">
-                {timing ? formatMs(timing.totalDurationMs) : "no audio"} ·{" "}
-                {unitCharacters(script).toLocaleString()} chars ·{" "}
-                <span style={beatsMismatch ? { color: "#c0392b", fontWeight: 600 } : undefined}>
-                  {beats}/{cards.length} beats
-                </span>
-                {timing ? ` · ${timing.voiceRef}` : ""}
-              </Text>
-              <Box className="flex-row gap-2">
-                <Button variant="outline" size="sm" onPress={() => onEdit(String(unit._id))}>
-                  <ButtonText>Edit narration</ButtonText>
-                </Button>
-                {unit.error && !busyChip ? (
-                  <Button variant="outline" size="sm" onPress={() => onRetry(unit._id)}>
-                    <ButtonText>Retry</ButtonText>
-                  </Button>
-                ) : null}
-              </Box>
-            </Box>
-          );
-        })}
-      </Box>
-    </ScrollView>
-  );
+function anchorWordCandidates(text: string): string[] {
+  const matches = text.match(/[A-Za-z0-9$'-]+/g) ?? [];
+  const unique = new Set<string>();
+  for (const entry of matches) {
+    const word = entry.trim();
+    if (!word) continue;
+    unique.add(word);
+    if (unique.size >= 18) break;
+  }
+  return [...unique];
 }
 
-/** E5 — the minimal single-sentence edit loop, as a right slide-over. */
-function NarrationEditPanel({
+function cardDisplayName(template: string): string {
+  return template
+    .split("-")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+/** Step 3 right rail — always-open narration + beat editor. */
+function PreviewEditorRail({
   runId,
   unit,
   focusNarrationId,
   resynthesizing,
-  onClose,
+  editable,
   onSaved,
+  onRetry,
   updateSentence,
+  updateCardEnterAtWord,
 }: {
   runId: Id<"runs">;
-  unit: {
-    _id: Id<"microUnits">;
-    unitKey: string;
-    narration: unknown;
-    cards: unknown;
-    timing: unknown;
-    state: string;
-  };
+  unit:
+    | {
+        _id: Id<"microUnits">;
+        unitKey: string;
+        narration: unknown;
+        cards: unknown;
+        script: unknown;
+        timing: unknown;
+        state: string;
+        error?: { retryable: boolean; cause: string } | null;
+      }
+    | null;
   focusNarrationId: string | null;
   resynthesizing: boolean;
-  onClose: () => void;
+  editable: boolean;
   onSaved: (
     unitId: string,
     prevGeneratedAt: number,
     status: "updated" | "blocked" | "resynthesizing"
   ) => void;
+  onRetry: (unitId: Id<"microUnits">) => void;
   updateSentence: (args: {
     runId: Id<"runs">;
     unitId: Id<"microUnits">;
     narrationId: string;
     text: string;
   }) => Promise<{ status: "updated" | "blocked" | "resynthesizing" }>;
+  updateCardEnterAtWord: (args: {
+    runId: Id<"runs">;
+    unitId: Id<"microUnits">;
+    cardIndex: number;
+    word: string;
+  }) => Promise<{ status: "updated" }>;
 }) {
-  const sentences = (unit.narration as PreviewNarrationSentence[]) ?? [];
-  const cards = (unit.cards as PreviewCard[]) ?? [];
-  const timing = unit.timing as UnitTiming | null;
+  const sentences = ((unit?.narration ?? []) as PreviewNarrationSentence[]) ?? [];
+  const cards = ((unit?.cards ?? []) as PreviewCard[]) ?? [];
+  const timing = (unit?.timing as UnitTiming | null) ?? null;
+  const script = unit?.script as UnitScript | null | undefined;
 
   const [editingId, setEditingId] = useState<string | null>(focusNarrationId);
-  const [draft, setDraft] = useState<string>(() => {
-    const focused = sentences.find((s) => s.id === focusNarrationId);
-    return focused?.text ?? "";
-  });
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [draft, setDraft] = useState("");
+  const [savingSentence, setSavingSentence] = useState(false);
+  const [sentenceError, setSentenceError] = useState<string | null>(null);
+  const [beatDrafts, setBeatDrafts] = useState<Record<number, string>>({});
+  const [beatErrors, setBeatErrors] = useState<Record<number, string | null>>({});
+  const [savingBeatIndex, setSavingBeatIndex] = useState<number | null>(null);
 
-  const startEdit = (sentence: PreviewNarrationSentence) => {
+  useEffect(() => {
+    if (!focusNarrationId) return;
+    if (!editable) return;
+    const sentence = sentences.find((entry) => entry.id === focusNarrationId);
+    if (!sentence) return;
     setEditingId(sentence.id);
     setDraft(sentence.text);
-    setError(null);
-  };
+    setSentenceError(null);
+  }, [editable, focusNarrationId, sentences]);
 
-  // Card anchors that the current draft would orphan (pre-validation; the
-  // backend enforces the same rule with NARRATION_EDIT_BREAKS_CARD).
+  useEffect(() => {
+    if (!editable) {
+      setEditingId(null);
+      setSentenceError(null);
+    }
+  }, [editable]);
+
+  useEffect(() => {
+    if (!unit) {
+      setBeatDrafts({});
+      setBeatErrors({});
+      return;
+    }
+    const nextDrafts: Record<number, string> = {};
+    for (let i = 0; i < cards.length; i += 1) {
+      nextDrafts[i] = cards[i].enterAt.word;
+    }
+    setBeatDrafts(nextDrafts);
+    setBeatErrors({});
+  }, [unit?._id, cards]);
+
+  if (!unit) {
+    return (
+      <div style={{ padding: 14, color: "#9aa3ad" }}>
+        Select a unit to edit narration and card beats.
+      </div>
+    );
+  }
+
   const brokenAnchors =
     editingId === null
       ? []
@@ -617,10 +768,17 @@ function NarrationEditPanel({
               !draft.includes(card.enterAt.word)
           );
 
-  const onSave = async () => {
-    if (!editingId) return;
-    setSaving(true);
-    setError(null);
+  const startEditSentence = (sentence: PreviewNarrationSentence) => {
+    if (!editable) return;
+    setEditingId(sentence.id);
+    setDraft(sentence.text);
+    setSentenceError(null);
+  };
+
+  const onSaveSentence = async () => {
+    if (!editingId || !editable) return;
+    setSavingSentence(true);
+    setSentenceError(null);
     try {
       const prevGeneratedAt = timing?.generatedAt ?? 0;
       const result = await updateSentence({
@@ -632,140 +790,307 @@ function NarrationEditPanel({
       onSaved(String(unit._id), prevGeneratedAt, result.status);
       setEditingId(null);
     } catch (err) {
-      setError(getUserFacingErrorMessage(err, "Edit failed. Try again."));
+      setSentenceError(getUserFacingErrorMessage(err, "Edit failed. Try again."));
     } finally {
-      setSaving(false);
+      setSavingSentence(false);
     }
   };
 
+  const onSaveBeatWord = async (cardIndex: number) => {
+    if (!editable) return;
+    const card = cards[cardIndex];
+    if (!card) return;
+    const nextWord = (beatDrafts[cardIndex] ?? "").trim();
+    const sentence = sentences.find((entry) => entry.id === card.enterAt.narration);
+    if (!sentence || nextWord.length === 0 || !sentence.text.includes(nextWord)) {
+      setBeatErrors((current) => ({
+        ...current,
+        [cardIndex]: "Word must appear in the linked narration sentence.",
+      }));
+      return;
+    }
+
+    setSavingBeatIndex(cardIndex);
+    setBeatErrors((current) => ({ ...current, [cardIndex]: null }));
+    try {
+      await updateCardEnterAtWord({
+        runId,
+        unitId: unit._id,
+        cardIndex,
+        word: nextWord,
+      });
+    } catch (err) {
+      setBeatErrors((current) => ({
+        ...current,
+        [cardIndex]: getUserFacingErrorMessage(err, "Could not update card beat."),
+      }));
+    } finally {
+      setSavingBeatIndex(null);
+    }
+  };
+
+  const beatCount = timing?.cardBeats.length ?? 0;
+  const beatsMismatch = timing !== null && beatCount !== cards.length;
+
   return (
-    <div
-      role="dialog"
-      aria-label={`Edit narration — ${unit.unitKey}`}
-      style={{
-        position: "fixed",
-        top: 0,
-        right: 0,
-        bottom: 0,
-        width: "min(440px, 92vw)",
-        background: "#ffffff",
-        borderLeft: "1px solid #d3d5da",
-        boxShadow: "-12px 0 32px rgba(15, 18, 22, .18)",
-        zIndex: 60,
-        display: "flex",
-        flexDirection: "column",
-      }}
-    >
-      <Box className="flex-row justify-between items-center border-b border-border px-4 py-3">
-        <Box className="flex-col">
-          <Text className="font-semibold text-sm">
-            Narration — {unit.unitKey}
-          </Text>
-          <Text className="text-muted-foreground text-xs">
-            Edits re-synthesise only the changed sentence.
-          </Text>
-        </Box>
-        <Box className="flex-row items-center gap-2">
-          {resynthesizing ? <Chip label="re-synthesising…" tone="accent" /> : null}
-          {unit.state === "blocked" ? <Chip label="BLOCKED" tone="bad" /> : null}
-          <Button variant="outline" size="sm" onPress={onClose}>
-            <ButtonText>Close</ButtonText>
+    <div style={{ padding: "24px 22px", display: "flex", flexDirection: "column", gap: 18 }}>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 14 }}>
+        <div style={{ flex: "1 1 auto", minWidth: 0 }}>
+          <div style={{ color: "#f4f1e8", fontSize: 18, fontWeight: 800, lineHeight: 1.15 }}>
+            Script &amp; cards
+          </div>
+          <div style={{ marginTop: 6, color: "#8b95a2", fontSize: 12, lineHeight: "17px" }}>
+            Each card is anchored to the word it appears on. Tap a beat to preview it.
+          </div>
+        </div>
+        <div style={{ textAlign: "right", flex: "0 0 auto" }}>
+          <div style={{ color: "#8b95a2", fontSize: 12, lineHeight: "17px", whiteSpace: "nowrap" }}>
+            {cards.length} cards
+          </div>
+          <div style={{ color: beatsMismatch ? "#ff8c8c" : "#8b95a2", fontSize: 12, lineHeight: "17px", whiteSpace: "nowrap" }}>
+            {unitCharacters(script).toLocaleString()} chars
+          </div>
+        </div>
+      </div>
+
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <Chip
+          label={resynthesizing ? "re-synthesising" : unit.state}
+          tone={
+            resynthesizing
+              ? "accent"
+              : unit.state === "assets_ready" || unit.state === "published"
+                ? "ok"
+                : unit.state === "blocked" || unit.error
+                  ? "bad"
+                  : "muted"
+          }
+        />
+        <Chip label={timing ? formatMs(timing.totalDurationMs) : "no audio"} tone="muted" />
+        <Chip label={`${beatCount}/${cards.length} beats`} tone={beatsMismatch ? "bad" : "muted"} />
+        {unit.error && !resynthesizing ? (
+          <Button
+            variant="outline"
+            size="sm"
+            onPress={() => onRetry(unit._id)}
+            isDisabled={!editable}
+            className="border-[#303946] bg-[#111820]"
+          >
+            <ButtonText className="text-[#f4f1e8]">Retry</ButtonText>
           </Button>
-        </Box>
-      </Box>
-      <div style={{ flex: 1, overflowY: "auto", padding: 16 }}>
-        {sentences.map((sentence) => {
-          const anchored = cards.filter(
-            (card) => card.enterAt.narration === sentence.id
-          );
+        ) : null}
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+        {sentences.map((sentence, sentenceIndex) => {
+          const anchored = cards
+            .map((card, index) => ({ card, index }))
+            .filter(({ card }) => card.enterAt.narration === sentence.id);
           const isEditing = editingId === sentence.id;
           return (
-            <div
-              key={sentence.id}
-              style={{
-                border: `1px solid ${isEditing ? "#2f6feb" : "#e2e4e8"}`,
-                borderRadius: 10,
-                padding: 12,
-                marginBottom: 10,
-              }}
-            >
-              <Box className="flex-row justify-between items-center">
-                <Text className="text-muted-foreground text-xs">
-                  {sentence.id}
-                  {anchored.length > 0
-                    ? ` · anchors ${anchored
-                        .map((c) => `“${c.enterAt.word}”`)
-                        .join(", ")}`
-                    : ""}
-                </Text>
-                {!isEditing ? (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onPress={() => startEdit(sentence)}
-                  >
-                    <ButtonText>Edit</ButtonText>
-                  </Button>
-                ) : null}
-              </Box>
-              {isEditing ? (
-                <div style={{ marginTop: 8 }}>
-                  <textarea
-                    value={draft}
-                    onChange={(e) => setDraft(e.target.value)}
-                    rows={3}
-                    autoFocus
-                    style={{
-                      width: "100%",
-                      resize: "vertical",
-                      borderRadius: 8,
-                      border: "1px solid #d3d5da",
-                      padding: 10,
-                      fontSize: 13,
-                      fontFamily: "inherit",
-                    }}
-                  />
-                  {brokenAnchors.length > 0 ? (
-                    <Text className="text-destructive text-xs">
-                      Card anchor
-                      {brokenAnchors.length > 1 ? "s" : ""}{" "}
-                      {brokenAnchors
-                        .map(
-                          ({ card, index }) =>
-                            `#${index + 1} “${card.enterAt.word}”`
-                        )
-                        .join(", ")}{" "}
-                      no longer appear{brokenAnchors.length > 1 ? "" : "s"} in
-                      the sentence — restore the word or edit the card first.
-                    </Text>
-                  ) : null}
-                  {error ? (
-                    <Text className="text-destructive text-xs">{error}</Text>
-                  ) : null}
-                  <Box className="flex-row gap-2 mt-2">
-                    <Button
-                      size="sm"
-                      onPress={onSave}
-                      isDisabled={
-                        saving ||
-                        draft.trim().length === 0 ||
-                        brokenAnchors.length > 0
-                      }
-                    >
-                      <ButtonText>{saving ? "Saving…" : "Save"}</ButtonText>
-                    </Button>
+            <div key={sentence.id} style={{ display: "grid", gridTemplateColumns: "28px 1fr", gap: 12 }}>
+              <div style={{ position: "relative", display: "flex", justifyContent: "center" }}>
+                <div
+                  style={{
+                    position: "absolute",
+                    top: 20,
+                    bottom: -18,
+                    width: 1,
+                    background: sentenceIndex === sentences.length - 1 ? "transparent" : "#27303b",
+                  }}
+                />
+                <div
+                  style={{
+                    zIndex: 1,
+                    color: "#697480",
+                    fontFamily: "'IBM Plex Mono', monospace",
+                    fontSize: 10,
+                    paddingTop: 3,
+                  }}
+                >
+                  n{sentenceIndex + 1}
+                </div>
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                  <p style={{ margin: 0, color: "#f2efe8", fontSize: 14, lineHeight: "21px" }}>
+                    {sentence.text}
+                  </p>
+                  {!isEditing && editable ? (
                     <Button
                       variant="outline"
                       size="sm"
-                      onPress={() => setEditingId(null)}
+                      onPress={() => startEditSentence(sentence)}
+                      className="h-7 border-[#303946] bg-[#111820] px-2"
                     >
-                      <ButtonText>Cancel</ButtonText>
+                      <ButtonText className="text-[11px] text-[#f4f1e8]">Edit</ButtonText>
                     </Button>
-                  </Box>
+                  ) : null}
                 </div>
-              ) : (
-                <Text className="text-sm mt-1">{sentence.text}</Text>
-              )}
+
+                {isEditing ? (
+                  <div style={{ marginTop: 10 }}>
+                    <textarea
+                      value={draft}
+                      onChange={(event) => setDraft(event.target.value)}
+                      rows={4}
+                      style={{
+                        width: "100%",
+                        resize: "vertical",
+                        borderRadius: 10,
+                        border: "1px solid #3f4754",
+                        background: "#080d12",
+                        color: "#e8e6e1",
+                        padding: 11,
+                        fontSize: 13,
+                        lineHeight: 1.5,
+                        fontFamily: "inherit",
+                        outline: "none",
+                      }}
+                    />
+                    {brokenAnchors.length > 0 ? (
+                      <div style={{ marginTop: 8, color: "#ff8c8c", fontSize: 12, lineHeight: "17px" }}>
+                        Card anchor{brokenAnchors.length > 1 ? "s" : ""} {brokenAnchors
+                          .map(({ card, index }) => `#${index + 1} "${card.enterAt.word}"`)
+                          .join(", ")} no longer appear in this sentence.
+                      </div>
+                    ) : null}
+                    {sentenceError ? (
+                      <div style={{ marginTop: 8, color: "#ff8c8c", fontSize: 12, lineHeight: "17px" }}>
+                        {sentenceError}
+                      </div>
+                    ) : null}
+                    <Box className="mt-3 flex-row gap-2">
+                      <Button
+                        size="sm"
+                        onPress={onSaveSentence}
+                        isDisabled={!editable || savingSentence || draft.trim().length === 0 || brokenAnchors.length > 0}
+                        className="bg-[#d6ad2f] data-[hover=true]:bg-[#cba126] data-[active=true]:bg-[#cba126]"
+                      >
+                        <ButtonText className="text-[#101419]">
+                          {savingSentence ? "Saving" : "Save"}
+                        </ButtonText>
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onPress={() => setEditingId(null)}
+                        className="border-[#303946] bg-[#111820]"
+                      >
+                        <ButtonText className="text-[#f4f1e8]">Cancel</ButtonText>
+                      </Button>
+                    </Box>
+                  </div>
+                ) : null}
+
+                {anchored.length > 0 ? (
+                  <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 10 }}>
+                    {anchored.map(({ card, index }) => {
+                      const draftWord = beatDrafts[index] ?? "";
+                      const choices = anchorWordCandidates(sentence.text);
+                      return (
+                        <div
+                          key={`${sentence.id}-${index}`}
+                          style={{
+                            border: `1px solid ${index === 0 ? "#78611e" : "#27313d"}`,
+                            borderRadius: 12,
+                            background: index === 0 ? "rgba(214,173,47,.09)" : "#111820",
+                            padding: 12,
+                          }}
+                        >
+                          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                            <div
+                              style={{
+                                width: 38,
+                                height: 38,
+                                borderRadius: 8,
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                background: "#122236",
+                                color: index === 0 ? "#d6ad2f" : "#7ea7df",
+                                border: "1px solid #203247",
+                                fontFamily: "'IBM Plex Mono', monospace",
+                                fontSize: 12,
+                                fontWeight: 800,
+                              }}
+                            >
+                              {card.template.slice(0, 2).toUpperCase()}
+                            </div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ color: "#f4f1e8", fontSize: 13, fontWeight: 700, lineHeight: "18px" }}>
+                                {cardDisplayName(card.template)}
+                              </div>
+                              <div style={{ marginTop: 2, color: "#8b95a2", fontSize: 12, lineHeight: "17px" }}>
+                                enters at "{card.enterAt.word}"
+                              </div>
+                            </div>
+                          </div>
+                          <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
+                            <input
+                              value={draftWord}
+                              disabled={!editable}
+                              onChange={(event) =>
+                                setBeatDrafts((current) => ({ ...current, [index]: event.target.value }))
+                              }
+                              placeholder="Enter-at word"
+                              style={{
+                                flex: 1,
+                                minWidth: 0,
+                                borderRadius: 8,
+                                border: "1px solid #303946",
+                                background: "#080d12",
+                                color: "#e8e6e1",
+                                padding: "8px 10px",
+                                fontSize: 12,
+                                outline: "none",
+                              }}
+                            />
+                            <Button
+                              size="sm"
+                              onPress={() => onSaveBeatWord(index)}
+                              isDisabled={!editable || savingBeatIndex === index || draftWord.trim().length === 0}
+                              className="bg-[#d6ad2f] data-[hover=true]:bg-[#cba126] data-[active=true]:bg-[#cba126]"
+                            >
+                              <ButtonText className="text-[#101419]">
+                                {savingBeatIndex === index ? "Saving" : "Save"}
+                              </ButtonText>
+                            </Button>
+                          </div>
+                          {choices.length > 0 ? (
+                            <div style={{ marginTop: 8, display: "flex", gap: 6, flexWrap: "wrap" }}>
+                              {choices.slice(0, 8).map((word) => (
+                                <button
+                                  key={`${index}-${word}`}
+                                  type="button"
+                                  disabled={!editable}
+                                  onClick={() => setBeatDrafts((current) => ({ ...current, [index]: word }))}
+                                  style={{
+                                    border: "1px solid #303946",
+                                    borderRadius: 999,
+                                    background: "transparent",
+                                    color: "#8b95a2",
+                                    fontSize: 10,
+                                    padding: "2px 8px",
+                                    cursor: "pointer",
+                                  }}
+                                >
+                                  {word}
+                                </button>
+                              ))}
+                            </div>
+                          ) : null}
+                          {beatErrors[index] ? (
+                            <div style={{ marginTop: 8, color: "#ff8c8c", fontSize: 12, lineHeight: "17px" }}>
+                              {beatErrors[index]}
+                            </div>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : null}
+              </div>
             </div>
           );
         })}
