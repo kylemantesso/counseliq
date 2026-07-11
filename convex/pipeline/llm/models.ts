@@ -1,16 +1,14 @@
 /**
  * Per-task model routing for the extraction + compilation pipeline.
  *
- * Changing the model for a task is a one-line change here (or an env var on
- * the Convex deployment — env always wins). Eval runs record model + prompt
- * version together, so swaps are measurable.
+ * Priority order: admin-configured model > env override > code default.
+ * Eval runs record model + prompt version together, so swaps are measurable.
  *
  * Task requirements:
  * - extract-page:      vision (page PNG input), structured output. Moderate
  *                      context (one page + preamble).
  * - merge-inventory:   structured output, long context (all candidate
  *                      concepts from every page of every doc in the run).
- * - infer-theme:       vision (2-3 page renders), structured output.
  * - compile-structure: structured output, long context (the whole reviewed
  *                      inventory).
  * - author-unit:       structured output; drafts narration, cards, and
@@ -28,20 +26,24 @@
  *                      in the gated flow.
  */
 
-export type LlmTask =
-  | "extract-page"
-  | "merge-inventory"
-  | "infer-theme"
-  | "compile-structure"
-  | "author-unit"
-  | "judge-course"
-  | "tag-asset"
-  | "outline-course";
+export const LLM_TASKS = [
+  "extract-page",
+  "merge-inventory",
+  "compile-structure",
+  "author-unit",
+  "judge-course",
+  "tag-asset",
+  "outline-course",
+] as const;
 
-const DEFAULT_MODELS: Record<LlmTask, string> = {
+export type LlmTask = (typeof LLM_TASKS)[number];
+export type LlmModelRouting = Record<LlmTask, string>;
+export type LlmModelOverrides = Partial<LlmModelRouting>;
+export type LlmModelSource = "config" | "env" | "default";
+
+const DEFAULT_MODELS: LlmModelRouting = {
   "extract-page": "google/gemini-2.5-flash",
   "merge-inventory": "google/gemini-2.5-flash",
-  "infer-theme": "google/gemini-2.5-flash",
   "compile-structure": "google/gemini-2.5-flash",
   "author-unit": "google/gemini-2.5-flash",
   // Different family than the Gemini authoring tasks, deliberately.
@@ -53,13 +55,44 @@ const DEFAULT_MODELS: Record<LlmTask, string> = {
 const ENV_OVERRIDES: Record<LlmTask, string> = {
   "extract-page": "MODEL_EXTRACT_PAGE",
   "merge-inventory": "MODEL_MERGE_INVENTORY",
-  "infer-theme": "MODEL_INFER_THEME",
   "compile-structure": "MODEL_COMPILE_STRUCTURE",
   "author-unit": "MODEL_AUTHOR_UNIT",
   "judge-course": "MODEL_JUDGE_COURSE",
   "tag-asset": "MODEL_TAG_ASSET",
   "outline-course": "MODEL_OUTLINE_COURSE",
 };
+
+function normalizedOverride(value: string | null | undefined): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed === "" ? null : trimmed;
+}
+
+export function isLlmTask(value: string): value is LlmTask {
+  return (LLM_TASKS as readonly string[]).includes(value);
+}
+
+export function defaultModelForTask(task: LlmTask): string {
+  return DEFAULT_MODELS[task];
+}
+
+export function envOverrideVarForTask(task: LlmTask): string {
+  return ENV_OVERRIDES[task];
+}
+
+/** Where a task's currently-resolved model comes from. */
+export function modelSourceForTask(
+  task: LlmTask,
+  configuredOverrides?: LlmModelOverrides
+): LlmModelSource {
+  if (normalizedOverride(configuredOverrides?.[task])) {
+    return "config";
+  }
+  if (normalizedOverride(process.env[ENV_OVERRIDES[task]])) {
+    return "env";
+  }
+  return "default";
+}
 
 /**
  * Output-token caps per task. Sent as max_tokens on every request: bounds
@@ -68,9 +101,10 @@ const ENV_OVERRIDES: Record<LlmTask, string> = {
  * requests on credit-limited keys with a 402.
  */
 const MAX_OUTPUT_TOKENS: Record<LlmTask, number> = {
-  "extract-page": 4096,
+  // Dense pages can exceed 4k JSON output when the model emits many facts,
+  // entities, and quotes; 8k materially reduces mid-JSON truncation failures.
+  "extract-page": 8192,
   "merge-inventory": 16384,
-  "infer-theme": 2048,
   // Reasoning models (Gemini 2.5) spend thinking tokens from the same
   // budget; a tight cap starves the JSON itself and truncates mid-string.
   "compile-structure": 16384,
@@ -80,12 +114,16 @@ const MAX_OUTPUT_TOKENS: Record<LlmTask, number> = {
   "outline-course": 16384,
 };
 
-/** OpenRouter model string for a task (env override > default). */
-export function modelForTask(task: LlmTask): string {
-  const override = process.env[ENV_OVERRIDES[task]];
-  return override && override.trim() !== ""
-    ? override.trim()
-    : DEFAULT_MODELS[task];
+/** OpenRouter model string for a task (config > env > default). */
+export function modelForTask(
+  task: LlmTask,
+  configuredOverrides?: LlmModelOverrides
+): string {
+  return (
+    normalizedOverride(configuredOverrides?.[task]) ??
+    normalizedOverride(process.env[ENV_OVERRIDES[task]]) ??
+    DEFAULT_MODELS[task]
+  );
 }
 
 /** max_tokens for a task's requests. */
@@ -94,15 +132,16 @@ export function maxTokensForTask(task: LlmTask): number {
 }
 
 /** All tasks with their currently-routed models (for runs.promptVersions). */
-export function currentModelRouting(): Record<LlmTask, string> {
+export function currentModelRouting(
+  configuredOverrides?: LlmModelOverrides
+): LlmModelRouting {
   return {
-    "extract-page": modelForTask("extract-page"),
-    "merge-inventory": modelForTask("merge-inventory"),
-    "infer-theme": modelForTask("infer-theme"),
-    "compile-structure": modelForTask("compile-structure"),
-    "author-unit": modelForTask("author-unit"),
-    "judge-course": modelForTask("judge-course"),
-    "tag-asset": modelForTask("tag-asset"),
-    "outline-course": modelForTask("outline-course"),
+    "extract-page": modelForTask("extract-page", configuredOverrides),
+    "merge-inventory": modelForTask("merge-inventory", configuredOverrides),
+    "compile-structure": modelForTask("compile-structure", configuredOverrides),
+    "author-unit": modelForTask("author-unit", configuredOverrides),
+    "judge-course": modelForTask("judge-course", configuredOverrides),
+    "tag-asset": modelForTask("tag-asset", configuredOverrides),
+    "outline-course": modelForTask("outline-course", configuredOverrides),
   };
 }

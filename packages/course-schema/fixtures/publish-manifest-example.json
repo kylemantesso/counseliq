@@ -1,5 +1,5 @@
 {
-  "$schema": "counseliq://publish-manifest/v1",
+  "$schema": "counseliq://publish-manifest/v2",
   "courseId": "latrobe-health-innovation-101",
   "courseVersion": 2,
   "specHash": "3f1a2b4c5d6e7f8091a2b3c4d5e6f70123456789abcdef0123456789abcdef01",
@@ -60,7 +60,11 @@
         ]
       },
       "timingKey": "sha256/1111111111111111111111111111111111111111111111111111111111111111.json",
-      "timingSchemaVersion": 1
+      "timingSchemaVersion": 2,
+      "assetRefs": [
+        "k57z8k6hgg4n4n6kqkbhqf9v4x7n1z2p",
+        "c2w7q4z6m0f8k2p9v1n5d3r7s4t8y6u"
+      ]
     },
     {
       "unitId": "mu-102",
@@ -77,15 +81,43 @@
         ]
       },
       "timingKey": "sha256/2222222222222222222222222222222222222222222222222222222222222222.json",
-      "timingSchemaVersion": 1
+      "timingSchemaVersion": 2,
+      "assetRefs": [
+        "k57z8k6hgg4n4n6kqkbhqf9v4x7n1z2p"
+      ]
     }
   ],
+  "assets": {
+    "k57z8k6hgg4n4n6kqkbhqf9v4x7n1z2p": {
+      "assetRef": "k57z8k6hgg4n4n6kqkbhqf9v4x7n1z2p",
+      "kind": "image",
+      "objectKey": "sha256/7777777777777777777777777777777777777777777777777777777777777777.png",
+      "thumbKey": "sha256/8888888888888888888888888888888888888888888888888888888888888888.jpg",
+      "width": 1600,
+      "height": 900,
+      "aspect": "landscape"
+    },
+    "c2w7q4z6m0f8k2p9v1n5d3r7s4t8y6u": {
+      "assetRef": "c2w7q4z6m0f8k2p9v1n5d3r7s4t8y6u",
+      "kind": "video",
+      "objectKey": "sha256/9999999999999999999999999999999999999999999999999999999999999999.mp4",
+      "thumbKey": "sha256/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.jpg",
+      "width": 1080,
+      "height": 1920,
+      "aspect": "portrait",
+      "durationMs": 6800
+    }
+  },
   "artifactKeys": [
     "sha256/3f1a2b4c5d6e7f8091a2b3c4d5e6f70123456789abcdef0123456789abcdef01.json",
     "sha256/0101010101010101010101010101010101010101010101010101010101010101.mp3",
     "sha256/0202020202020202020202020202020202020202020202020202020202020202.mp3",
     "sha256/0303030303030303030303030303030303030303030303030303030303030303.mp3",
     "sha256/1111111111111111111111111111111111111111111111111111111111111111.json",
-    "sha256/2222222222222222222222222222222222222222222222222222222222222222.json"
+    "sha256/2222222222222222222222222222222222222222222222222222222222222222.json",
+    "sha256/7777777777777777777777777777777777777777777777777777777777777777.png",
+    "sha256/8888888888888888888888888888888888888888888888888888888888888888.jpg",
+    "sha256/9999999999999999999999999999999999999999999999999999999999999999.mp4",
+    "sha256/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.jpg"
   ]
 }

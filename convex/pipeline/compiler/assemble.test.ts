@@ -6,6 +6,8 @@ import {
   buildOutlineUserText,
   buildUnitUserText,
   mediaContextFromCatalogue,
+  normalizeCardEnterAtAnchors,
+  normalizeOpeningTitleCard,
   partitionComplianceViolations,
   plansFromOutline,
   tryAssemble,
@@ -16,6 +18,12 @@ import {
 } from "./assemble";
 
 const KNOWN_PROVENANCE = new Set(["doc:abc123:page:2", "doc:abc123:page:3"]);
+const APPROVED_SOURCE_LABELS = new Set([
+  "Deakin facts 2024",
+  "QS World University Rankings 2024",
+  "Employer outcomes survey 2024",
+  "Student survey 2024",
+]);
 
 function makeAuthoredUnit(
   overrides: Partial<LlmAuthoredUnit> = {}
@@ -161,7 +169,7 @@ describe("unitComplianceViolations", () => {
       props: {
         value: "#1",
         label: "Australia's largest online provider",
-        sourceLabel: "University marketing claim",
+        sourceLabel: "QS World University Rankings 2024",
       },
     };
     expect(unitComplianceViolations(unit, KNOWN_PROVENANCE, NO_MEDIA)).toEqual([]);
@@ -271,11 +279,71 @@ describe("unitComplianceViolations", () => {
       props: {
         value: "100%",
         label: "Employment is guaranteed for graduates",
-        sourceLabel: "Marketing",
+        sourceLabel: "Employer outcomes survey 2024",
       },
     };
     const violations = unitComplianceViolations(unit, KNOWN_PROVENANCE, NO_MEDIA);
     expect(violations.some((v) => v.includes("employment-guarantee"))).toBe(true);
+  });
+
+  test("rejects source labels not present in approved unit facts", () => {
+    const unit = makeAuthoredUnit({
+      cards: [
+        {
+          template: "stat-card",
+          props: {
+            value: "#1",
+            label: "The university describes itself as Australia's largest regional provider",
+            sourceLabel: "Charles Darwin University marketing claim",
+          },
+          enterAt: { narration: "n1", word: "campuses" },
+          provenance: "doc:abc123:page:2",
+        },
+      ],
+    });
+
+    const violations = unitComplianceViolations(
+      unit,
+      KNOWN_PROVENANCE,
+      NO_MEDIA,
+      APPROVED_SOURCE_LABELS
+    );
+    expect(
+      violations.some((v) =>
+        v.includes("source-authenticity") &&
+        v.includes('sourceLabel "Charles Darwin University marketing claim"')
+      )
+    ).toBe(true);
+  });
+
+  test("rejects claim-marker kicker when it is not an approved source label", () => {
+    const unit = makeAuthoredUnit({
+      cards: [
+        {
+          template: "image-text-card",
+          props: {
+            text: "Tuition fees are quoted in Australian dollars.",
+            kicker: "CDU Claim",
+            title: "Lowest tuition fees",
+          },
+          enterAt: { narration: "n1", word: "Tuition" },
+          provenance: "doc:abc123:page:2",
+        },
+      ],
+    });
+
+    const violations = unitComplianceViolations(
+      unit,
+      KNOWN_PROVENANCE,
+      NO_MEDIA,
+      APPROVED_SOURCE_LABELS
+    );
+    expect(
+      violations.some((v) =>
+        v.includes("source-authenticity") &&
+        v.includes('uses kicker "CDU Claim"')
+      )
+    ).toBe(true);
   });
 
   test("a card transcribing its narration sentence is caught", () => {
@@ -300,6 +368,287 @@ describe("unitComplianceViolations", () => {
     };
     const violations = unitComplianceViolations(unit, KNOWN_PROVENANCE, NO_MEDIA);
     expect(violations.some((v) => v.includes("sourceLabel"))).toBe(true);
+  });
+
+  test("title opener linger is flagged when first content card stays in n1", () => {
+    const unit = makeAuthoredUnit({
+      narration: [
+        { id: "n1", text: "Deakin University has five campuses across Victoria." },
+        { id: "n2", text: "Its Burwood campus is the largest by enrolment." },
+        { id: "n3", text: "Placements are available in metro and regional settings." },
+      ],
+      cards: [
+        {
+          template: "title-card",
+          props: { title: "Campus network", kicker: "MODULE 1" },
+          enterAt: { narration: "n1", word: "Deakin" },
+          provenance: "compiler:derived",
+        },
+        {
+          template: "stat-card",
+          props: {
+            value: "5",
+            label: "campuses",
+            sourceLabel: "Deakin facts 2024",
+          },
+          enterAt: { narration: "n1", word: "campuses" },
+          provenance: "doc:abc123:page:3",
+        },
+        {
+          template: "quote-card",
+          props: {
+            quote: "Students compare placement access across locations.",
+            sourceLabel: "Counsellor workshop 2025",
+          },
+          enterAt: { narration: "n3", word: "Placements" },
+          provenance: "doc:abc123:page:2",
+        },
+      ],
+    });
+
+    const violations = unitComplianceViolations(unit, KNOWN_PROVENANCE, NO_MEDIA);
+    expect(violations.some((v) => v.includes("title-card pacing"))).toBe(true);
+  });
+
+  test("title-card handoff is flagged when first content card uses a late n2 word", () => {
+    const unit = makeAuthoredUnit({
+      narration: [
+        { id: "n1", text: "Deakin University has five campuses across Victoria." },
+        { id: "n2", text: "Its Burwood campus is the largest by enrolment." },
+        { id: "n3", text: "Placements are available in metro and regional settings." },
+      ],
+      cards: [
+        {
+          template: "title-card",
+          props: { title: "Campus network", kicker: "MODULE 1" },
+          enterAt: { narration: "n1", word: "Deakin" },
+          provenance: "compiler:derived",
+        },
+        {
+          template: "stat-card",
+          props: {
+            value: "5",
+            label: "campuses",
+            sourceLabel: "Deakin facts 2024",
+          },
+          enterAt: { narration: "n2", word: "largest" },
+          provenance: "doc:abc123:page:3",
+        },
+      ],
+    });
+
+    const violations = unitComplianceViolations(unit, KNOWN_PROVENANCE, NO_MEDIA);
+    expect(violations.some((v) => v.includes("title-card pacing"))).toBe(true);
+  });
+
+  test("sparse card density on longer narration is flagged", () => {
+    const unit = makeAuthoredUnit({
+      narration: [
+        { id: "n1", text: "Deakin University has five campuses across Victoria." },
+        { id: "n2", text: "Its Burwood campus is the largest by enrolment." },
+        { id: "n3", text: "Placements run through metro and regional partners." },
+        { id: "n4", text: "Students compare these pathways before finalising offers." },
+      ],
+      cards: [
+        {
+          template: "title-card",
+          props: { title: "Campus network", kicker: "MODULE 1" },
+          enterAt: { narration: "n1", word: "Deakin" },
+          provenance: "compiler:derived",
+        },
+        {
+          template: "stat-card",
+          props: {
+            value: "5",
+            label: "campuses",
+            sourceLabel: "Deakin facts 2024",
+          },
+          enterAt: { narration: "n1", word: "Victoria" },
+          provenance: "doc:abc123:page:3",
+        },
+      ],
+    });
+
+    const violations = unitComplianceViolations(unit, KNOWN_PROVENANCE, NO_MEDIA);
+    expect(violations.some((v) => v.includes("card pacing: 2 card(s) for 4 narration sentence(s)"))).toBe(true);
+  });
+
+  test("skipped narration spans between card beats are flagged", () => {
+    const unit = makeAuthoredUnit({
+      narration: [
+        { id: "n1", text: "Deakin University has five campuses across Victoria." },
+        { id: "n2", text: "Its Burwood campus is the largest by enrolment." },
+        { id: "n3", text: "Placements run through metro and regional partners." },
+        { id: "n4", text: "Students compare these pathways today before applying." },
+      ],
+      cards: [
+        {
+          template: "title-card",
+          props: { title: "Campus network", kicker: "MODULE 1" },
+          enterAt: { narration: "n1", word: "Deakin" },
+          provenance: "compiler:derived",
+        },
+        {
+          template: "stat-card",
+          props: {
+            value: "5",
+            label: "campuses",
+            sourceLabel: "Deakin facts 2024",
+          },
+          enterAt: { narration: "n1", word: "Victoria" },
+          provenance: "doc:abc123:page:3",
+        },
+        {
+          template: "quote-card",
+          props: {
+            quote: "Students compare pathways before choosing.",
+            sourceLabel: "Counsellor workshop 2025",
+          },
+          enterAt: { narration: "n4", word: "today" },
+          provenance: "doc:abc123:page:2",
+        },
+      ],
+    });
+
+    const violations = unitComplianceViolations(unit, KNOWN_PROVENANCE, NO_MEDIA);
+    expect(violations.some((v) => v.includes("skip") && v.includes("n1 -> n4"))).toBe(true);
+  });
+});
+
+describe("normalizeOpeningTitleCard", () => {
+  test("prepends a compiler-derived title-card when missing", () => {
+    const authored = makeAuthoredUnit();
+    const normalized = normalizeOpeningTitleCard(authored, {
+      unitTitle: "Campus network",
+      moduleId: "m2-campuses",
+      institutionName: "Deakin University",
+      courseTitle: "Deakin Essentials",
+    });
+    const opener = normalized.cards[0];
+    expect(opener.template).toBe("title-card");
+    expect(opener.enterAt).toEqual({ narration: "n1", word: "Deakin" });
+    expect(opener.provenance).toBe("compiler:derived");
+    expect(opener.props).toMatchObject({
+      title: "Campus network",
+      kicker: "MODULE 2",
+      courseLabel: "Deakin Essentials",
+    });
+  });
+
+  test("reuses existing title-card props but normalizes opener anchor", () => {
+    const authored = makeAuthoredUnit({
+      cards: [
+        {
+          template: "stat-card",
+          props: {
+            headline: "5",
+            supporting: "campuses",
+            sourceLabel: "Deakin facts 2024",
+          },
+          enterAt: { narration: "n1", word: "campuses" },
+          provenance: "doc:abc123:page:2",
+        },
+        {
+          template: "title-card",
+          props: {
+            title: "Existing opener",
+            kicker: "Existing kicker",
+            courseLabel: "Existing course",
+          },
+          enterAt: { narration: "n2", word: "largest" },
+          provenance: "doc:abc123:page:3",
+        },
+      ],
+    });
+    const normalized = normalizeOpeningTitleCard(authored, {
+      unitTitle: "Campus network",
+      moduleId: "m1-why-deakin",
+      institutionName: "Deakin University",
+      courseTitle: "Deakin Essentials",
+    });
+    expect(normalized.cards[0]).toMatchObject({
+      template: "title-card",
+      enterAt: { narration: "n1", word: "Deakin" },
+      provenance: "compiler:derived",
+      props: {
+        title: "Existing opener",
+        kicker: "Existing kicker",
+        courseLabel: "Existing course",
+      },
+    });
+    expect(
+      normalized.cards.filter((card) => card.template === "title-card")
+    ).toHaveLength(1);
+  });
+});
+
+describe("normalizeCardEnterAtAnchors", () => {
+  test("repairs a card word that is not present in the target narration sentence", () => {
+    const authored = makeAuthoredUnit({
+      cards: [
+        {
+          template: "title-card",
+          props: {
+            title: "Campus network",
+            kicker: "MODULE 1",
+            courseLabel: "Deakin Essentials",
+          },
+          enterAt: { narration: "n1", word: "Deakin" },
+          provenance: "compiler:derived",
+        },
+        {
+          template: "stat-card",
+          props: {
+            value: "5",
+            label: "campuses",
+            sourceLabel: "Deakin facts 2024",
+          },
+          enterAt: { narration: "n2", word: "zeppelin" },
+          provenance: "doc:abc123:page:3",
+        },
+      ],
+    });
+
+    const repaired = normalizeCardEnterAtAnchors(authored);
+
+    expect(repaired.authored.cards[1].enterAt).toEqual({
+      narration: "n2",
+      word: "Its",
+    });
+    expect(repaired.warnings).toHaveLength(1);
+    expect(repaired.warnings[0]).toContain("timing anchor repaired");
+  });
+
+  test("repairs unknown narration ids by anchoring to the first narration sentence", () => {
+    const authored = makeAuthoredUnit({
+      cards: [
+        {
+          template: "title-card",
+          props: {
+            title: "Campus network",
+            kicker: "MODULE 1",
+            courseLabel: "Deakin Essentials",
+          },
+          enterAt: { narration: "n1", word: "Deakin" },
+          provenance: "compiler:derived",
+        },
+        {
+          template: "map-card",
+          props: { title: "Campus network", region: "Victoria" },
+          enterAt: { narration: "n99", word: "Victoria" },
+          provenance: "doc:abc123:page:2",
+        },
+      ],
+    });
+
+    const repaired = normalizeCardEnterAtAnchors(authored);
+
+    expect(repaired.authored.cards[1].enterAt).toEqual({
+      narration: "n1",
+      word: "Victoria",
+    });
+    expect(repaired.warnings).toHaveLength(1);
+    expect(repaired.warnings[0]).toContain('narration "n99" not found');
   });
 });
 
@@ -657,7 +1006,7 @@ describe("buildUnitUserText brief + outline suggestions (M6.5)", () => {
 });
 
 describe("partitionComplianceViolations (fail-open policy)", () => {
-  test("only rights-uncleared asset refs block; everything else warns", () => {
+  test("all compliance issues are surfaced as warnings", () => {
     const violations = [
       'banned claim (unattributed-superlative): "Australia\'s largest" — superlative asserted without attribution',
       "media pacing: 0 media card(s) in 4 — the cleared asset library supports at least 1",
@@ -666,10 +1015,8 @@ describe("partitionComplianceViolations (fail-open policy)", () => {
       "card 3 (stat-card) is missing a sourceLabel",
     ];
     const { blocking, warnings } = partitionComplianceViolations(violations);
-    expect(blocking).toEqual([
-      'card 1 (video-card): asset "j57abc" is not rights-cleared and cannot appear in a course',
-    ]);
-    expect(warnings).toHaveLength(4);
+    expect(blocking).toEqual([]);
+    expect(warnings).toHaveLength(5);
   });
 
   test("no violations partitions to empty on both sides", () => {
@@ -677,5 +1024,14 @@ describe("partitionComplianceViolations (fail-open policy)", () => {
       blocking: [],
       warnings: [],
     });
+  });
+
+  test("source-authenticity violations are blocking", () => {
+    const { blocking, warnings } = partitionComplianceViolations([
+      'source-authenticity: card 1 (stat-card) uses sourceLabel "CDU Claim" not present in this unit\'s approved fact sources',
+      "card pacing: 2 card(s) for 4 narration sentence(s)",
+    ]);
+    expect(blocking).toHaveLength(1);
+    expect(warnings).toHaveLength(1);
   });
 });

@@ -1,4 +1,4 @@
-import { CARD_PROP_SCHEMAS, CARD_PROP_FIXTURES } from "@counseliq/course-schema";
+import { CARD_PROP_SCHEMAS, CARD_PROP_FIXTURES, type CardPropsFor } from "@counseliq/course-schema";
 import { render } from "@testing-library/react";
 import type { ComponentType, ReactNode } from "react";
 import { describe, expect, test } from "vitest";
@@ -93,6 +93,57 @@ describe("graceful degradation", () => {
   test("title-card renders without optional kicker/courseLabel", () => {
     const html = renderOnce(<TitleCard props={{ title: "Bare title" }} timing={SETTLED_TIMING} />);
     expect(html).toContain("Bare title");
+  });
+
+  test("title-card promotes kicker into the headline when title is blank", () => {
+    const html = renderOnce(
+      <TitleCard
+        props={
+          {
+            title: "",
+            kicker: "Graduate employment outcomes",
+          } as CardPropsFor<"title-card">
+        }
+        timing={SETTLED_TIMING}
+      />
+    );
+    expect(html).toContain("Graduate employment outcomes");
+    expect(html).not.toContain("letter-spacing: .22em");
+  });
+
+  test("title-card shows an optional footer counter label when supplied", () => {
+    const html = renderOnce(
+      <TitleCard
+        props={
+          {
+            title: "Assessing financial capacity",
+            courseLabel: "Counselling for Australia",
+            positionLabel: "03 / 08",
+          } as CardPropsFor<"title-card">
+        }
+        timing={SETTLED_TIMING}
+      />
+    );
+    expect(html).toContain("03 / 08");
+  });
+
+  test("title-card renders an institution logo larger in the bottom-right when supplied", () => {
+    const html = renderOnce(
+      <TitleCard
+        props={
+          {
+            title: "Assessing financial capacity",
+            logoUrl: "https://example.edu/logo.svg",
+          } as CardPropsFor<"title-card">
+        }
+        timing={SETTLED_TIMING}
+      />
+    );
+    expect(html).toContain('src="https://example.edu/logo.svg"');
+    expect(html).toContain('data-ciq-title-logo=""');
+    expect(html).toContain("position: absolute");
+    expect(html).toContain("bottom: 104px");
+    expect(html).toContain("max-height: 56px");
   });
 
   test("quote-card renders without attribution", () => {

@@ -15,7 +15,7 @@ const modules = import.meta.glob("./**/*.ts");
 async function setupRun(
   state:
     | "EXTRACTED"
-    | "GATE_1_KNOWLEDGE_REVIEW"
+    | "OUTLINING"
     | "QA_RUNNING"
     | "GATE_2_COURSE_REVIEW"
 ) {
@@ -37,14 +37,8 @@ async function setupRun(
 }
 
 describe("M4 state machine resequencing", () => {
-  test("EXTRACTED goes to GATE_1 before compilation", () => {
-    expect(ALLOWED_TRANSITIONS.EXTRACTED).toEqual(["GATE_1_KNOWLEDGE_REVIEW"]);
-    // M6.5: gate-1 approval routes to the outline pass; the direct
-    // COMPILING edge stays legal for legacy runs mid-flight.
-    expect(ALLOWED_TRANSITIONS.GATE_1_KNOWLEDGE_REVIEW).toEqual([
-      "OUTLINING",
-      "COMPILING",
-    ]);
+  test("EXTRACTED goes to OUTLINING before compilation", () => {
+    expect(ALLOWED_TRANSITIONS.EXTRACTED).toEqual(["OUTLINING"]);
   });
 
   test("M6.5: outline parks for review; approve compiles, regenerate loops", () => {
@@ -99,19 +93,6 @@ describe("M4 state machine resequencing", () => {
       runId,
     });
     expect(run?.state).toBe("GATE_2_COURSE_REVIEW");
-  });
-
-  test("gate 1 approval path starts the compile workflow", async () => {
-    const { t, runId } = await setupRun("GATE_1_KNOWLEDGE_REVIEW");
-    // Getting past the gate checks to the workflow start (whose component is
-    // not registered in convex-test) proves approval routes to COMPILING.
-    await expect(
-      t.mutation(internal.pipeline.runs.decideGate, {
-        runId,
-        gate: 1,
-        decision: "approve",
-      })
-    ).rejects.toThrow(/Component "workflow" is not registered/);
   });
 
   test("gate 2 approval path starts asset generation", async () => {

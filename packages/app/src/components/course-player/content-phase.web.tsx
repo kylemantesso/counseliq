@@ -1,10 +1,21 @@
 import { useMemo } from "react";
-import { CardRenderer, cssVar, deriveActiveCard } from "@counseliq/cards";
+import {
+  CardRenderer,
+  cssVar,
+  deriveActiveCard,
+  easeOut,
+} from "@counseliq/cards";
 import type { UnitClockStore } from "./clock-store.web";
 import { useUnitClock } from "./clock-store.web";
 import { CaptionBar } from "./caption-bar.web";
 import type { PreviewUnit } from "./types";
 import type { UnitAudioControls } from "./use-unit-audio.web";
+import { withInstitutionLogoOnTitleCard } from "../../theme/brand-tokens";
+import {
+  deriveCardSwapTransition,
+  pickCardTransitionVariant,
+  type CardTransitionVariant,
+} from "./timeline-helpers";
 
 /**
  * The narrated phase: cards fire on their resolved word anchors as the
@@ -17,17 +28,30 @@ export interface ContentPhaseProps {
   clock: UnitClockStore;
   audio: UnitAudioControls;
   reducedMotion: boolean;
+  institutionLogoUrl?: string | null;
   onEditSentence?: (narrationId: string) => void;
 }
 
-export function ContentPhase({ unit, clock, audio, reducedMotion, onEditSentence }: ContentPhaseProps) {
+export function ContentPhase({
+  unit,
+  clock,
+  audio,
+  reducedMotion,
+  institutionLogoUrl,
+  onEditSentence,
+}: ContentPhaseProps) {
   const timing = unit.timing ?? null;
   if (!timing) {
     return <AssetsNotReady unit={unit} />;
   }
   return (
     <div style={{ position: "absolute", inset: 0, background: cssVar("bg") }}>
-      <CardLayer unit={unit} clock={clock} reducedMotion={reducedMotion} />
+      <CardLayer
+        unit={unit}
+        clock={clock}
+        reducedMotion={reducedMotion}
+        institutionLogoUrl={institutionLogoUrl}
+      />
       <CaptionBar
         timing={timing}
         clock={clock}
@@ -42,10 +66,12 @@ function CardLayer({
   unit,
   clock,
   reducedMotion,
+  institutionLogoUrl,
 }: {
   unit: PreviewUnit;
   clock: UnitClockStore;
   reducedMotion: boolean;
+  institutionLogoUrl?: string | null;
 }) {
   const clockMs = useUnitClock(clock);
   const timing = unit.timing!;
@@ -85,7 +111,58 @@ function CardLayer({
       </div>
     );
   }
-  return <CardRenderer template={card.template} props={card.props} timing={active.timing} />;
+  const cardProps = withInstitutionLogoOnTitleCard(
+    card.template,
+    card.props,
+    institutionLogoUrl
+  );
+
+  const swap = deriveCardSwapTransition(timing, clockMs, reducedMotion);
+  if (!swap || swap.toCardIndex !== active.cardIndex) {
+    return <CardRenderer template={card.template} props={cardProps} timing={active.timing} />;
+  }
+
+  const previousCard = unit.cards[swap.fromCardIndex];
+  if (!previousCard) {
+    return <CardRenderer template={card.template} props={cardProps} timing={active.timing} />;
+  }
+  const variant = pickCardTransitionVariant({
+    unitId: unit.id,
+    fromCardIndex: swap.fromCardIndex,
+    toCardIndex: swap.toCardIndex,
+    fromCard: previousCard,
+    toCard: card,
+  });
+  const transitionStyle = transitionLayerStyle(variant, swap.progress);
+
+  return (
+    <div style={{ position: "absolute", inset: 0, ...transitionStyle }}>
+      <CardRenderer template={card.template} props={cardProps} timing={active.timing} />
+    </div>
+  );
+}
+
+function transitionLayerStyle(
+  variant: CardTransitionVariant,
+  progress: number
+): { opacity?: number; transform?: string; transformOrigin?: string } {
+  const t = Math.min(1, Math.max(0, progress));
+  const eased = easeOut(t);
+  switch (variant) {
+    case "lift":
+      return {
+        transform: `translateY(${(1 - eased) * 12}px)`,
+      };
+    case "zoom":
+      return {
+        transform: `scale(${0.985 + 0.015 * eased})`,
+        transformOrigin: "center center",
+      };
+    case "fade":
+      return {
+        opacity: 0.94 + 0.06 * eased,
+      };
+  }
 }
 
 function AssetsNotReady({ unit }: { unit: PreviewUnit }) {

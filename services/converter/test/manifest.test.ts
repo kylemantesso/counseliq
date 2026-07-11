@@ -9,12 +9,6 @@ describe("buildManifest", () => {
   it("assembles a manifest that satisfies the shared contract", () => {
     const manifest = buildManifest({
       sourceDocHash: HASH,
-      theme: {
-        method: "ooxml" as const,
-        colors: ["#112233"],
-        fonts: ["Calibri"],
-        logoCandidates: [KEY_A],
-      },
       pages: [
         {
           n: 1,
@@ -34,7 +28,6 @@ describe("buildManifest", () => {
     expect(() =>
       buildManifest({
         sourceDocHash: HASH,
-        theme: null,
         pages: [
           {
             n: 1,
@@ -51,7 +44,7 @@ describe("buildManifest", () => {
 
   it("throws on a malformed sourceDocHash", () => {
     expect(() =>
-      buildManifest({ sourceDocHash: "nope", theme: null, pages: [] })
+      buildManifest({ sourceDocHash: "nope", pages: [] })
     ).toThrow();
   });
 });

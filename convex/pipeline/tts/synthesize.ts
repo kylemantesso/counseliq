@@ -1,6 +1,10 @@
 import { v } from "convex/values";
 import { Workpool } from "@convex-dev/workpool";
-import type { TimingWord, UnitScript } from "@counseliq/course-schema";
+import {
+  contentEndMsForTiming,
+  type TimingWord,
+  type UnitScript,
+} from "@counseliq/course-schema";
 import { internalAction } from "../../_generated/server";
 import type { ActionCtx } from "../../_generated/server";
 import type { Doc, Id } from "../../_generated/dataModel";
@@ -253,10 +257,7 @@ async function synthesizeUnitInner(
 
   const timingSentences = assembleUnitClock(assembly, INTER_SENTENCE_GAP_MS);
   const cardBeats = resolveCardBeats(cards, script, timingSentences);
-  const lastSentence = timingSentences.at(-1);
-  const totalDurationMs = lastSentence
-    ? lastSentence.startMs + lastSentence.durationMs
-    : 0;
+  const totalDurationMs = contentEndMsForTiming({ sentences: timingSentences });
   const mediaRefs = cards
     .filter(
       (card) =>

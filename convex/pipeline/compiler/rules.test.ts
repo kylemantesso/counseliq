@@ -293,21 +293,23 @@ describe("validateAssetRefs", () => {
     ["dirty", { kind: "image", aspect: "landscape", cleared: false }],
   ]);
 
-  const card = (template: string, assetRef?: unknown) => ({
+  const card = (template: string, props: Record<string, unknown> = {}) => ({
     template,
-    props: assetRef !== undefined ? { assetRef } : {},
+    props,
   });
 
   test("valid refs pass; cards without refs are ignored", () => {
     expect(
       validateAssetRefs(
         [
-          card("video-card", "vid1"),
-          card("photo-kenburns", "img1"),
-          card("photo-kenburns", "img2"), // portrait OK full-bleed
-          card("image-text-card", "img1"),
+          card("video-card", { assetRef: "vid1" }),
+          card("photo-kenburns", { assetRef: "img1" }),
+          card("photo-kenburns", { assetRef: "img2" }), // portrait OK full-bleed
+          card("image-text-card", { assetRef: "img1" }),
           card("stat-card"),
           card("photo-kenburns"), // media template without ref: allowed
+          card("list-reveal", { bgAssetRef: "img1", bgTreatment: "faded" }),
+          card("takeaway-card", { bgAssetRef: "img2", bgTreatment: "spotlight" }),
         ],
         CATALOGUE
       )
@@ -315,33 +317,50 @@ describe("validateAssetRefs", () => {
   });
 
   test("dangling id is rejected with never-invent guidance", () => {
-    const violations = validateAssetRefs([card("video-card", "made-up")], CATALOGUE);
+    const violations = validateAssetRefs(
+      [card("video-card", { assetRef: "made-up" })],
+      CATALOGUE
+    );
     expect(violations).toHaveLength(1);
     expect(violations[0]).toMatch(/not in the cleared asset library/);
   });
 
   test("uncleared asset is rejected (belt-and-braces leakage gate)", () => {
-    const violations = validateAssetRefs([card("photo-kenburns", "dirty")], CATALOGUE);
+    const violations = validateAssetRefs(
+      [card("photo-kenburns", { assetRef: "dirty" })],
+      CATALOGUE
+    );
     expect(violations).toHaveLength(1);
     expect(violations[0]).toMatch(/not rights-cleared/);
   });
 
   test("kind mismatches are rejected both ways", () => {
-    expect(validateAssetRefs([card("video-card", "img1")], CATALOGUE)[0]).toMatch(
+    expect(
+      validateAssetRefs([card("video-card", { assetRef: "img1" })], CATALOGUE)[0]
+    ).toMatch(
       /requires a video asset/
     );
     expect(
-      validateAssetRefs([card("photo-kenburns", "vid1")], CATALOGUE)[0]
+      validateAssetRefs([card("photo-kenburns", { assetRef: "vid1" })], CATALOGUE)[0]
     ).toMatch(/requires an image asset/);
   });
 
   test("image-text-card rejects portrait images; non-media templates reject refs", () => {
     expect(
-      validateAssetRefs([card("image-text-card", "img2")], CATALOGUE)[0]
+      validateAssetRefs([card("image-text-card", { assetRef: "img2" })], CATALOGUE)[0]
     ).toMatch(/cannot frame a portrait image/);
-    expect(validateAssetRefs([card("stat-card", "img1")], CATALOGUE)[0]).toMatch(
-      /only valid on media templates/
-    );
+    expect(
+      validateAssetRefs([card("stat-card", { assetRef: "img1" })], CATALOGUE)[0]
+    ).toMatch(/only valid on media templates/);
+  });
+
+  test("bgAssetRef rejects non-image and unsupported templates", () => {
+    expect(
+      validateAssetRefs([card("stat-card", { bgAssetRef: "vid1" })], CATALOGUE)[0]
+    ).toMatch(/bgAssetRef requires an image asset/);
+    expect(
+      validateAssetRefs([card("quote-card", { bgAssetRef: "img1" })], CATALOGUE)[0]
+    ).toMatch(/bgAssetRef is only valid on/);
   });
 });
 
@@ -349,6 +368,10 @@ describe("validateMediaPacing", () => {
   const media = (template: string, assetRef = "a1") => ({
     template,
     props: { assetRef },
+  });
+  const bgMedia = (template: string, bgAssetRef = "a1") => ({
+    template,
+    props: { bgAssetRef },
   });
   const text = (template: string) => ({ template, props: {} });
 
@@ -409,7 +432,7 @@ describe("validateMediaPacing", () => {
     expect(
       validateMediaPacing(
         [
-          text("stat-card"),
+          bgMedia("stat-card"),
           media("photo-kenburns"),
           text("list-reveal"),
           media("video-card"),

@@ -29,7 +29,7 @@ type EmailLayoutProps = {
 };
 
 export function EmailLayout({ preview, heading, children }: EmailLayoutProps) {
-  const dashboardUrl = `${appWebOrigin()}/dashboard`;
+  const adminUrl = `${appWebOrigin()}/admin`;
   return (
     <Html>
       <Head />
@@ -96,8 +96,8 @@ export function EmailLayout({ preview, heading, children }: EmailLayoutProps) {
               margin: "12px 0 0",
             }}
           >
-            <Link href={dashboardUrl} style={{ color: colors.accent }}>
-              Open dashboard
+            <Link href={adminUrl} style={{ color: colors.accent }}>
+              Open admin workspace
             </Link>
           </Text>
         </Container>

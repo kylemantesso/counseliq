@@ -2,7 +2,7 @@
 
 Screens, auth, and db client. See [root AGENTS.md](../../AGENTS.md).
 
-- Compose `@app-template/ui` for all UI (Gluestack v5 semantic tokens)
+- Compose `@counseliq/ui` for all UI (Gluestack v5 semantic tokens)
 - Use Solito for navigation in screens
 - Export new screens from `index.ts`
 

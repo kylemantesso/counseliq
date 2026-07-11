@@ -1,5 +1,10 @@
 import type { z } from "zod";
-import { maxTokensForTask, modelForTask, type LlmTask } from "./models";
+import {
+  maxTokensForTask,
+  modelForTask,
+  type LlmModelOverrides,
+  type LlmTask,
+} from "./models";
 
 /**
  * Narrow LLM interface for the extraction pipeline. All pipeline code
@@ -89,6 +94,7 @@ function toOpenRouterContent(
 export function createOpenRouterClient(options?: {
   apiKey?: string;
   fetchImpl?: typeof fetch;
+  modelRouting?: LlmModelOverrides;
 }): LlmClient {
   const apiKey = options?.apiKey ?? process.env.OPENROUTER_API_KEY;
   const fetchImpl = options?.fetchImpl ?? fetch;
@@ -152,7 +158,7 @@ export function createOpenRouterClient(options?: {
       if (!apiKey) {
         throw new LlmError("OPENROUTER_API_KEY is not configured", false);
       }
-      const model = modelForTask(task);
+      const model = modelForTask(task, options?.modelRouting);
       const maxTokens = maxTokensForTask(task);
       let useJsonSchema = true;
 

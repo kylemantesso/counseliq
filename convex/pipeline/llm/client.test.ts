@@ -45,7 +45,7 @@ describe("models routing", () => {
     process.env.MODEL_EXTRACT_PAGE = "anthropic/claude-sonnet-4.5";
     try {
       expect(modelForTask("extract-page")).toBe("anthropic/claude-sonnet-4.5");
-      expect(modelForTask("infer-theme")).toBe("google/gemini-2.5-flash");
+      expect(modelForTask("merge-inventory")).toBe("google/gemini-2.5-flash");
     } finally {
       delete process.env.MODEL_EXTRACT_PAGE;
     }

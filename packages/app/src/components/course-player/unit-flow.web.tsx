@@ -52,6 +52,7 @@ export interface UnitFlowProps {
   clock: UnitClockStore;
   audio: UnitAudioControls;
   reducedMotion: boolean;
+  institutionLogoUrl?: string | null;
   isLastUnit: boolean;
   onEditSentence?: (narrationId: string) => void;
 }
@@ -63,6 +64,7 @@ export function UnitFlow({
   clock,
   audio,
   reducedMotion,
+  institutionLogoUrl,
   isLastUnit,
   onEditSentence,
 }: UnitFlowProps) {
@@ -83,6 +85,7 @@ export function UnitFlow({
           clock={clock}
           audio={audio}
           reducedMotion={reducedMotion}
+          institutionLogoUrl={institutionLogoUrl}
           onEditSentence={onEditSentence}
         />
       );
@@ -96,6 +99,7 @@ export function UnitFlow({
       return (
         <AnchorPhase
           anchor={unit.meta.anchor ?? null}
+          institutionLogoUrl={institutionLogoUrl}
           continueLabel={isLastUnit ? "Finish course" : "Next unit"}
           onDone={flow.advance}
         />

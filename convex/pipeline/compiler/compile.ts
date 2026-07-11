@@ -14,7 +14,7 @@ import {
   type LlmClient,
   type LlmUsage,
 } from "../llm/client";
-import { currentModelRouting, modelForTask, type LlmTask } from "../llm/models";
+import { type LlmModelRouting, type LlmTask } from "../llm/models";
 import {
   AUTHOR_UNIT_JSON_SCHEMA,
   COMPILE_STRUCTURE_JSON_SCHEMA,
@@ -23,6 +23,7 @@ import {
 import { PROMPTS } from "../prompts";
 import { definitionToWire } from "../courses";
 import {
+  llmAuthoredUnitLenientSchema,
   llmAuthoredUnitSchema,
   llmCompileStructureSchema,
   llmDraftQuestionSchema,
@@ -36,6 +37,8 @@ import {
   buildUnitUserText,
   factForPrompt,
   mediaContextFromCatalogue,
+  normalizeOpeningTitleCard,
+  normalizeCardEnterAtAnchors,
   parseRange,
   partitionComplianceViolations,
   plansFromOutline,
@@ -79,8 +82,8 @@ export const compilePool = new Workpool(components.compilePool, {
   },
 });
 
-function defaultClient(): LlmClient {
-  return createOpenRouterClient();
+function defaultClient(modelRouting?: Partial<LlmModelRouting>): LlmClient {
+  return createOpenRouterClient({ modelRouting });
 }
 
 async function recordUsages(
@@ -127,10 +130,18 @@ async function authorOneUnit(
     runId: Id<"runs">;
     plan: UnitPlan;
     courseTitle: string;
+    authorModel: string;
     feedback?: string;
     bypassCache?: boolean;
   }
 ): Promise<AuthoringRecord> {
+  const isRecoverableAuthorValidationFailure = (message: string): boolean =>
+    message.includes("cards[0] must be a title-card") ||
+    message.includes("opening title-card must anchor") ||
+    message.includes("enterAt.word") ||
+    message.includes("full-card display type") ||
+    message.includes("anchor takeaway text is");
+
   const inventory: ReviewedInventory = await ctx.runQuery(
     internal.pipeline.courses.getReviewedInventoryInternal,
     { runId: args.runId }
@@ -157,7 +168,12 @@ async function authorOneUnit(
   const media = mediaContextFromCatalogue(catalogue);
 
   const promptVersion = PROMPTS["author-unit"].versionTag;
-  const model = modelForTask("author-unit");
+  const model = args.authorModel;
+  const approvedSourceLabels = new Set(
+    facts
+      .map((fact) => (typeof fact.sourceLabel === "string" ? fact.sourceLabel.trim() : ""))
+      .filter((label) => label.length > 0)
+  );
   const cacheKey = sha256(
     JSON.stringify({
       plan: args.plan,
@@ -170,13 +186,34 @@ async function authorOneUnit(
     })
   );
 
+  const normalizeGeneratedUnit = (unit: LlmAuthoredUnit) => {
+    const opened = normalizeOpeningTitleCard(unit, {
+      unitTitle: args.plan.title,
+      moduleId: args.plan.moduleId,
+      institutionName: inventory.institution.name,
+      courseTitle: args.courseTitle,
+    });
+    return normalizeCardEnterAtAnchors(opened);
+  };
+
   if (!args.bypassCache) {
     const cached = (await ctx.runQuery(
       internal.pipeline.courses.getUnitAuthoring,
       { runId: args.runId, unitId: args.plan.unitId, cacheKey }
     )) as AuthoringRecord | null;
     if (cached !== null && cached.status === "ok") {
-      return cached;
+      const normalized = normalizeGeneratedUnit(cached.authored);
+      const allWarnings = [
+        ...(cached.complianceWarnings ?? []),
+        ...normalized.warnings,
+      ];
+      return {
+        ...cached,
+        authored: normalized.authored,
+        ...(allWarnings.length > 0
+          ? { complianceWarnings: [...new Set(allWarnings)] }
+          : {}),
+      };
     }
   }
 
@@ -193,7 +230,10 @@ async function authorOneUnit(
     args.feedback
   );
 
-  const callAuthorOnce = async (feedback?: string) => {
+  const callAuthorOnce = async (
+    feedback: string | undefined,
+    schema: typeof llmAuthoredUnitSchema
+  ) => {
     const { value, usages } = await completeStructured<LlmAuthoredUnit>(
       client,
       "author-unit",
@@ -205,7 +245,7 @@ async function authorOneUnit(
         schemaName: "authored_unit",
         jsonSchema: AUTHOR_UNIT_JSON_SCHEMA,
       },
-      llmAuthoredUnitSchema
+      schema
     );
     await recordUsages(ctx, args.runId, "author-unit", usages);
     return value;
@@ -218,11 +258,13 @@ async function authorOneUnit(
   const AUTHOR_JSON_ATTEMPTS = 3;
   const callAuthor = async (feedback?: string) => {
     let lastError: unknown;
+    let lastMessage = "";
     for (let attempt = 1; attempt <= AUTHOR_JSON_ATTEMPTS; attempt++) {
       try {
-        return await callAuthorOnce(feedback);
+        return await callAuthorOnce(feedback, llmAuthoredUnitSchema);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
+        lastMessage = message;
         // Re-roll decode flakes AND schema near-misses (e.g. a 162-char
         // anchor): a fresh sample usually lands inside the caps, and a
         // run must not die on one bad roll.
@@ -238,28 +280,52 @@ async function authorOneUnit(
         );
       }
     }
+
+    if (
+      lastError !== undefined &&
+      lastMessage.includes("failed validation") &&
+      isRecoverableAuthorValidationFailure(lastMessage)
+    ) {
+      console.log(
+        `[pipeline] run ${args.runId}: unit ${args.plan.unitId} strict validation exhausted; trying lenient validation fallback`
+      );
+      return await callAuthorOnce(feedback, llmAuthoredUnitLenientSchema);
+    }
+
     throw lastError;
   };
 
   let record: AuthoringRecord;
   try {
-    let authored = await callAuthor();
+    let normalized = normalizeGeneratedUnit(await callAuthor());
+    let authored = normalized.authored;
+    let anchorWarnings = normalized.warnings;
     let violations = unitComplianceViolations(
       authored,
       knownProvenanceIds,
-      media
+      media,
+      approvedSourceLabels
     );
     if (violations.length > 0) {
       console.log(
         `[pipeline] run ${args.runId}: unit ${args.plan.unitId} failed compliance, retrying once — ${violations.join("; ")}`
       );
-      authored = await callAuthor(
-        `Your previous draft violated these code-enforced rules — fix ALL of them and output the full corrected unit:\n- ${violations.join("\n- ")}`
+      normalized = normalizeGeneratedUnit(
+        await callAuthor(
+          `Your previous draft violated these code-enforced rules — fix ALL of them and output the full corrected unit:\n- ${violations.join("\n- ")}`
+        )
       );
-      violations = unitComplianceViolations(authored, knownProvenanceIds, media);
+      authored = normalized.authored;
+      anchorWarnings = normalized.warnings;
+      violations = unitComplianceViolations(
+        authored,
+        knownProvenanceIds,
+        media,
+        approvedSourceLabels
+      );
     }
-    // Fail-open: only a rights-uncleared asset ref blocks; every other
-    // remaining violation ships as a gate-2 warning on the unit.
+    // Fail-open: every remaining compliance violation ships as a gate-2
+    // warning on the unit.
     const { blocking, warnings } = partitionComplianceViolations(violations);
     if (blocking.length > 0) {
       record = {
@@ -267,9 +333,15 @@ async function authorOneUnit(
         cause: `unit ${args.plan.unitId} failed compliance after retry: ${blocking.join("; ")}`,
       };
     } else {
-      if (warnings.length > 0) {
+      const allWarnings = [...new Set([...warnings, ...anchorWarnings])];
+      if (anchorWarnings.length > 0) {
         console.log(
-          `[pipeline] run ${args.runId}: unit ${args.plan.unitId} accepted with ${warnings.length} compliance warning(s) for gate-2 review`
+          `[pipeline] run ${args.runId}: unit ${args.plan.unitId} repaired ${anchorWarnings.length} timing anchor(s)`
+        );
+      }
+      if (allWarnings.length > 0) {
+        console.log(
+          `[pipeline] run ${args.runId}: unit ${args.plan.unitId} accepted with ${allWarnings.length} warning(s) for gate-2 review`
         );
       }
       record = {
@@ -277,7 +349,7 @@ async function authorOneUnit(
         authored,
         promptVersion,
         model,
-        ...(warnings.length > 0 ? { complianceWarnings: warnings } : {}),
+        ...(allWarnings.length > 0 ? { complianceWarnings: allWarnings } : {}),
       };
     }
   } catch (error) {
@@ -314,14 +386,25 @@ export const authorUnit = internalAction({
     }),
     courseTitle: v.string(),
     feedback: v.optional(v.string()),
+    authorModel: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const record = await authorOneUnit(ctx, defaultClient(), {
+    const authorModel =
+      args.authorModel ??
+      (
+        await ctx.runQuery(internal.pipeline.queries.getLlmModelRoutingInternal, {})
+      )["author-unit"];
+    const record = await authorOneUnit(
+      ctx,
+      defaultClient({ "author-unit": authorModel }),
+      {
       runId: args.runId,
       plan: args.plan,
       courseTitle: args.courseTitle,
+      authorModel,
       ...(args.feedback !== undefined ? { feedback: args.feedback } : {}),
-    });
+      }
+    );
     return { status: record.status };
   },
 });
@@ -376,7 +459,11 @@ export const regenerateQuestion = internalAction({
       `Output ONLY a JSON object with prompt, options (2-4), correctIndex, explanation.`,
     ].join("\n");
 
-    const client = defaultClient();
+    const modelRouting = await ctx.runQuery(
+      internal.pipeline.queries.getLlmModelRoutingInternal,
+      {}
+    );
+    const client = defaultClient(modelRouting);
     const { value, usages } = await completeStructured(
       client,
       "author-unit",
@@ -407,7 +494,13 @@ export const regenerateQuestion = internalAction({
 // --- Orchestrator ---
 
 type CompilationResult =
-  | { status: "ok"; unitCount: number; moduleCount: number; questionCount: number }
+  | {
+      status: "ok";
+      unitCount: number;
+      moduleCount: number;
+      questionCount: number;
+      warning?: string;
+    }
   | { status: "failed"; cause: string };
 
 export const runCompilation = internalAction({
@@ -431,7 +524,12 @@ async function runCompilationInner(
   runId: Id<"runs">,
   reAuthorUnitIds?: Id<"microUnits">[]
 ): Promise<CompilationResult> {
-  const client = defaultClient();
+  const modelRouting = await ctx.runQuery(
+    internal.pipeline.queries.getLlmModelRoutingInternal,
+    {}
+  );
+  const authorModel = modelRouting["author-unit"];
+  const client = defaultClient(modelRouting);
   const inventory: ReviewedInventory = await ctx.runQuery(
     internal.pipeline.courses.getReviewedInventoryInternal,
     { runId }
@@ -452,7 +550,7 @@ async function runCompilationInner(
       "compile-structure": PROMPTS["compile-structure"].versionTag,
       "author-unit": PROMPTS["author-unit"].versionTag,
       "judge-course": PROMPTS["judge-course"].versionTag,
-      models: currentModelRouting(),
+      models: modelRouting,
     },
   });
 
@@ -474,6 +572,7 @@ async function runCompilationInner(
   const feedbackByUnitId = new Map<string, string>();
   /** Authoritative unit sequence for assembly (modules keep planned order). */
   const orderedUnitIds: string[] = [];
+  let unitCountWarning: string | undefined;
 
   if (partial) {
     const existing = await ctx.runQuery(
@@ -623,17 +722,15 @@ async function runCompilationInner(
           llmCompileStructureSchema
         );
         await recordUsages(ctx, runId, "compile-structure", usages);
-        // Code-enforce the unit budget the prompt only asks for: a 27-unit
-        // plan triples the course's narration/TTS cost. Throwing re-issues
-        // the (single, cheap) structure call via this loop.
+        // Soft-enforce unit budget as an operational warning only.
         const totalUnits = value.modules.reduce(
           (sum, m) => sum + m.units.length,
           0
         );
         if (totalUnits > unitRange[1]) {
-          throw new Error(
-            `structure pass planned ${totalUnits} units; the plan allows at most ${unitRange[1]} — consolidate to the ${unitRange[0]}-${unitRange[1]} most important concepts`
-          );
+          unitCountWarning =
+            `structure pass planned ${totalUnits} units; target is ${unitRange[0]}-${unitRange[1]} units`;
+          console.warn(`[pipeline] run ${runId}: ${unitCountWarning}`);
         }
         structure = value;
         break;
@@ -692,6 +789,7 @@ async function runCompilationInner(
       runId,
       plan,
       courseTitle,
+      authorModel,
       ...(feedback !== undefined ? { feedback } : {}),
     };
   });
@@ -741,11 +839,21 @@ async function runCompilationInner(
       failures.push(record.cause);
       failedPlans.push(plan);
     } else {
+      const repaired = normalizeCardEnterAtAnchors(record.authored);
+      const mergedWarnings = [
+        ...(record.complianceWarnings ?? []),
+        ...repaired.warnings,
+      ];
+      if (repaired.warnings.length > 0) {
+        console.log(
+          `[pipeline] run ${runId}: unit ${plan.unitId} repaired ${repaired.warnings.length} cached timing anchor(s)`
+        );
+      }
       authoredUnits.push({
         plan,
-        authored: record.authored,
-        ...(record.complianceWarnings !== undefined
-          ? { complianceWarnings: record.complianceWarnings }
+        authored: repaired.authored,
+        ...(mergedWarnings.length > 0
+          ? { complianceWarnings: [...new Set(mergedWarnings)] }
           : {}),
       });
     }
@@ -765,6 +873,7 @@ async function runCompilationInner(
         runId,
         plan,
         courseTitle,
+        authorModel,
         ...(priorCause !== undefined
           ? {
               feedback: `A previous attempt at this unit failed: ${priorCause}. Avoid that failure mode.`,
@@ -816,6 +925,7 @@ async function runCompilationInner(
         runId,
         plan,
         courseTitle,
+        authorModel,
         feedback:
           "A previous draft produced questions with prompts identical to questions in other units of this course. Write DIFFERENT, unit-specific question prompts.",
         bypassCache: true,
@@ -857,5 +967,6 @@ async function runCompilationInner(
     unitCount: saved.unitCount,
     moduleCount: saved.moduleCount,
     questionCount: saved.questionCount,
+    ...(unitCountWarning ? { warning: unitCountWarning } : {}),
   };
 }

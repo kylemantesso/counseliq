@@ -14,12 +14,6 @@ function validManifest() {
   return {
     sourceDocHash: HASH_A,
     pageCount: 2,
-    theme: {
-      method: "ooxml",
-      colors: ["#1A2B3C", "#FFFFFF"],
-      fonts: ["Calibri", "Arial"],
-      logoCandidates: [`sha256/${HASH_C}.png`],
-    },
     pages: [
       {
         n: 1,
@@ -67,11 +61,6 @@ describe("conversionManifestSchema", () => {
     expect(result.success).toBe(true);
   });
 
-  it("accepts a null theme (pdf-native docs)", () => {
-    const manifest = { ...validManifest(), theme: null };
-    expect(conversionManifestSchema.safeParse(manifest).success).toBe(true);
-  });
-
   it("rejects pageCount mismatched with pages length", () => {
     const manifest = { ...validManifest(), pageCount: 3 };
     const result = conversionManifestSchema.safeParse(manifest);
@@ -111,11 +100,6 @@ describe("conversionManifestSchema", () => {
     expect(conversionManifestSchema.safeParse(manifest).success).toBe(false);
   });
 
-  it("rejects invalid theme colors", () => {
-    const manifest = validManifest();
-    manifest.theme.colors = ["blue"];
-    expect(conversionManifestSchema.safeParse(manifest).success).toBe(false);
-  });
 });
 
 describe("convertRequestSchema", () => {

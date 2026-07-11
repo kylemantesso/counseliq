@@ -1,4 +1,11 @@
-import type { PreviewAsset, PreviewModule, PreviewUnit, UnitPhase } from "./types";
+import { contentEndMsForTiming } from "@counseliq/course-schema";
+import type {
+  PreviewAsset,
+  PreviewCard,
+  PreviewModule,
+  PreviewUnit,
+  UnitPhase,
+} from "./types";
 
 /**
  * Pure sequencing/derivation helpers for the player. Everything here is
@@ -18,6 +25,38 @@ interface TimingLike {
   totalDurationMs: number;
 }
 
+interface CardBeatLike {
+  cardIndex: number;
+  atMs: number;
+}
+
+interface CardBeatTimingLike {
+  cardBeats: CardBeatLike[];
+  totalDurationMs: number;
+}
+
+export const CARD_SWAP_TRANSITION_MS = 220;
+
+export type CardTransitionVariant = "fade" | "lift" | "zoom";
+
+export interface CardSwapTransition {
+  fromCardIndex: number;
+  toCardIndex: number;
+  progress: number;
+}
+
+const CARD_TRANSITION_VARIANTS: readonly CardTransitionVariant[] = [
+  "fade",
+  "lift",
+  "zoom",
+];
+
+const MEDIA_TRANSITION_TEMPLATES = new Set([
+  "video-card",
+  "photo-kenburns",
+  "image-text-card",
+]);
+
 /**
  * The sentence whose [startMs, startMs + durationMs) window contains the
  * clock, or null when the clock is in an inter-sentence gap or past the end.
@@ -28,6 +67,102 @@ export function sentenceForClock(sentences: SentenceWindow[], ms: number): numbe
     if (ms >= s.startMs && ms < s.startMs + s.durationMs) return i;
   }
   return null;
+}
+
+/**
+ * During the first CARD_SWAP_TRANSITION_MS after a card beat, expose the
+ * outgoing/incoming card pair so the player can render a lightweight crossfade.
+ */
+export function deriveCardSwapTransition(
+  timing: CardBeatTimingLike | null | undefined,
+  unitClockMs: number,
+  reducedMotion: boolean,
+  windowMs = CARD_SWAP_TRANSITION_MS
+): CardSwapTransition | null {
+  if (!timing || reducedMotion || windowMs <= 0) return null;
+  const beats = timing.cardBeats;
+  if (beats.length < 2) return null;
+
+  const clock = Math.min(timing.totalDurationMs, Math.max(0, unitClockMs));
+  let activeBeat: CardBeatLike | null = null;
+  let activeAtMs = -1;
+
+  for (const beat of beats) {
+    if (beat.atMs <= clock && beat.atMs >= activeAtMs) {
+      activeBeat = beat;
+      activeAtMs = beat.atMs;
+    }
+  }
+  if (!activeBeat) return null;
+
+  let previousBeat: CardBeatLike | null = null;
+  let previousAtMs = -1;
+  for (const beat of beats) {
+    if (beat.atMs < activeAtMs && beat.atMs >= previousAtMs) {
+      previousBeat = beat;
+      previousAtMs = beat.atMs;
+    }
+  }
+  if (!previousBeat) return null;
+  if (previousBeat.cardIndex === activeBeat.cardIndex) return null;
+
+  const localMs = clock - activeAtMs;
+  if (localMs < 0 || localMs > windowMs) return null;
+  return {
+    fromCardIndex: previousBeat.cardIndex,
+    toCardIndex: activeBeat.cardIndex,
+    progress: Math.min(1, Math.max(0, localMs / windowMs)),
+  };
+}
+
+function hasMediaPayload(card: Pick<PreviewCard, "template" | "props">): boolean {
+  if (MEDIA_TRANSITION_TEMPLATES.has(card.template)) return true;
+  const props = card.props;
+  return (
+    typeof props.assetRef === "string" ||
+    typeof props.bgAssetRef === "string" ||
+    typeof props.imageRef === "string"
+  );
+}
+
+function stableHash(input: string): number {
+  let hash = 0;
+  for (let i = 0; i < input.length; i += 1) {
+    hash = (hash * 31 + input.charCodeAt(i)) >>> 0;
+  }
+  return hash;
+}
+
+/**
+ * Deterministically pick a subtle transition variant for a given card change.
+ * Media cards always use fade to avoid compounding motion.
+ */
+export function pickCardTransitionVariant({
+  unitId,
+  fromCardIndex,
+  toCardIndex,
+  fromCard,
+  toCard,
+}: {
+  unitId: string;
+  fromCardIndex: number;
+  toCardIndex: number;
+  fromCard: Pick<PreviewCard, "template" | "props">;
+  toCard: Pick<PreviewCard, "template" | "props">;
+}): CardTransitionVariant {
+  if (hasMediaPayload(fromCard) || hasMediaPayload(toCard)) {
+    return "fade";
+  }
+
+  const signature = [
+    unitId,
+    String(fromCardIndex),
+    String(toCardIndex),
+    fromCard.template,
+    toCard.template,
+  ].join("|");
+  const hash = stableHash(signature);
+  return CARD_TRANSITION_VARIANTS[hash % CARD_TRANSITION_VARIANTS.length];
 }
 
 /**
@@ -58,14 +193,20 @@ export type SequenceAction =
 
 /**
  * After a sentence's audio ends: play the next sentence immediately, wait
- * out an artifact-defined gap first (the clock free-runs to `untilMs`), or
- * report the unit ended.
+ * out an artifact-defined gap/final hold first (the clock free-runs to
+ * `untilMs`), or report the unit ended.
  */
 export function nextAfterSentence(timing: TimingLike, endedIndex: number): SequenceAction {
   const next = endedIndex + 1;
-  if (next >= timing.sentences.length) return { kind: "ended" };
   const ended = timing.sentences[endedIndex];
   const endedAt = ended.startMs + ended.durationMs;
+  if (next >= timing.sentences.length) {
+    const contentEndMs = contentEndMsForTiming(timing);
+    if (contentEndMs > endedAt) {
+      return { kind: "wait-gap", untilMs: contentEndMs, sentenceIndex: next };
+    }
+    return { kind: "ended" };
+  }
   const nextStart = timing.sentences[next].startMs;
   if (nextStart > endedAt) {
     return { kind: "wait-gap", untilMs: nextStart, sentenceIndex: next };
@@ -152,6 +293,8 @@ export function assetRefsForUnit(unit: PreviewUnit): string[] {
   const fromProps = (props: Record<string, unknown> | undefined) => {
     const ref = props?.assetRef;
     if (typeof ref === "string" && ref.length > 0) refs.push(ref);
+    const bgRef = props?.bgAssetRef;
+    if (typeof bgRef === "string" && bgRef.length > 0) refs.push(bgRef);
   };
   for (const card of unit.cards) fromProps(card.props);
   fromProps(unit.meta.anchor?.props);

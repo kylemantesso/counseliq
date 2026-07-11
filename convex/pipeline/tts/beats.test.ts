@@ -1,5 +1,9 @@
 import { describe, expect, test } from "vitest";
-import { unitScriptSchema, type UnitScript } from "@counseliq/course-schema";
+import {
+  FINAL_CONTENT_HOLD_MS,
+  unitScriptSchema,
+  type UnitScript,
+} from "@counseliq/course-schema";
 import {
   assembleUnitClock,
   buildUnitTiming,
@@ -171,6 +175,35 @@ describe("resolveCardBeats", () => {
     expect(beats[0].atMs).toBeGreaterThanOrEqual(timing[1].startMs);
   });
 
+  test("title opener hands off to first content card at sentence-2 start", async () => {
+    const first = await synthesizeSentence("n1", "Opening title sentence.");
+    const second = await synthesizeSentence(
+      "n2",
+      "Second sentence keeps the key target word later."
+    );
+    const timing = assembleUnitClock([first.assembly, second.assembly], 250);
+    const beats = resolveCardBeats(
+      [
+        {
+          template: "title-card",
+          enterAt: { narration: "n1", word: "Opening" },
+        },
+        {
+          template: "stat-card",
+          enterAt: { narration: "n2", word: "target" },
+        },
+      ],
+      scriptOf([first.scriptSentence, second.scriptSentence]),
+      timing
+    );
+
+    const targetWord = timing[1].words.find((word) => word.text === "target");
+    expect(targetWord).toBeDefined();
+    expect(beats[0].atMs).toBe(timing[0].startMs);
+    expect(beats[1].atMs).toBe(timing[1].startMs);
+    expect(beats[1].atMs).toBeLessThan(targetWord!.startMs);
+  });
+
   test("unresolvable anchors fall back to the sentence start", async () => {
     const s = await synthesizeSentence("n1", "Nothing matches here.");
     const timing = assembleUnitClock([s.assembly], 250);
@@ -212,7 +245,7 @@ describe("buildUnitTiming", () => {
 
     expect(artifact.version).toBe(2);
     expect(artifact.totalDurationMs).toBe(
-      timing[1].startMs + timing[1].durationMs
+      timing[1].startMs + timing[1].durationMs + FINAL_CONTENT_HOLD_MS
     );
     expect(artifact.cardBeats).toHaveLength(1);
     expect(artifact.media).toEqual([]);

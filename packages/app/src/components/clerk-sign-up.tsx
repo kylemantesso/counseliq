@@ -101,7 +101,7 @@ export function ClerkSignUp({
     nameIsValid && emailIsValid && passwordIsValid && !loading && signUpReady;
 
   const oauthRedirectCompleteUrl =
-    oauthRedirectComplete ?? (deferRedirect ? "/onboarding/account" : "/dashboard");
+    oauthRedirectComplete ?? (deferRedirect ? "/onboarding/account" : "/admin");
   const finalizeStarted = useRef(false);
 
   const beginFinalizing = () => {
@@ -120,14 +120,14 @@ export function ClerkSignUp({
         beginFinalizing();
         return;
       }
-      router.replace("/dashboard");
+      router.replace("/admin");
     } catch (err: unknown) {
       finalizeStarted.current = false;
       if (isSessionExistsError(err)) {
         if (deferRedirect) {
           beginFinalizing();
         } else {
-          router.replace("/dashboard");
+          router.replace("/admin");
         }
         return;
       }
@@ -249,7 +249,7 @@ export function ClerkSignUp({
         if (deferRedirect) {
           beginFinalizing();
         } else {
-          router.replace("/dashboard");
+          router.replace("/admin");
         }
         return;
       }
@@ -305,7 +305,7 @@ export function ClerkSignUp({
 
       if (result.type === "complete") {
         if (!deferRedirect) {
-          router.replace("/dashboard");
+          router.replace("/admin");
         }
         return;
       }

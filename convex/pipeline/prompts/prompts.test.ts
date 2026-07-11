@@ -17,12 +17,11 @@ describe("prompt codegen", () => {
     expect(actual).toBe(expected);
   });
 
-  test("all three M3 tasks have a latest prompt", () => {
+  test("M3 extraction tasks have a latest prompt", () => {
     expect(PROMPTS["extract-page"].versionTag).toMatch(/^extract-page@\d+$/);
     expect(PROMPTS["merge-inventory"].versionTag).toMatch(
       /^merge-inventory@\d+$/
     );
-    expect(PROMPTS["infer-theme"].versionTag).toMatch(/^infer-theme@\d+$/);
   });
 
   test("version tags are unique across all prompt versions", () => {

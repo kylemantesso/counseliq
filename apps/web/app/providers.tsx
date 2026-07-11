@@ -42,8 +42,8 @@ export function Providers({ children }: { children: ReactNode }) {
       publishableKey={publishableKey}
       signInUrl="/login"
       signUpUrl="/signup"
-      signInFallbackRedirectUrl="/dashboard"
-      signUpFallbackRedirectUrl="/dashboard"
+      signInFallbackRedirectUrl="/admin"
+      signUpFallbackRedirectUrl="/admin"
       allowedRedirectOrigins={getClerkAllowedRedirectOrigins()}
     >
       <UIProvider>

@@ -217,27 +217,32 @@ export const llmDraftQuestionSchema = z.object({
   explanation: z.string().min(1),
 });
 
-export const llmAuthoredUnitSchema = z
-  .object({
-    narration: z
-      .array(
-        z.object({
-          /** n1, n2, … unique within the unit. */
-          id: z.string().min(1),
-          /** One TTS-friendly sentence. */
-          text: z.string().min(1),
-        })
-      )
-      .min(1),
-    cards: z.array(llmAuthoredCardSchema).min(1),
-    /** The commit question posed by the hook. */
-    hookQuestion: llmDraftQuestionSchema,
-    /** Retrieve (MCQ) questions testing this unit's concept. */
-    retrieveQuestions: z.array(llmDraftQuestionSchema).min(2).max(3),
-    /** Single-takeaway anchor card. */
-    anchor: llmAnchorSchema,
-  })
-  .superRefine((unit, ctx) => {
+const llmAuthoredUnitShapeSchema = z.object({
+  narration: z
+    .array(
+      z.object({
+        /** n1, n2, … unique within the unit. */
+        id: z.string().min(1),
+        /** One TTS-friendly sentence. */
+        text: z.string().min(1),
+      })
+    )
+    .min(1),
+  cards: z.array(llmAuthoredCardSchema).min(1),
+  /** The commit question posed by the hook. */
+  hookQuestion: llmDraftQuestionSchema,
+  /** Retrieve (MCQ) questions testing this unit's concept. */
+  retrieveQuestions: z.array(llmDraftQuestionSchema).min(2).max(3),
+  /** Single-takeaway anchor card. */
+  anchor: llmAnchorSchema,
+});
+
+function authoredUnitSchemaWithRefinements(options: {
+  enforceOpeningCardAnchor: boolean;
+  enforceEnterAtWord: boolean;
+  enforceDisplayCaps: boolean;
+}) {
+  return llmAuthoredUnitShapeSchema.superRefine((unit, ctx) => {
     const narrationById = new Map<string, string>();
     unit.narration.forEach((sentence, nIndex) => {
       if (narrationById.has(sentence.id)) {
@@ -250,6 +255,35 @@ export const llmAuthoredUnitSchema = z
       narrationById.set(sentence.id, sentence.text);
     });
 
+    if (options.enforceOpeningCardAnchor) {
+      const openingCard = unit.cards[0];
+      const firstSentence = unit.narration[0];
+      if (openingCard.template !== "title-card") {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["cards", 0, "template"],
+          message:
+            "cards[0] must be a title-card so every unit opens with a title slate",
+        });
+      } else {
+        if (openingCard.enterAt.narration !== firstSentence.id) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["cards", 0, "enterAt", "narration"],
+            message: `opening title-card must anchor to first narration sentence "${firstSentence.id}"`,
+          });
+        }
+        const openerWord = firstSentence.text.match(/\S+/)?.[0];
+        if (openerWord && openingCard.enterAt.word !== openerWord) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["cards", 0, "enterAt", "word"],
+            message: `opening title-card must anchor to the first spoken word "${openerWord}"`,
+          });
+        }
+      }
+    }
+
     unit.cards.forEach((card, cIndex) => {
       const narrationText = narrationById.get(card.enterAt.narration);
       if (narrationText === undefined) {
@@ -258,7 +292,10 @@ export const llmAuthoredUnitSchema = z
           path: ["cards", cIndex, "enterAt", "narration"],
           message: `enterAt.narration "${card.enterAt.narration}" does not match any narration sentence id`,
         });
-      } else if (!narrationText.includes(card.enterAt.word)) {
+      } else if (
+        options.enforceEnterAtWord &&
+        !narrationText.includes(card.enterAt.word)
+      ) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ["cards", cIndex, "enterAt", "word"],
@@ -302,29 +339,53 @@ export const llmAuthoredUnitSchema = z
         }
       }
     };
-    unit.cards.forEach((card, cIndex) =>
-      checkDisplayCaps(card.template, card.props as Record<string, unknown>, ["cards", cIndex])
-    );
 
-    // The anchor renders full-screen display type; past ~160 characters no
-    // fittable font size keeps it readable on the card.
-    const anchorText = (unit.anchor.props as Record<string, unknown>).text;
-    if (unit.anchor.template === "takeaway-card") {
-      if (typeof anchorText === "string" && anchorText.length > 160) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["anchor", "props", "text"],
-          message: `anchor takeaway text is ${anchorText.length} characters; rewrite it as one punchy sentence of at most 160 characters — state the single memorable point, not a summary of the unit`,
-        });
-      }
-    } else {
-      checkDisplayCaps(
-        unit.anchor.template,
-        unit.anchor.props as Record<string, unknown>,
-        ["anchor"]
+    if (options.enforceDisplayCaps) {
+      unit.cards.forEach((card, cIndex) =>
+        checkDisplayCaps(card.template, card.props as Record<string, unknown>, [
+          "cards",
+          cIndex,
+        ])
       );
+
+      // The anchor renders full-screen display type; past ~160 characters no
+      // fittable font size keeps it readable on the card.
+      const anchorText = (unit.anchor.props as Record<string, unknown>).text;
+      if (unit.anchor.template === "takeaway-card") {
+        if (typeof anchorText === "string" && anchorText.length > 160) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["anchor", "props", "text"],
+            message: `anchor takeaway text is ${anchorText.length} characters; rewrite it as one punchy sentence of at most 160 characters — state the single memorable point, not a summary of the unit`,
+          });
+        }
+      } else {
+        checkDisplayCaps(
+          unit.anchor.template,
+          unit.anchor.props as Record<string, unknown>,
+          ["anchor"]
+        );
+      }
     }
   });
+}
+
+export const llmAuthoredUnitSchema = authoredUnitSchemaWithRefinements({
+  enforceOpeningCardAnchor: true,
+  enforceEnterAtWord: true,
+  enforceDisplayCaps: true,
+});
+
+/**
+ * Lenient fallback for authoring retries: keeps structural safety checks,
+ * but downgrades opening/timing/display constraints to post-parse repairs
+ * and compliance warnings.
+ */
+export const llmAuthoredUnitLenientSchema = authoredUnitSchemaWithRefinements({
+  enforceOpeningCardAnchor: false,
+  enforceEnterAtWord: false,
+  enforceDisplayCaps: false,
+});
 
 export type LlmDraftQuestion = z.infer<typeof llmDraftQuestionSchema>;
 export type LlmAuthoredUnit = z.infer<typeof llmAuthoredUnitSchema>;

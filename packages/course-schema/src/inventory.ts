@@ -3,8 +3,9 @@ import { z } from "zod";
 /**
  * Knowledge inventory contract — shared between the Convex extraction
  * pipeline (convex/pipeline, which writes inventoryItems), the eval harness
- * (scripts/eval.mjs), and the admin UI. The EXTRACTING phase produces these
- * items from converted pages; the compiler (M4) consumes them.
+ * (scripts/eval.mjs), and the admin UI. Upload-time extraction produces these
+ * items from converted pages; course creation materializes and the compiler
+ * consumes them.
  */
 
 /**
@@ -64,7 +65,7 @@ export const factSchema = z
     year: z.number().int().gte(1900).lte(2100).optional(),
     flagged: z.boolean(),
     flagReason: z.string().min(1).optional(),
-    /** Set at gate-1 review when the operator excludes the fact. */
+    /** Set during fact review when the operator excludes the fact. */
     excluded: z.boolean().optional(),
   })
   .strict();
@@ -209,15 +210,8 @@ export const llmMergeResultSchema = z.object({
   concepts: z.array(llmMergedConceptSchema),
 });
 
-/** Output of the infer-theme task (pdf-native docs, candidates only). */
-export const llmInferredThemeSchema = z.object({
-  colors: z.array(z.string().regex(/^#[0-9A-Fa-f]{6}$/)),
-  fonts: z.array(z.string().min(1)),
-});
-
 export type LlmPageExtraction = z.infer<typeof llmPageExtractionSchema>;
 export type LlmMergeResult = z.infer<typeof llmMergeResultSchema>;
-export type LlmInferredTheme = z.infer<typeof llmInferredThemeSchema>;
 
 // --- Golden label files (eval harness) ---
 

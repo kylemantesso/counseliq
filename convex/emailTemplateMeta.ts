@@ -32,7 +32,7 @@ export const EMAIL_TEMPLATE_META: EmailTemplateMeta[] = [
     description: "Sent when a new user joins the app.",
     sampleProps: {
       recipientName: "Alex",
-      dashboardUrl: `${origin}/dashboard`,
+      dashboardUrl: `${origin}/admin`,
     },
   },
 ];

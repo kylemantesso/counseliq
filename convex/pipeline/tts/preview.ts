@@ -117,16 +117,29 @@ async function buildRunPreview(ctx: QueryCtx, runId: Id<"runs">) {
   const collectRefs = (cards: unknown) => {
     if (!Array.isArray(cards)) return;
     for (const card of cards) {
-      const ref = (card as { props?: { assetRef?: unknown } }).props?.assetRef;
-      if (typeof ref === "string" && ref.length > 0) assetRefs.add(ref);
+      const props = (card as { props?: { assetRef?: unknown; bgAssetRef?: unknown } })
+        .props;
+      if (typeof props?.assetRef === "string" && props.assetRef.length > 0) {
+        assetRefs.add(props.assetRef);
+      }
+      if (
+        typeof props?.bgAssetRef === "string" &&
+        props.bgAssetRef.length > 0
+      ) {
+        assetRefs.add(props.bgAssetRef);
+      }
     }
   };
   for (const unit of units) {
     collectRefs(unit.cards);
-    const anchor = (unit.meta as { anchor?: { props?: { assetRef?: unknown } } } | undefined)
-      ?.anchor;
+    const anchor = (unit.meta as {
+      anchor?: { props?: { assetRef?: unknown; bgAssetRef?: unknown } };
+    } | undefined)?.anchor;
     if (typeof anchor?.props?.assetRef === "string") {
       assetRefs.add(anchor.props.assetRef);
+    }
+    if (typeof anchor?.props?.bgAssetRef === "string") {
+      assetRefs.add(anchor.props.bgAssetRef);
     }
   }
   const assets: Record<

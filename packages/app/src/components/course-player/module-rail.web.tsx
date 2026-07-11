@@ -18,8 +18,16 @@ export interface ModuleRailProps {
 function stateChip(unit: PreviewUnit): { label: string; color: string; bg: string } {
   if (unit.state === "blocked") return { label: "BLOCKED", color: "#fff", bg: "#c53030" };
   if (unit.error) return { label: "FAILED", color: "#fff", bg: "#b45309" };
-  if (unit.timing) return { label: `✓ ${formatMs(unit.timing.totalDurationMs)}`, color: "#7fd1a8", bg: "transparent" };
+  if (unit.timing) return { label: formatMs(unit.timing.totalDurationMs), color: "#49d17f", bg: "transparent" };
   return { label: unit.state.replace(/_/g, " "), color: "#9aa3ad", bg: "transparent" };
+}
+
+function moduleDuration(module: PreviewModule): number {
+  return module.units.reduce((sum, unit) => sum + (unit.timing?.totalDurationMs ?? 0), 0);
+}
+
+function unitDisplayLabel(unit: FlatUnit): string {
+  return `${unit.moduleIndex + 1}.${unit.unitIndexInModule + 1}`;
 }
 
 export function ModuleRail({ modules, flatUnits, activeFlatIndex, onSelectUnit }: ModuleRailProps) {
@@ -31,23 +39,61 @@ export function ModuleRail({ modules, flatUnits, activeFlatIndex, onSelectUnit }
         width: 272,
         flex: "0 0 auto",
         overflowY: "auto",
-        borderRight: "1px solid #262b31",
-        padding: "12px 10px",
+        borderRight: "1px solid #202833",
+        background: "#0b1016",
+        padding: "22px 12px 16px",
         fontFamily: "'IBM Plex Mono', monospace",
       }}
     >
+      <div
+        style={{
+          padding: "0 8px 14px",
+          borderBottom: "1px solid #1f2732",
+          marginBottom: 12,
+        }}
+      >
+        <div
+          style={{
+            color: "#737d88",
+            fontSize: 10,
+            letterSpacing: ".18em",
+            textTransform: "uppercase",
+          }}
+        >
+          Course outline
+        </div>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            gap: 10,
+            marginTop: 8,
+            color: "#e8e6e1",
+            fontSize: 11,
+          }}
+        >
+          <span>{modules.length} modules · {flatUnits.length} units</span>
+          <span style={{ color: "#51d083" }}>
+            {formatMs(flatUnits.reduce((sum, f) => sum + (f.unit.timing?.totalDurationMs ?? 0), 0))} total
+          </span>
+        </div>
+      </div>
       {modules.map((module, mi) => (
-        <div key={module.moduleKey} style={{ marginBottom: 14 }}>
+        <div key={module.moduleKey} style={{ marginBottom: 18 }}>
           <div
             style={{
               fontSize: 10,
               letterSpacing: ".14em",
               textTransform: "uppercase",
-              color: "#9aa3ad",
+              color: "#747e8a",
               padding: "6px 8px",
+              display: "flex",
+              justifyContent: "space-between",
+              gap: 8,
             }}
           >
-            Module {mi + 1} · {module.moduleTitle}
+            <span>Module {mi + 1} · {module.moduleTitle}</span>
+            <span style={{ color: "#51d083" }}>{formatMs(moduleDuration(module))}</span>
           </div>
           {flatUnits
             .filter((f) => f.moduleIndex === mi)
@@ -64,20 +110,37 @@ export function ModuleRail({ modules, flatUnits, activeFlatIndex, onSelectUnit }
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "space-between",
-                    gap: 8,
+                    gap: 9,
                     width: "100%",
                     textAlign: "left",
-                    padding: "8px 8px",
+                    padding: "9px 8px",
                     borderRadius: 8,
-                    border: "none",
-                    background: active ? "#20262d" : "transparent",
+                    border: active ? "1px solid #8b7427" : "1px solid transparent",
+                    background: active ? "rgba(214,173,47,.16)" : "transparent",
                     color: "#e8e6e1",
                     cursor: "pointer",
-                    fontSize: 12,
+                    fontSize: 11.5,
                   }}
                 >
-                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {f.unit.unitKey} · {f.unit.concept.replace(/-/g, " ")}
+                  <span style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                    <span
+                      style={{
+                        flex: "0 0 auto",
+                        minWidth: 24,
+                        color: active ? "#11100c" : "#78828f",
+                        background: active ? "#d6ad2f" : "#151d26",
+                        borderRadius: 5,
+                        padding: "2px 4px",
+                        textAlign: "center",
+                        fontSize: 10,
+                        fontWeight: 800,
+                      }}
+                    >
+                      {unitDisplayLabel(f)}
+                    </span>
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {f.unit.concept.replace(/-/g, " ")}
+                    </span>
                   </span>
                   <span
                     style={{
@@ -91,6 +154,9 @@ export function ModuleRail({ modules, flatUnits, activeFlatIndex, onSelectUnit }
                     }}
                   >
                     {chip.label}
+                    {f.unit.timing && !f.unit.error && f.unit.state !== "blocked" ? (
+                      <span style={{ marginLeft: 5, fontSize: 9 }}>●</span>
+                    ) : null}
                   </span>
                 </button>
               );

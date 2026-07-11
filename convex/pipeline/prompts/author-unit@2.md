@@ -37,9 +37,9 @@ narration, cards, a hook question, retrieve questions, and an anchor.
   - RIGHT: "The university describes itself as Australia's largest regional
     university." / "It is ranked in the world's top one percent by
     ShanghaiRanking."
-  - On cards, a superlative must ride with its attribution: put the claimant
-    in the same text or in the card's `sourceLabel` (e.g. `"sourceLabel":
-    "University marketing claim"`).
+  - On cards, a superlative must ride with its attribution in the same text.
+    Only use `sourceLabel` when a real named source exists in the approved
+    facts. Never invent placeholder labels.
 - NEVER promise migration outcomes, permanent residency, visa grants, or
   guaranteed employment. State current factual settings only.
 - If a card or question needs to NAME a prohibited promise in order to warn

@@ -4,6 +4,7 @@ import type { CardComponentProps } from "../timing";
 import { fade, fadeUp, msWindow } from "../interpolate";
 import { fitBlockFontSize } from "../fit";
 import { cssVar } from "../theme/brand-theme-provider";
+import { BackgroundMediaLayer } from "../background-media";
 
 /**
  * takeaway-card — the unit's settled anchor statement. Mockup choreography:
@@ -34,8 +35,14 @@ export const TakeawayCard: FC<CardComponentProps<CardPropsFor<"takeaway-card">>>
         fontFamily: cssVar("fontText"),
       }}
     >
+      <BackgroundMediaLayer
+        assetRef={props.bgAssetRef}
+        treatment={props.bgTreatment}
+      />
       <div
         style={{
+          position: "relative",
+          zIndex: 1,
           display: "flex",
           alignItems: "center",
           gap: 10,
@@ -55,7 +62,15 @@ export const TakeawayCard: FC<CardComponentProps<CardPropsFor<"takeaway-card">>>
           Takeaway
         </span>
       </div>
-      <div style={{ flex: 1, display: "flex", alignItems: "center" }}>
+      <div
+        style={{
+          position: "relative",
+          zIndex: 1,
+          flex: 1,
+          display: "flex",
+          alignItems: "center",
+        }}
+      >
         <div
           style={{
             ...display,
@@ -71,6 +86,8 @@ export const TakeawayCard: FC<CardComponentProps<CardPropsFor<"takeaway-card">>>
       </div>
       <div
         style={{
+          position: "relative",
+          zIndex: 1,
           alignSelf: "flex-start",
           display: "flex",
           alignItems: "center",

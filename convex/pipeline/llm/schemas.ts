@@ -1,5 +1,4 @@
 import {
-  llmInferredThemeSchema,
   llmMergeResultSchema,
   llmPageExtractionSchema,
 } from "@counseliq/course-schema";
@@ -52,7 +51,6 @@ export const PAGE_EXTRACTION_JSON_SCHEMA = toJsonSchema(
   llmPageExtractionSchema
 );
 export const MERGE_RESULT_JSON_SCHEMA = toJsonSchema(llmMergeResultSchema);
-export const INFERRED_THEME_JSON_SCHEMA = toJsonSchema(llmInferredThemeSchema);
 
 // M4 compiler + judge (Zod sources in ../compiler/schemas.ts).
 export const COMPILE_STRUCTURE_JSON_SCHEMA = toJsonSchema(

@@ -229,4 +229,38 @@ describe("assembleInventory", () => {
       expect(inventoryItemSchema.safeParse(item).success).toBe(true);
     }
   });
+
+  test("course materialization preserves an approved statistic", () => {
+    const reviewedPages = [
+      storePageExtraction(
+        PROV_A1,
+        wirePage({
+          facts: [
+            {
+              conceptKey: "employment",
+              statement: "87% employed",
+              claimClass: "statistic",
+              sourceLabel: null,
+              year: null,
+              flagged: false,
+              flagReason: null,
+            },
+          ],
+        })
+      ),
+    ];
+    reviewedPages[0].facts[0].flagged = false;
+    delete reviewedPages[0].facts[0].flagReason;
+
+    const items = assembleInventory(
+      reviewedPages,
+      preGroupConcepts(reviewedPages),
+      null,
+      { preserveReviewedFacts: true }
+    );
+
+    expect(items.find((item) => item.type === "fact")).toMatchObject({
+      flagged: false,
+    });
+  });
 });

@@ -12,6 +12,7 @@ import {
 } from "@counseliq/course-schema";
 import type { LlmAuthoredUnit, LlmDraftQuestion } from "./schemas";
 import {
+  DERIVED_PROVENANCE,
   cardText,
   findBannedClaimsInText,
   findRedundantCards,
@@ -83,6 +84,165 @@ export interface ReviewedInventory {
   provenanceIds: string[];
   /** M6.5: operator brief (null when the run has none). */
   brief?: string | null;
+}
+
+function nonEmptyText(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function moduleKicker(moduleId: string): string | null {
+  const match = moduleId.match(/^m(\d+)(?:-|$)/i);
+  if (!match) return null;
+  return `MODULE ${match[1]}`;
+}
+
+function firstWord(text: string): string {
+  const match = text.match(/\S+/);
+  return match?.[0] ?? text;
+}
+
+function alignedAnchorWord(sentenceText: string, desiredWord: string): string {
+  if (sentenceText.includes(desiredWord)) {
+    return desiredWord;
+  }
+
+  const loweredText = sentenceText.toLowerCase();
+  const loweredDesired = desiredWord.toLowerCase();
+  if (loweredDesired.length > 0) {
+    const matchIndex = loweredText.indexOf(loweredDesired);
+    if (matchIndex >= 0) {
+      return sentenceText.slice(matchIndex, matchIndex + desiredWord.length);
+    }
+  }
+
+  return firstWord(sentenceText);
+}
+
+/**
+ * Canonicalize the opener so every generated unit starts with a title-card
+ * anchored to the very first spoken word.
+ */
+export function normalizeOpeningTitleCard(
+  authored: LlmAuthoredUnit,
+  context: {
+    unitTitle: string;
+    moduleId: string;
+    institutionName: string;
+    courseTitle: string;
+  }
+): LlmAuthoredUnit {
+  const firstSentence = authored.narration[0];
+  if (!firstSentence) return authored;
+
+  const existingIndex = authored.cards.findIndex(
+    (card) => card.template === "title-card"
+  );
+  const existing = existingIndex >= 0 ? authored.cards[existingIndex] : null;
+  const existingProps = (existing?.props ?? {}) as Record<string, unknown>;
+
+  const title = nonEmptyText(existingProps.title) ?? context.unitTitle;
+  const kicker =
+    nonEmptyText(existingProps.kicker) ??
+    moduleKicker(context.moduleId) ??
+    context.institutionName;
+  const courseLabel =
+    nonEmptyText(existingProps.courseLabel) ?? context.courseTitle;
+
+  const normalizedProps: Record<string, unknown> = {
+    ...existingProps,
+    title,
+    ...(kicker ? { kicker } : {}),
+    ...(courseLabel ? { courseLabel } : {}),
+  };
+
+  const opening = {
+    template: "title-card" as const,
+    props: normalizedProps,
+    enterAt: {
+      narration: firstSentence.id,
+      word: firstWord(firstSentence.text),
+    },
+    provenance: DERIVED_PROVENANCE,
+  };
+
+  return {
+    ...authored,
+    cards: [
+      opening,
+      ...authored.cards.filter((_, index) => index !== existingIndex),
+    ],
+  };
+}
+
+/**
+ * Best-effort enterAt repair: keeps card timing anchors valid for playback
+ * and schema validation when the author model emits a drifted anchor word.
+ * Repairs are surfaced as non-blocking warnings.
+ */
+export function normalizeCardEnterAtAnchors(authored: LlmAuthoredUnit): {
+  authored: LlmAuthoredUnit;
+  warnings: string[];
+} {
+  const firstSentence = authored.narration[0];
+  if (!firstSentence) {
+    return { authored, warnings: [] };
+  }
+
+  const narrationById = new Map(
+    authored.narration.map((sentence) => [sentence.id, sentence.text] as const)
+  );
+  const warnings: string[] = [];
+
+  const cards = authored.cards.map((card, index) => {
+    const originalNarration = card.enterAt.narration;
+    const originalWord = card.enterAt.word;
+
+    let narrationId = originalNarration;
+    let sentenceText = narrationById.get(narrationId);
+    let narrationAdjusted = false;
+
+    if (sentenceText === undefined) {
+      narrationId = firstSentence.id;
+      sentenceText = firstSentence.text;
+      narrationAdjusted = true;
+    }
+
+    const nextWord = alignedAnchorWord(sentenceText, originalWord);
+    const wordAdjusted = nextWord !== originalWord;
+
+    if (narrationAdjusted || wordAdjusted) {
+      const parts = [] as string[];
+      if (narrationAdjusted) {
+        parts.push(`narration \"${originalNarration}\" not found; using \"${narrationId}\"`);
+      }
+      if (wordAdjusted) {
+        parts.push(
+          `word \"${originalWord}\" not found in narration \"${narrationId}\"; using \"${nextWord}\"`
+        );
+      }
+      warnings.push(
+        `card ${index + 1} (${card.template}) timing anchor repaired: ${parts.join("; ")}`
+      );
+    }
+
+    return {
+      ...card,
+      enterAt: {
+        narration: narrationId,
+        word: nextWord,
+      },
+    };
+  });
+
+  return {
+    authored: {
+      ...authored,
+      cards,
+    },
+    warnings,
+  };
 }
 
 export function slugify(text: string): string {
@@ -311,13 +471,13 @@ export function buildUnitUserText(
   if (catalogue.length > 0) {
     parts.push(
       ``,
-      `Cleared asset library (reference by "assetRef" = the id string EXACTLY as listed; never invent an id; video-card needs a video, photo-kenburns/image-text-card need an image):`,
+      `Cleared asset library (reference by asset id EXACTLY as listed; never invent ids. "assetRef" is for media cards: video-card needs a video, photo-kenburns/image-text-card need an image. "bgAssetRef" is for subtle image backgrounds on stat-card/list-reveal/takeaway-card):`,
       ...catalogue.map((asset) => JSON.stringify(asset))
     );
   } else {
     parts.push(
       ``,
-      `No cleared media assets are available for this institution — do not emit video-card cards, and do not put an assetRef on any card.`
+      `No cleared media assets are available for this institution — do not emit video-card/photo-kenburns/image-text-card cards, and do not put assetRef/bgAssetRef on any card.`
     );
   }
   if (plan.mediaAssetIds && plan.mediaAssetIds.length > 0) {
@@ -341,30 +501,105 @@ export function buildUnitUserText(
 /**
  * Fail-open policy (operator decision): compliance violations get ONE
  * authoring retry, then the unit is ACCEPTED with the remaining
- * violations attached as warnings for gate-2 review — a run must not die
- * on an unattributed superlative or a pacing shortfall. The single
- * blocking exception is a rights-uncleared asset reference: "no
- * unknown-rights asset can appear in any course" stays mechanical.
+ * violations attached as warnings for gate-2 review.
+ *
+ * Most issues stay warning-only. Source-authenticity violations are
+ * blocking: generated source-ish labels must match approved fact sources.
  */
 export function partitionComplianceViolations(violations: string[]): {
   blocking: string[];
   warnings: string[];
 } {
-  const blocking: string[] = [];
-  const warnings: string[] = [];
-  for (const violation of violations) {
-    if (violation.includes("not rights-cleared")) blocking.push(violation);
-    else warnings.push(violation);
-  }
+  const blocking = violations.filter((violation) =>
+    violation.startsWith("source-authenticity:")
+  );
+  const warnings = violations.filter(
+    (violation) => !violation.startsWith("source-authenticity:")
+  );
   return { blocking, warnings };
 }
+
+function normalizeLabel(value: string): string {
+  return value.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function collectStringPropsByKey(
+  value: unknown,
+  key: string,
+  out: string[] = []
+): string[] {
+  if (Array.isArray(value)) {
+    for (const entry of value) collectStringPropsByKey(entry, key, out);
+    return out;
+  }
+  if (value === null || typeof value !== "object") return out;
+  for (const [entryKey, entryValue] of Object.entries(
+    value as Record<string, unknown>
+  )) {
+    if (entryKey === key && typeof entryValue === "string") {
+      const trimmed = entryValue.trim();
+      if (trimmed.length > 0) out.push(trimmed);
+      continue;
+    }
+    collectStringPropsByKey(entryValue, key, out);
+  }
+  return out;
+}
+
+const CLAIM_MARKER_KEYS = ["kicker", "subtitle", "eyebrow"] as const;
+const CLAIM_WORD_PATTERN = /\bclaims?\b/i;
 
 export function unitComplianceViolations(
   authored: LlmAuthoredUnit,
   knownProvenanceIds: ReadonlySet<string>,
-  media: UnitMediaContext
+  media: UnitMediaContext,
+  approvedSourceLabels?: ReadonlySet<string>
 ): string[] {
   const violations: string[] = [];
+  const approvedSourceLabelsNormalized =
+    approvedSourceLabels === undefined
+      ? null
+      : new Set(
+          [...approvedSourceLabels]
+            .map(normalizeLabel)
+            .filter((label) => label.length > 0)
+        );
+  const narrationById = new Map(
+    authored.narration.map((sentence) => [sentence.id, sentence.text])
+  );
+  const narrationIndexById = new Map(
+    authored.narration.map((sentence, index) => [sentence.id, index] as const)
+  );
+  const firstSentence = authored.narration[0];
+
+  const DISPLAY_TEXT_WARNING_CAPS: Partial<
+    Record<string, Record<string, number>>
+  > = {
+    "text-card": { body: 200 },
+    "alert-card": { message: 180 },
+    "quote-card": { quote: 220 },
+    "myth-fact-card": { myth: 140, fact: 140 },
+    "photo-kenburns": { overlayText: 120 },
+    "takeaway-card": { text: 160 },
+    "video-card": { overlayText: 120 },
+  };
+
+  const checkDisplayCaps = (
+    template: string,
+    props: Record<string, unknown>,
+    label: string
+  ) => {
+    const caps = DISPLAY_TEXT_WARNING_CAPS[template];
+    if (!caps) return;
+    for (const [prop, max] of Object.entries(caps)) {
+      const value = props[prop];
+      if (typeof value === "string" && value.length > max) {
+        violations.push(
+          `${label} ${template} ${prop} is ${value.length} characters; recommended max is ${max} for readability`
+        );
+      }
+    }
+  };
 
   // A card whose props carry a non-empty sourceLabel is attributed — the
   // label IS the attribution for any superlative on the card (per the
@@ -409,6 +644,136 @@ export function unitComplianceViolations(
       debunking: textHasNegation(blob),
     });
   }
+
+  authored.cards.forEach((card, index) => {
+    const cardProps = card.props as Record<string, unknown>;
+    const sentence = narrationById.get(card.enterAt.narration);
+    if (sentence !== undefined && !sentence.includes(card.enterAt.word)) {
+      violations.push(
+        `card ${index + 1} enterAt.word "${card.enterAt.word}" is not present in narration sentence "${card.enterAt.narration}"`
+      );
+    }
+    checkDisplayCaps(card.template, cardProps, `card ${index + 1}`);
+
+    for (const sourceLabel of collectStringPropsByKey(cardProps, "sourceLabel")) {
+      if (
+        approvedSourceLabelsNormalized !== null &&
+        !approvedSourceLabelsNormalized.has(normalizeLabel(sourceLabel))
+      ) {
+        violations.push(
+          `source-authenticity: card ${index + 1} (${card.template}) uses sourceLabel "${sourceLabel}" not present in this unit's approved fact sources`
+        );
+      }
+    }
+
+    for (const markerKey of CLAIM_MARKER_KEYS) {
+      const value = cardProps[markerKey];
+      if (typeof value !== "string") continue;
+      const marker = value.trim();
+      if (marker.length === 0 || !CLAIM_WORD_PATTERN.test(marker)) continue;
+      if (
+        approvedSourceLabelsNormalized !== null &&
+        !approvedSourceLabelsNormalized.has(normalizeLabel(marker))
+      ) {
+        violations.push(
+          `source-authenticity: card ${index + 1} (${card.template}) uses ${markerKey} "${marker}" without a matching approved source label`
+        );
+      }
+    }
+  });
+
+  // Visual pacing guidance (warning-only): keep the opener brief and refresh
+  // cards frequently enough that visuals track narration instead of lingering.
+  const recommendedCardFloor =
+    authored.narration.length >= 5
+      ? 4
+      : authored.narration.length >= 3
+        ? 3
+        : 2;
+  if (authored.cards.length < recommendedCardFloor) {
+    violations.push(
+      `card pacing: ${authored.cards.length} card(s) for ${authored.narration.length} narration sentence(s) — add at least ${recommendedCardFloor} cards so visuals refresh more frequently`
+    );
+  }
+
+  const openingCard = authored.cards[0];
+  const secondSentence = authored.narration[1];
+  if (
+    firstSentence &&
+    secondSentence &&
+    openingCard?.template === "title-card" &&
+    authored.cards.length > 1
+  ) {
+    const firstContentCard = authored.cards.find(
+      (card, index) => index > 0 && card.template !== "title-card"
+    );
+    if (firstContentCard) {
+      if (firstContentCard.enterAt.narration !== secondSentence.id) {
+        violations.push(
+          `title-card pacing: first content card (${firstContentCard.template}) anchors to "${firstContentCard.enterAt.narration}" — anchor it to "${secondSentence.id}" so the title-card covers only sentence 1`
+        );
+      } else {
+        const secondSentenceOpeningWord = firstWord(secondSentence.text);
+        const secondSentenceFirstWord = secondSentenceOpeningWord.toLowerCase();
+        if (
+          secondSentenceFirstWord.length > 0 &&
+          firstContentCard.enterAt.word.toLowerCase() !== secondSentenceFirstWord
+        ) {
+          violations.push(
+            `title-card pacing: first content card (${firstContentCard.template}) uses enterAt.word "${firstContentCard.enterAt.word}" — use the first spoken word "${secondSentenceOpeningWord}" in "${secondSentence.id}" for a clean sentence-boundary handoff`
+          );
+        }
+      }
+    }
+  }
+
+  for (let i = 1; i < authored.cards.length; i++) {
+    const previous = authored.cards[i - 1];
+    const current = authored.cards[i];
+    const previousIndex = narrationIndexById.get(previous.enterAt.narration);
+    const currentIndex = narrationIndexById.get(current.enterAt.narration);
+    if (
+      previousIndex !== undefined &&
+      currentIndex !== undefined &&
+      currentIndex - previousIndex > 1
+    ) {
+      violations.push(
+        `card pacing: cards ${i} and ${i + 1} skip ${currentIndex - previousIndex - 1} narration sentence(s) (${previous.enterAt.narration} -> ${current.enterAt.narration}) — add an intermediate card anchor so visuals do not linger`
+      );
+      break;
+    }
+  }
+
+  checkDisplayCaps(
+    authored.anchor.template,
+    authored.anchor.props as Record<string, unknown>,
+    "anchor"
+  );
+  const anchorProps = authored.anchor.props as Record<string, unknown>;
+  for (const sourceLabel of collectStringPropsByKey(anchorProps, "sourceLabel")) {
+    if (
+      approvedSourceLabelsNormalized !== null &&
+      !approvedSourceLabelsNormalized.has(normalizeLabel(sourceLabel))
+    ) {
+      violations.push(
+        `source-authenticity: anchor (${authored.anchor.template}) uses sourceLabel "${sourceLabel}" not present in this unit's approved fact sources`
+      );
+    }
+  }
+  for (const markerKey of CLAIM_MARKER_KEYS) {
+    const value = anchorProps[markerKey];
+    if (typeof value !== "string") continue;
+    const marker = value.trim();
+    if (marker.length === 0 || !CLAIM_WORD_PATTERN.test(marker)) continue;
+    if (
+      approvedSourceLabelsNormalized !== null &&
+      !approvedSourceLabelsNormalized.has(normalizeLabel(marker))
+    ) {
+      violations.push(
+        `source-authenticity: anchor (${authored.anchor.template}) uses ${markerKey} "${marker}" without a matching approved source label`
+      );
+    }
+  }
   // A question is one claim context: attribution in its prompt/explanation
   // covers superlatives quoted in its options, and a negation anywhere
   // covers promise phrases the question is debunking.
@@ -450,9 +815,6 @@ export function unitComplianceViolations(
   // pulled from the narration, exactly what the prompt asks for — has high
   // overlap but low coverage and must NOT be rejected. Lower-grade
   // redundancy is left to the judge as gate-2 review material.
-  const narrationById = new Map(
-    authored.narration.map((sentence) => [sentence.id, sentence.text])
-  );
   for (const candidate of findRedundantCards({
     unitId: "unit",
     narration: authored.narration,
@@ -605,8 +967,8 @@ export function assembleCourseDefinition(input: {
         fact: fact.statement,
         provenance: fact.provenance.join(";"),
         reason: fact.flagReason
-          ? `excluded at gate-1 review (${fact.flagReason})`
-          : "excluded at gate-1 review",
+          ? `excluded during fact review (${fact.flagReason})`
+          : "excluded during fact review",
       })),
       verificationFlags: [],
       assessmentGate:

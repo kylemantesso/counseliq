@@ -2,6 +2,7 @@ import { useEffect, useRef, type CSSProperties } from "react";
 import { CardImage, useAssetResolver } from "./assets";
 import { cssVar } from "./theme/brand-theme-provider";
 import type { CardTiming } from "./timing";
+import { useMediaMode } from "./media-mode";
 
 /**
  * The video playback primitive (M6). Cards stay pure — this is the ONE
@@ -33,9 +34,14 @@ export interface CardVideoProps {
 
 export function CardVideo({ assetRef, alt, timing, style }: CardVideoProps) {
   const resolver = useAssetResolver();
+  const mediaMode = useMediaMode();
   const videoUrl = assetRef ? resolver.resolve(assetRef) : null;
   const posterUrl = assetRef ? resolver.resolve(`poster:${assetRef}`) : null;
   const elementRef = useRef<HTMLVideoElement | null>(null);
+
+  if (mediaMode === "static") {
+    return <CardImage imageRef={assetRef ? `poster:${assetRef}` : undefined} alt={alt} style={style} />;
+  }
 
   const media = timing.media;
   const playing =

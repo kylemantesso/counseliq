@@ -1,20 +1,31 @@
 import { CardRenderer, SETTLED_TIMING, cssVar } from "@counseliq/cards";
 import type { PreviewAnchor } from "./types";
+import { withInstitutionLogoOnTitleCard } from "../../theme/brand-tokens";
 
 /** The unit's settled takeaway card + continue CTA. */
 export function AnchorPhase({
   anchor,
+  institutionLogoUrl,
   continueLabel,
   onDone,
 }: {
   anchor: PreviewAnchor | null;
+  institutionLogoUrl?: string | null;
   continueLabel: string;
   onDone: () => void;
 }) {
   return (
     <div style={{ position: "absolute", inset: 0, background: cssVar("bg") }}>
       {anchor ? (
-        <CardRenderer template={anchor.template} props={anchor.props} timing={SETTLED_TIMING} />
+        <CardRenderer
+          template={anchor.template}
+          props={withInstitutionLogoOnTitleCard(
+            anchor.template,
+            anchor.props,
+            institutionLogoUrl
+          )}
+          timing={SETTLED_TIMING}
+        />
       ) : null}
       <div
         style={{

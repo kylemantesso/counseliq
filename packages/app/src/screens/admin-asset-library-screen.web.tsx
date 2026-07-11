@@ -2,10 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useAction, useMutation, useQuery } from "convex/react";
-import { Box, Button, ButtonText, Heading, Text } from "@counseliq/ui";
+import { Box, Button, ButtonText, SurfaceCard, Text } from "@counseliq/ui";
 import type { Doc, Id } from "../../../../convex/_generated/dataModel";
 import { AdminGuard } from "../components/admin-guard";
-import { Screen } from "../components/screen";
+import { AdminWorkspaceFrame } from "../components/admin-workspace-frame";
+import { useSelectedInstitution } from "../components/admin/use-selected-institution";
 import { api } from "../db/api";
 
 /**
@@ -44,36 +45,27 @@ async function contentKeyForFile(file: File): Promise<{ key: string; bytes: Arra
 }
 
 function AssetLibraryContent() {
-  const institutions = useQuery(api.pipeline.assetsCatalogue.adminListInstitutions, {});
-  const [institutionId, setInstitutionId] = useState<Id<"institutions"> | null>(null);
-  const selected = institutionId ?? institutions?.[0]?._id ?? null;
+  const { selectedInstitution, selectedInstitutionId } = useSelectedInstitution();
 
   return (
-    <Screen className="flex-1 flex-col bg-background">
-      <Box className="bg-card border-b border-border px-6 py-4 flex-row justify-between items-center">
-        <Heading size="md">Asset library</Heading>
-        {institutions && institutions.length > 0 ? (
-          <select
-            value={selected ?? ""}
-            onChange={(e) => setInstitutionId(e.target.value as Id<"institutions">)}
-            style={{ padding: 6, borderRadius: 8 }}
-          >
-            {institutions.map((inst) => (
-              <option key={inst._id} value={inst._id}>
-                {inst.name}
-              </option>
-            ))}
-          </select>
-        ) : null}
-      </Box>
-      {selected ? (
-        <InstitutionLibrary institutionId={selected} />
+    <AdminWorkspaceFrame
+      activeNav="assets"
+      title="Assets and rights"
+      description={
+        selectedInstitution
+          ? `Manage uploaded and extracted media for ${selectedInstitution.name}.`
+          : "Select an institution to manage uploaded and extracted media."
+      }
+      topbarTrail={["Assets & rights"]}
+    >
+      {selectedInstitutionId ? (
+        <InstitutionLibrary institutionId={selectedInstitutionId} />
       ) : (
-        <Box className="p-6">
-          <Text className="text-muted-foreground">No institutions yet.</Text>
-        </Box>
+        <SurfaceCard>
+          <Text className="text-sm text-muted-foreground">No institution selected.</Text>
+        </SurfaceCard>
       )}
-    </Screen>
+    </AdminWorkspaceFrame>
   );
 }
 
@@ -207,7 +199,7 @@ function InstitutionLibrary({ institutionId }: { institutionId: Id<"institutions
   const latestJob = jobs?.[0];
 
   return (
-    <Box className="flex-1 p-6 gap-4" style={{ overflow: "auto" } as never}>
+    <Box className="gap-4" style={{ overflow: "auto" } as never}>
       <Box className="bg-card border border-border rounded-xl p-4 gap-3">
         <Box className="flex-row items-center gap-3 flex-wrap">
           <label
@@ -335,9 +327,13 @@ function InstitutionLibrary({ institutionId }: { institutionId: Id<"institutions
       </Box>
 
       {assets === undefined ? (
-        <Text>Loading…</Text>
+        <SurfaceCard>
+          <Text className="text-sm text-muted-foreground">Loading assets...</Text>
+        </SurfaceCard>
       ) : filtered.length === 0 ? (
-        <Text className="text-muted-foreground">No assets match.</Text>
+        <SurfaceCard>
+          <Text className="text-sm text-muted-foreground">No assets match the current filters.</Text>
+        </SurfaceCard>
       ) : (
         <div
           style={{

@@ -7,7 +7,6 @@ import type { Id } from "../../_generated/dataModel";
 import { internal } from "../../_generated/api";
 import { completeStructured, createOpenRouterClient } from "../llm/client";
 import type { LlmUsage } from "../llm/client";
-import { modelForTask } from "../llm/models";
 import { COURSE_OUTLINE_JSON_SCHEMA } from "../llm/schemas";
 import { PROMPTS } from "../prompts";
 import {
@@ -35,7 +34,12 @@ import {
 const OUTLINE_ATTEMPTS = 3;
 
 type OutlineResult =
-  | { status: "ok"; unitCount: number; moduleCount: number }
+  | {
+      status: "ok";
+      unitCount: number;
+      moduleCount: number;
+      warning?: string;
+    }
   | { status: "failed"; cause: string };
 
 async function recordUsages(
@@ -60,6 +64,10 @@ async function recordUsages(
 export const runOutlineGeneration = internalAction({
   args: { runId: v.id("runs") },
   handler: async (ctx, args): Promise<OutlineResult> => {
+    const modelRouting = await ctx.runQuery(
+      internal.pipeline.queries.getLlmModelRoutingInternal,
+      {}
+    );
     const inventory: ReviewedInventory = await ctx.runQuery(
       internal.pipeline.courses.getReviewedInventoryInternal,
       { runId: args.runId }
@@ -91,13 +99,14 @@ export const runOutlineGeneration = internalAction({
     );
     const conceptKeys = new Set(inventory.concepts.map((c) => c.key));
     const catalogueIds = new Set(catalogue.map((asset) => asset.id));
-    const client = createOpenRouterClient();
+    const client = createOpenRouterClient({ modelRouting });
 
     // Same retry discipline as the old inline structure pass: providers
     // occasionally truncate mid-JSON, and the model over-plans without
     // seeing the violation — code-check failures carry into the next
     // attempt as feedback.
     let outline: LlmCourseOutline | undefined;
+    let outlineWarning: string | undefined;
     let attemptFeedback: string | undefined;
     for (let attempt = 1; attempt <= OUTLINE_ATTEMPTS; attempt++) {
       try {
@@ -123,9 +132,9 @@ export const runOutlineGeneration = internalAction({
 
         const units = value.modules.flatMap((m) => m.units);
         if (units.length > unitRange[1]) {
-          throw new Error(
-            `outline planned ${units.length} units; the plan allows at most ${unitRange[1]} — consolidate to the ${unitRange[0]}-${unitRange[1]} most important concepts`
-          );
+          outlineWarning =
+            `outline planned ${units.length} units; target is ${unitRange[0]}-${unitRange[1]} units`;
+          console.warn(`[pipeline] run ${args.runId}: ${outlineWarning}`);
         }
         const unknownConcepts = units.filter(
           (u) => !conceptKeys.has(u.conceptKey)
@@ -164,7 +173,7 @@ export const runOutlineGeneration = internalAction({
       runId: args.runId,
       outline,
       promptVersion: PROMPTS["outline-course"].versionTag,
-      model: modelForTask("outline-course"),
+      model: modelRouting["outline-course"],
     });
     const unitCount = outline.modules.reduce((sum, m) => sum + m.units.length, 0);
     console.log(
@@ -174,6 +183,7 @@ export const runOutlineGeneration = internalAction({
       status: "ok",
       unitCount,
       moduleCount: outline.modules.length,
+      ...(outlineWarning ? { warning: outlineWarning } : {}),
     };
   },
 });

@@ -68,10 +68,52 @@ describe("brandThemeFromTokens", () => {
     expect(theme.accent).toBe("#1a365d");
   });
 
+  test("secondaryColor feeds chip and rule tokens", () => {
+    const theme = brandThemeFromTokens({ secondaryColor: "#E2231A" });
+    expect(theme.chip).toBe("rgba(226,35,26,0.2)");
+    expect(theme.rule).toBe("rgba(226,35,26,0.38)");
+  });
+
+  test("accentInk is normalized for contrast against accent", () => {
+    const darkAccent = brandThemeFromTokens({ primaryColor: "#001122" });
+    const lightAccent = brandThemeFromTokens({ primaryColor: "#F7E9A0" });
+    expect(darkAccent.accentInk).toBe("#FFFFFF");
+    expect(lightAccent.accentInk).toBe("#111827");
+  });
+
+  test("rgb colors are accepted from extracted candidate themes", () => {
+    const theme = brandThemeFromTokens({ colors: ["rgb(226, 35, 26)"] });
+    expect(theme.accent).toBe("rgb(226, 35, 26)");
+  });
+
   test("fonts[0] heads the display and text stacks", () => {
     const theme = brandThemeFromTokens({ fonts: ["Roboto Slab"] });
     expect(theme.fontDisplay.startsWith("'Roboto Slab'")).toBe(true);
     expect(theme.fontText.startsWith("'Roboto Slab'")).toBe(true);
+  });
+
+  test("brandRef chooses the matching built-in base theme", () => {
+    const theme = brandThemeFromTokens({ brandRef: "la-trobe-university" });
+    expect(theme.bg).toBe(latrobeTheme.bg);
+    expect(theme.accent).toBe(latrobeTheme.accent);
+  });
+
+  test("titleCase can be overridden from brand tokens", () => {
+    expect(brandThemeFromTokens({ titleCase: "uppercase" }).titleCase).toBe(
+      "uppercase"
+    );
+    expect(brandThemeFromTokens({ titleCase: "none" }).titleCase).toBe(
+      "none"
+    );
+  });
+
+  test("unreadable background/text pairs fall back to safe ink", () => {
+    const theme = brandThemeFromTokens({
+      backgroundColor: "#FFFFFF",
+      textColor: "#FFFFFF",
+    });
+    expect(theme.bg).toBe("#FFFFFF");
+    expect(theme.ink).toBe("#111827");
   });
 
   test("non-hex colors are ignored", () => {

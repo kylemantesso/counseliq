@@ -6,7 +6,6 @@ import type { ActionCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
 import { internal } from "../_generated/api";
 import { completeStructured, createOpenRouterClient } from "./llm/client";
-import { modelForTask } from "./llm/models";
 import { ASSET_TAGS_JSON_SCHEMA } from "./llm/schemas";
 import { llmAssetTagsSchema, type LlmAssetTags } from "./assetsTagSchema";
 import { PROMPTS } from "./prompts";
@@ -39,10 +38,23 @@ type TagResult =
   | { status: "cached" }
   | { status: "skipped"; reason: string };
 
+async function resolveTagModel(
+  ctx: ActionCtx,
+  explicitModel?: string
+): Promise<string> {
+  if (typeof explicitModel === "string" && explicitModel.trim() !== "") {
+    return explicitModel.trim();
+  }
+  return (
+    await ctx.runQuery(internal.pipeline.queries.getLlmModelRoutingInternal, {})
+  )["tag-asset"];
+}
+
 async function tagAssetInner(
   ctx: ActionCtx,
   assetId: Id<"assets">,
-  force: boolean
+  force: boolean,
+  tagModel: string
 ): Promise<TagResult> {
   const asset = await ctx.runQuery(
     internal.pipeline.assetsCatalogue.getAssetForTagging,
@@ -52,7 +64,7 @@ async function tagAssetInner(
     return { status: "skipped", reason: `kind ${asset.kind} is not taggable` };
   }
   const promptVersion = PROMPTS["tag-asset"].versionTag;
-  const model = modelForTask("tag-asset");
+  const model = tagModel;
   if (
     !force &&
     asset.taggedAt !== undefined &&
@@ -87,7 +99,7 @@ async function tagAssetInner(
   ].filter((line): line is string => line !== null);
 
   const { value, usages } = await completeStructured<LlmAssetTags>(
-    createOpenRouterClient(),
+    createOpenRouterClient({ modelRouting: { "tag-asset": model } }),
     "tag-asset",
     {
       system: PROMPTS["tag-asset"].content,
@@ -132,9 +144,14 @@ async function tagAssetInner(
 
 /** Workpool entry point: tag one asset (idempotent via the tag stamp). */
 export const tagAsset = internalAction({
-  args: { assetId: v.id("assets"), force: v.optional(v.boolean()) },
+  args: {
+    assetId: v.id("assets"),
+    force: v.optional(v.boolean()),
+    tagModel: v.optional(v.string()),
+  },
   handler: async (ctx, args): Promise<TagResult> => {
-    return await tagAssetInner(ctx, args.assetId, args.force ?? false);
+    const tagModel = await resolveTagModel(ctx, args.tagModel);
+    return await tagAssetInner(ctx, args.assetId, args.force ?? false, tagModel);
   },
 });
 
@@ -165,17 +182,23 @@ export const tagUntaggedAssets = internalAction({
       console.log("[assets] tagging skipped: OPENROUTER_API_KEY not configured");
       return { status: "ok", eligible: 0 };
     }
+    const tagModel = (
+      await ctx.runQuery(internal.pipeline.queries.getLlmModelRoutingInternal, {})
+    )["tag-asset"];
     const untagged = await ctx.runQuery(
       internal.pipeline.assetsCatalogue.listUntaggedAssets,
       {
         institutionId: args.institutionId,
         promptVersion: PROMPTS["tag-asset"].versionTag,
-        model: modelForTask("tag-asset"),
+        model: tagModel,
       }
     );
     if (untagged.length === 0) return { status: "ok", eligible: 0 };
 
-    const enqueueArgs = untagged.map((asset) => ({ assetId: asset._id }));
+    const enqueueArgs = untagged.map((asset) => ({
+      assetId: asset._id,
+      tagModel,
+    }));
     if (process.env.EXTRACTION_MODE === "sequential") {
       for (const itemArgs of enqueueArgs) {
         await ctx.runAction(internal.pipeline.assetsTagging.tagAsset, itemArgs);

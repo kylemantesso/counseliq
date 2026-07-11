@@ -14,7 +14,7 @@ A production-ready universal counseliq with Next.js 15, Expo (React Native), Con
 - **Gluestack UI v5** — Universal component library in `@counseliq/ui` (NativeWind v5 / Tailwind v4)
 - **Shared packages** — `@counseliq/ui` (design system) and `@counseliq/app` (screens, auth, db)
 - **Turborepo** — Cached builds and parallel dev tasks
-- **Example feature** — `/tasks` route demonstrating AuthGuard + Convex CRUD
+- **Admin workflow** — `/admin` workspace with run orchestration and gate reviews
 - **Vercel + EAS** — Web deploy config and mobile build profiles
 
 ## Starting a new project
@@ -157,8 +157,8 @@ npm run dev:mobile     # Metro — open the dev client app on your device/simula
 
 ### 5. Verify
 
-1. Sign up at `/signup`, log in, visit `/dashboard`
-2. Try `/tasks` — add, complete, and delete a task
+1. Sign up at `/signup`, log in, visit `/admin`
+2. Start a run at `/admin/runs/new` and review workflow gates
 3. Repeat on mobile via the dev client
 
 ## Quick Start
@@ -225,13 +225,13 @@ Add app icons and splash images in `apps/mobile/app.json` when you're ready to s
 
 ## Authentication
 
-- **Web:** `/signup`, `/login`, `/dashboard`, `/tasks` (protected via `AuthGuard`)
+- **Web:** `/signup`, `/login`, `/admin` (protected via `AuthGuard` + `AdminGuard`)
 - **Mobile:** Same flows; token in `expo-secure-store`
 - Auth backend: `convex/auth.ts`; client: `packages/app/src/auth/`
 
-## Example: Tasks feature
+## Example: Admin workflow
 
-After logging in, visit `/tasks` to add, complete, and delete tasks. Backend: `convex/tasks.ts`. Screen: `packages/app/src/screens/tasks-screen.tsx`.
+After logging in, visit `/admin` to manage run generation and gate reviews. Backend pipeline modules live under `convex/pipeline/`.
 
 ## Scripts (root)
 

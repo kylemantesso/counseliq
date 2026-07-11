@@ -24,6 +24,12 @@ import type { CardTiming } from "./timing";
 export const BEAT_BASE_MS = 450;
 export const BEAT_STAGGER_MS = 200;
 
+/**
+ * Visual lead-in for card activation: cards enter slightly before the
+ * anchored word so the reveal feels naturally in sync with narration.
+ */
+export const CARD_LEAD_IN_MS = 250;
+
 /** Continuous fractional beats-revealed count at `localMs` into a card. */
 export function beatsRevealedAt(localMs: number): number {
   return Math.max(0, (localMs - BEAT_BASE_MS) / BEAT_STAGGER_MS);
@@ -40,10 +46,29 @@ export interface ActiveCard {
   timing: CardTiming;
 }
 
+type VisualBeat = { cardIndex: number; atMs: number };
+
+function visualBeatSchedule(timing: UnitTiming): VisualBeat[] {
+  const ordered = [...timing.cardBeats].sort(
+    (a, b) => a.atMs - b.atMs || a.cardIndex - b.cardIndex
+  );
+  const visual: VisualBeat[] = [];
+  let previousAt = -1;
+  for (const beat of ordered) {
+    let atMs = Math.max(0, beat.atMs - CARD_LEAD_IN_MS);
+    if (atMs <= previousAt) atMs = previousAt + 1;
+    visual.push({ cardIndex: beat.cardIndex, atMs });
+    previousAt = atMs;
+  }
+  return visual;
+}
+
 /**
- * The active card at `unitClockMs`: the last cardBeat whose atMs <= clock.
- * Its window runs to the next beat's atMs (or unit end), driving
- * `progress`; `beatsRevealed` is synthesized from localMs.
+ * The active card at `unitClockMs`: the last visual beat whose atMs <= clock.
+ * Visual beats are shifted earlier by CARD_LEAD_IN_MS so cards enter a touch
+ * ahead of the spoken anchor. A card's window runs to the next visual beat
+ * (or unit end), driving `progress`; `beatsRevealed` is synthesized from
+ * localMs.
  */
 export function deriveActiveCard(
   timing: UnitTiming,
@@ -52,24 +77,20 @@ export function deriveActiveCard(
 ): ActiveCard {
   const clock = clampClock(timing, unitClockMs);
   const reducedMotion = opts.reducedMotion ?? false;
-  // cardBeats are produced in card order but resolved times may interleave;
-  // pick by time, deterministically preferring the later beat on ties.
-  let active: { cardIndex: number; atMs: number } | null = null;
-  let nextAtMs = timing.totalDurationMs;
-  for (const beat of timing.cardBeats) {
-    if (beat.atMs <= clock && (active === null || beat.atMs >= active.atMs)) {
-      active = beat;
-    }
+  const beats = visualBeatSchedule(timing);
+  let activeIndex: number | null = null;
+  for (let i = 0; i < beats.length; i++) {
+    if (beats[i].atMs <= clock) activeIndex = i;
+    else break;
   }
-  if (active === null) {
+  if (activeIndex === null) {
     return {
       cardIndex: null,
       timing: { localMs: 0, progress: 0, beatsRevealed: 0, reducedMotion },
     };
   }
-  for (const beat of timing.cardBeats) {
-    if (beat.atMs > active.atMs && beat.atMs < nextAtMs) nextAtMs = beat.atMs;
-  }
+  const active = beats[activeIndex];
+  const nextAtMs = beats[activeIndex + 1]?.atMs ?? timing.totalDurationMs;
   const localMs = clock - active.atMs;
   const windowMs = Math.max(1, nextAtMs - active.atMs);
   // v2 media window for the active card (if any): playback position is the

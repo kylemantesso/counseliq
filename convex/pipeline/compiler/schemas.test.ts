@@ -1,5 +1,9 @@
 import { describe, expect, test } from "vitest";
-import { llmAuthoredUnitSchema, llmCourseOutlineSchema } from "./schemas";
+import {
+  llmAuthoredUnitLenientSchema,
+  llmAuthoredUnitSchema,
+  llmCourseOutlineSchema,
+} from "./schemas";
 import { AUTHOR_UNIT_JSON_SCHEMA } from "../llm/schemas";
 
 /**
@@ -17,6 +21,16 @@ function makeUnit(overrides: Record<string, unknown> = {}) {
       { id: "n2", text: "Its Bundoora campus is the largest." },
     ],
     cards: [
+      {
+        template: "title-card",
+        props: {
+          kicker: "Module 1",
+          title: "La Trobe at a glance",
+          courseLabel: "La Trobe counsellor essentials",
+        },
+        enterAt: { narration: "n1", word: "La" },
+        provenance: "compiler:derived",
+      },
       {
         template: "stat-card",
         props: {
@@ -63,7 +77,7 @@ describe("llmAuthoredUnitSchema card-prop enforcement", () => {
 
   test("stat-card missing headline fails at the card's path", () => {
     const unit = makeUnit();
-    (unit.cards as Array<{ props: Record<string, unknown> }>)[0].props = {
+    (unit.cards as Array<{ props: Record<string, unknown> }>)[1].props = {
       supporting: "students enrolled",
       sourceLabel: "Annual report 2024",
     };
@@ -71,7 +85,7 @@ describe("llmAuthoredUnitSchema card-prop enforcement", () => {
     expect(result.success).toBe(false);
     if (!result.success) {
       const issue = result.error.issues.find((entry) =>
-        entry.path.join(".").startsWith("cards.0.props")
+        entry.path.join(".").startsWith("cards.1.props")
       );
       expect(issue).toBeDefined();
       expect(issue?.path.join(".")).toContain("headline");
@@ -118,7 +132,7 @@ describe("llmAuthoredUnitSchema card-prop enforcement", () => {
 
   test("over-long text-card body is rejected with compress guidance", () => {
     const unit = makeUnit();
-    (unit.cards as Array<Record<string, unknown>>)[0] = {
+    (unit.cards as Array<Record<string, unknown>>)[1] = {
       template: "text-card",
       props: {
         heading: "Commitment",
@@ -135,7 +149,7 @@ describe("llmAuthoredUnitSchema card-prop enforcement", () => {
     expect(result.success).toBe(false);
     if (!result.success) {
       const issue = result.error.issues.find(
-        (entry) => entry.path.join(".") === "cards.0.props.body"
+        (entry) => entry.path.join(".") === "cards.1.props.body"
       );
       expect(issue?.message).toContain("200 characters");
     }
@@ -143,7 +157,7 @@ describe("llmAuthoredUnitSchema card-prop enforcement", () => {
 
   test("text-card body within the cap parses", () => {
     const unit = makeUnit();
-    (unit.cards as Array<Record<string, unknown>>)[0] = {
+    (unit.cards as Array<Record<string, unknown>>)[1] = {
       template: "text-card",
       props: {
         heading: "Commitment",
@@ -161,7 +175,7 @@ describe("llmAuthoredUnitSchema card-prop enforcement", () => {
       "permanent residency and immediate employment in Australia, according " +
       "to persistent word-of-mouth among some counselling networks.";
     const unit = makeUnit();
-    (unit.cards as Array<Record<string, unknown>>)[0] = {
+    (unit.cards as Array<Record<string, unknown>>)[1] = {
       template: "myth-fact-card",
       props: { myth: longHalf, fact: longHalf },
       enterAt: { narration: "n1", word: "students" },
@@ -171,8 +185,8 @@ describe("llmAuthoredUnitSchema card-prop enforcement", () => {
     expect(result.success).toBe(false);
     if (!result.success) {
       const paths = result.error.issues.map((entry) => entry.path.join("."));
-      expect(paths).toContain("cards.0.props.myth");
-      expect(paths).toContain("cards.0.props.fact");
+      expect(paths).toContain("cards.1.props.myth");
+      expect(paths).toContain("cards.1.props.fact");
     }
   });
 
@@ -207,7 +221,7 @@ describe("llmAuthoredUnitSchema card-prop enforcement", () => {
 
   test("null-valued optional props are stripped, not rejected", () => {
     const unit = makeUnit();
-    (unit.cards as Array<{ props: Record<string, unknown> }>)[0].props = {
+    (unit.cards as Array<{ props: Record<string, unknown> }>)[1].props = {
       headline: "40,000",
       supporting: null,
       kicker: null,
@@ -216,13 +230,13 @@ describe("llmAuthoredUnitSchema card-prop enforcement", () => {
     const result = llmAuthoredUnitSchema.safeParse(unit);
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.cards[0].props).not.toHaveProperty("supporting");
+      expect(result.data.cards[1].props).not.toHaveProperty("supporting");
     }
   });
 
   test("list props are rejected when the model emits a string", () => {
     const unit = makeUnit();
-    (unit.cards as Array<Record<string, unknown>>)[0] = {
+    (unit.cards as Array<Record<string, unknown>>)[1] = {
       template: "list-reveal",
       props: { heading: "Key points", items: "• one\n• two" },
       enterAt: { narration: "n1", word: "students" },
@@ -236,6 +250,68 @@ describe("llmAuthoredUnitSchema card-prop enforcement", () => {
       );
       expect(issue).toBeDefined();
     }
+  });
+
+  test("units without an opening title-card are rejected", () => {
+    const unit = makeUnit();
+    (unit.cards as Array<Record<string, unknown>>).shift();
+    const result = llmAuthoredUnitSchema.safeParse(unit);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const issue = result.error.issues.find(
+        (entry) => entry.path.join(".") === "cards.0.template"
+      );
+      expect(issue?.message).toContain("must be a title-card");
+    }
+  });
+
+  test("opening title-card must anchor to first narration sentence and first word", () => {
+    const unit = makeUnit();
+    (unit.cards as Array<Record<string, unknown>>)[0] = {
+      ...(unit.cards as Array<Record<string, unknown>>)[0],
+      enterAt: { narration: "n2", word: "Its" },
+    };
+    const result = llmAuthoredUnitSchema.safeParse(unit);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const paths = result.error.issues.map((entry) => entry.path.join("."));
+      expect(paths).toContain("cards.0.enterAt.narration");
+      expect(paths).toContain("cards.0.enterAt.word");
+    }
+  });
+
+  test("lenient schema accepts opening-card anchor drift for repair", () => {
+    const unit = makeUnit();
+    (unit.cards as Array<Record<string, unknown>>)[0] = {
+      ...(unit.cards as Array<Record<string, unknown>>)[0],
+      enterAt: { narration: "n2", word: "Its" },
+    };
+    expect(llmAuthoredUnitSchema.safeParse(unit).success).toBe(false);
+    expect(llmAuthoredUnitLenientSchema.safeParse(unit).success).toBe(true);
+  });
+
+  test("lenient schema accepts missing opening title-card for repair", () => {
+    const unit = makeUnit();
+    (unit.cards as Array<Record<string, unknown>>).shift();
+    expect(llmAuthoredUnitSchema.safeParse(unit).success).toBe(false);
+    expect(llmAuthoredUnitLenientSchema.safeParse(unit).success).toBe(true);
+  });
+
+  test("lenient schema accepts over-long display text", () => {
+    const unit = makeUnit({
+      anchor: {
+        template: "takeaway-card",
+        props: {
+          text:
+            "La Trobe University's Acknowledgement of Country recognises " +
+            "Traditional Custodians and commits to providing opportunities " +
+            "for Aboriginal and Torres Strait Islander students across all " +
+            "of its campuses in Victoria and beyond.",
+        },
+      },
+    });
+    expect(llmAuthoredUnitSchema.safeParse(unit).success).toBe(false);
+    expect(llmAuthoredUnitLenientSchema.safeParse(unit).success).toBe(true);
   });
 });
 

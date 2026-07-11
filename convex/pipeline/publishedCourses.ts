@@ -30,6 +30,101 @@ export const getPublishInputInternal = internalQuery({
       .reverse()
       .find((event) => event.toState === "PUBLISHING");
 
+    const assetRefs = new Set<string>();
+    const collectFromProps = (props: unknown) => {
+      if (!props || typeof props !== "object") return;
+      const record = props as { assetRef?: unknown; bgAssetRef?: unknown };
+      if (typeof record.assetRef === "string" && record.assetRef.length > 0) {
+        assetRefs.add(record.assetRef);
+      }
+      if (
+        typeof record.bgAssetRef === "string" &&
+        record.bgAssetRef.length > 0
+      ) {
+        assetRefs.add(record.bgAssetRef);
+      }
+    };
+    for (const unit of rows.units) {
+      if (Array.isArray(unit.cards)) {
+        for (const card of unit.cards) {
+          collectFromProps((card as { props?: unknown }).props);
+        }
+      }
+      const anchorProps = ((unit.meta as { anchor?: { props?: unknown } } | null)
+        ?.anchor?.props ?? null) as unknown;
+      collectFromProps(anchorProps);
+    }
+
+    const assetsByRef: Record<
+      string,
+      {
+        assetRef: string;
+        kind: "image" | "video";
+        objectKey: string;
+        thumbKey?: string;
+        width: number;
+        height: number;
+        aspect: "portrait" | "landscape" | "square";
+        durationMs?: number;
+      }
+    > = {};
+    const assetIssues: string[] = [];
+    for (const ref of assetRefs) {
+      const assetId = ctx.db.normalizeId("assets", ref);
+      if (!assetId) {
+        assetIssues.push(`assetRef \"${ref}\" is not a valid assets id`);
+        continue;
+      }
+      const asset = await ctx.db.get(assetId);
+      if (!asset) {
+        assetIssues.push(`assetRef \"${ref}\" not found in assets table`);
+        continue;
+      }
+      if (asset.kind !== "image" && asset.kind !== "video") {
+        assetIssues.push(
+          `assetRef \"${ref}\" has unsupported kind \"${asset.kind}\"`
+        );
+        continue;
+      }
+      if (
+        typeof asset.width !== "number" ||
+        typeof asset.height !== "number" ||
+        typeof asset.aspect !== "string"
+      ) {
+        assetIssues.push(
+          `assetRef \"${ref}\" is missing width/height/aspect metadata`
+        );
+        continue;
+      }
+      if (
+        asset.aspect !== "portrait" &&
+        asset.aspect !== "landscape" &&
+        asset.aspect !== "square"
+      ) {
+        assetIssues.push(
+          `assetRef \"${ref}\" has invalid aspect \"${asset.aspect}\"`
+        );
+        continue;
+      }
+      if (asset.kind === "video" && typeof asset.durationMs !== "number") {
+        assetIssues.push(`assetRef \"${ref}\" video is missing durationMs`);
+        continue;
+      }
+
+      assetsByRef[ref] = {
+        assetRef: ref,
+        kind: asset.kind,
+        objectKey: asset.objectKey,
+        ...(typeof asset.thumbKey === "string" ? { thumbKey: asset.thumbKey } : {}),
+        width: asset.width,
+        height: asset.height,
+        aspect: asset.aspect,
+        ...(typeof asset.durationMs === "number"
+          ? { durationMs: asset.durationMs }
+          : {}),
+      };
+    }
+
     return {
       run: rows.run,
       course: rows.course,
@@ -42,6 +137,8 @@ export const getPublishInputInternal = internalQuery({
       definitionWire: definitionToWire(
         reconstructCourseDefinition(rows.course, rows.units, rows.questions)
       ),
+      assetsByRef,
+      assetIssues,
       publishedBy: publishingEvent?.actor ?? "system",
     };
   },

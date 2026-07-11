@@ -34,6 +34,17 @@ export function CaptionBar({ timing, clock, playing, onEditSentence }: CaptionBa
   if (shownIndex === null) return <CaptionFrame />;
   const sentence = timing.sentences[shownIndex];
   const activeWord = sentenceIndex === null ? sentence.words.length - 1 : wordIndex;
+  const wordStyle = {
+    color: cssVar("photoInk"),
+    fontWeight: 400,
+    boxShadow: "inset 0 -0.44em 0 rgba(255,255,255,0)",
+    borderRadius: 2,
+    transition: "box-shadow 120ms linear",
+  };
+  const activeWordStyle = {
+    ...wordStyle,
+    boxShadow: "inset 0 -0.44em 0 rgba(255,255,255,0.34)",
+  };
 
   return (
     <CaptionFrame>
@@ -53,11 +64,7 @@ export function CaptionBar({ timing, clock, playing, onEditSentence }: CaptionBa
         {sentence.words.map((word, i) => (
           <span
             key={`${shownIndex}-${i}`}
-            style={
-              i === activeWord
-                ? { fontWeight: 700, color: cssVar("accent") }
-                : undefined
-            }
+            style={i === activeWord ? activeWordStyle : wordStyle}
           >
             {word.text}
             {i < sentence.words.length - 1 ? " " : ""}

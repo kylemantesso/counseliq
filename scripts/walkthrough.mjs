@@ -11,9 +11,8 @@
  * 2. registerSourceDoc x 2, startRun (docs linked to the run)
  * 3. Watch CONVERTING -> CONVERTED with per-doc progress
  * 4. Watch EXTRACTING -> EXTRACTED (real LLM extraction; running cost printed)
- * 5. Resolve every gate-1 flagged-fact item, approve gate 1 — the compiler
- *    then builds the course from the reviewed inventory and the QA judge
- *    traces it (M4 order: gate 1 -> COMPILING -> QA -> gate 2)
+ * 5. Watch OUTLINING -> OUTLINE_REVIEW, auto-approve the outline unchanged
+ *    (a human can edit it in the studio), then compile + QA to gate 2
  * 6. Print the TTS character/cost estimate, approve gate 2 —
  *    GENERATING_SCRIPT normalises narration (blocked units surface here),
  *    GENERATING_ASSETS synthesises per-sentence audio + timing artifacts
@@ -68,7 +67,6 @@ const WEB_PORT = process.env.WEB_PORT ?? "3005";
 const TTS_MOCKED = process.env.TTS_PROVIDER === "mock";
 
 const GATE_STATES = {
-  GATE_1_KNOWLEDGE_REVIEW: 1,
   GATE_2_COURSE_REVIEW: 2,
   GATE_3_PREVIEW: 3,
 };
@@ -536,29 +534,6 @@ async function driveRun(runId, { sourceDocIds, docNamesById }) {
     const gate = GATE_STATES[run.state];
     if (gate && !decidedGates.has(gate)) {
       decidedGates.add(gate);
-
-      // Gate 1 (M3): every flagged-fact item must be individually resolved
-      // before the gate can be approved. The walkthrough auto-approves each
-      // with a placeholder source so the pipeline can proceed.
-      if (gate === 1) {
-        const items = await convexRun(
-          "pipeline/reviewItems:listReviewItemsForRun",
-          { runId, gate: 1 }
-        );
-        const pending = items.filter((item) => item.status === "pending");
-        console.log(
-          `  gate 1: ${items.length} flagged-fact item(s), resolving ${pending.length}…`
-        );
-        for (const item of pending) {
-          await convexRun("pipeline/reviewItems:resolveReviewItem", {
-            reviewItemId: item._id,
-            resolution: "approve",
-            sourceLabel: "walkthrough-auto",
-            year: new Date().getFullYear(),
-            reviewer: "walkthrough-script",
-          });
-        }
-      }
 
       // Gate 2 (M5): approving starts script normalisation + TTS synthesis —
       // print the exact character/cost estimate first.

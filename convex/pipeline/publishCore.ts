@@ -100,6 +100,18 @@ export interface ManifestUnitInput {
   unitDefinitionHash: string;
   timing: UnitTiming;
   timingKey: string;
+  assetRefs: string[];
+}
+
+export interface ManifestAssetInput {
+  assetRef: string;
+  kind: "image" | "video";
+  objectKey: string;
+  thumbKey?: string;
+  width: number;
+  height: number;
+  aspect: "portrait" | "landscape" | "square";
+  durationMs?: number;
 }
 
 export interface BuildPublishManifestInput {
@@ -119,6 +131,7 @@ export interface BuildPublishManifestInput {
   promptVersions: Record<string, unknown>;
   publishedAtIso: string;
   units: ManifestUnitInput[];
+  assets: Record<string, ManifestAssetInput>;
 }
 
 export interface BuildPublishManifestResult {
@@ -159,6 +172,22 @@ export function buildPublishManifest(
     artifactKeys.add(unit.timingKey);
     for (const sentence of unit.timing.sentences) {
       artifactKeys.add(sentence.audioKey);
+    }
+  }
+  for (const asset of Object.values(input.assets)) {
+    artifactKeys.add(asset.objectKey);
+    if (asset.thumbKey !== undefined) {
+      artifactKeys.add(asset.thumbKey);
+    }
+  }
+
+  for (const unit of input.units) {
+    for (const assetRef of unit.assetRefs) {
+      if (input.assets[assetRef] === undefined) {
+        throw new Error(
+          `buildPublishManifest: unit "${unit.unitId}" references missing assetRef "${assetRef}"`
+        );
+      }
     }
   }
 
@@ -202,7 +231,9 @@ export function buildPublishManifest(
       },
       timingKey: unit.timingKey,
       timingSchemaVersion: unit.timing.version,
+      assetRefs: unit.assetRefs,
     })),
+    assets: input.assets,
     artifactKeys: [...artifactKeys],
   });
 

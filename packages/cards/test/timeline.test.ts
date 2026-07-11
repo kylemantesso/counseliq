@@ -3,6 +3,7 @@ import { describe, expect, test } from "vitest";
 import {
   BEAT_BASE_MS,
   BEAT_STAGGER_MS,
+  CARD_LEAD_IN_MS,
   beatsRevealedAt,
   clampClock,
   deriveActiveCard,
@@ -78,21 +79,34 @@ describe("deriveActiveCard", () => {
     expect(timing.beatsRevealed).toBe(0);
   });
 
-  test("activation boundaries: exact beat time activates the card", () => {
+  test("activation boundaries: cards activate with a 250ms visual lead-in", () => {
     expect(deriveActiveCard(FIXTURE, 0).cardIndex).toBe(0);
-    expect(deriveActiveCard(FIXTURE, 699).cardIndex).toBe(0);
-    expect(deriveActiveCard(FIXTURE, 700).cardIndex).toBe(1);
-    expect(deriveActiveCard(FIXTURE, 2899).cardIndex).toBe(1);
-    expect(deriveActiveCard(FIXTURE, 2900).cardIndex).toBe(2);
+    expect(deriveActiveCard(FIXTURE, 449).cardIndex).toBe(0);
+    expect(deriveActiveCard(FIXTURE, 450).cardIndex).toBe(1);
+    expect(deriveActiveCard(FIXTURE, 2649).cardIndex).toBe(1);
+    expect(deriveActiveCard(FIXTURE, 2650).cardIndex).toBe(2);
     expect(deriveActiveCard(FIXTURE, 5250).cardIndex).toBe(2);
   });
 
   test("localMs and progress are relative to the card's window", () => {
-    const mid = deriveActiveCard(FIXTURE, 1800); // card 1: window 700 → 2900
-    expect(mid.timing.localMs).toBe(1100);
-    expect(mid.timing.progress).toBeCloseTo(1100 / 2200);
-    const last = deriveActiveCard(FIXTURE, 5250); // card 2: window 2900 → end
+    const mid = deriveActiveCard(FIXTURE, 1800); // card 1: window 450 → 2650
+    expect(mid.timing.localMs).toBe(1350);
+    expect(mid.timing.progress).toBeCloseTo(1350 / 2200);
+    const last = deriveActiveCard(FIXTURE, 5250); // card 2: window 2650 → end
     expect(last.timing.progress).toBe(1);
+  });
+
+  test("lead-in never starts cards before unit time 0", () => {
+    const shifted: UnitTiming = {
+      ...FIXTURE,
+      cardBeats: [
+        { cardIndex: 0, atMs: 100 },
+        { cardIndex: 1, atMs: 200 },
+      ],
+    };
+    expect(CARD_LEAD_IN_MS).toBe(250);
+    expect(deriveActiveCard(shifted, 0).cardIndex).toBe(0);
+    expect(deriveActiveCard(shifted, 1).cardIndex).toBe(1);
   });
 
   test("reducedMotion settles progress and beats", () => {

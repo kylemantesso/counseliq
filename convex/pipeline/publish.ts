@@ -8,6 +8,7 @@ import {
   type UnitTiming,
 } from "@counseliq/course-schema";
 import { internalAction } from "../_generated/server";
+import type { Id } from "../_generated/dataModel";
 import { internal } from "../_generated/api";
 import {
   buildPublishManifest,
@@ -24,6 +25,7 @@ import {
   type ObjectStoreClient,
 } from "./objectStore";
 import { ttsProviderName } from "./tts/models";
+import { DEFAULT_RENDER_PROFILE } from "./render";
 
 /**
  * PUBLISHING (M5): assemble the canonical Course Definition export and the
@@ -55,6 +57,37 @@ function wireToDefinitionInput(wire: unknown): unknown {
   return { $schema: schemaRef, ...rest };
 }
 
+function collectAssetRefsFromUnit(unit: unknown): string[] {
+  if (unit === null || typeof unit !== "object") return [];
+  const refs = new Set<string>();
+  const unitRecord = unit as {
+    cards?: unknown;
+    meta?: { anchor?: { props?: unknown } };
+  };
+
+  const collectFromProps = (props: unknown) => {
+    if (!props || typeof props !== "object") return;
+    const record = props as { assetRef?: unknown; bgAssetRef?: unknown };
+    if (typeof record.assetRef === "string" && record.assetRef.length > 0) {
+      refs.add(record.assetRef);
+    }
+    if (
+      typeof record.bgAssetRef === "string" &&
+      record.bgAssetRef.length > 0
+    ) {
+      refs.add(record.bgAssetRef);
+    }
+  };
+
+  if (Array.isArray(unitRecord.cards)) {
+    for (const card of unitRecord.cards) {
+      collectFromProps((card as { props?: unknown }).props);
+    }
+  }
+  collectFromProps(unitRecord.meta?.anchor?.props);
+  return [...refs];
+}
+
 export const runPublish = internalAction({
   args: { runId: v.id("runs") },
   handler: async (ctx, args): Promise<PublishResult> => {
@@ -76,6 +109,12 @@ export const runPublish = internalAction({
       return {
         status: "failed",
         cause: `publish preconditions failed: ${violations.join("; ")}`,
+      };
+    }
+    if (Array.isArray(input.assetIssues) && input.assetIssues.length > 0) {
+      return {
+        status: "failed",
+        cause: `publish media snapshot failed: ${input.assetIssues.join("; ")}`,
       };
     }
 
@@ -103,7 +142,14 @@ export const runPublish = internalAction({
         module.microUnits.map((unit) => [unit.unitId, unit] as const)
       )
     );
-    const manifestUnits = input.units.map((unit) => {
+    const publishUnits = input.units as Array<
+      PublishUnitRow & {
+        unitKey: string;
+        moduleKey: string;
+        timing: unknown;
+      }
+    >;
+    const manifestUnits = publishUnits.map((unit) => {
       const timing = unit.timing as UnitTiming;
       const timingJson = JSON.stringify(timing);
       return {
@@ -116,8 +162,23 @@ export const runPublish = internalAction({
         timing,
         timingKey: `sha256/${sha256(timingJson)}.json`,
         timingJson,
+        assetRefs: collectAssetRefsFromUnit(unit),
       };
     });
+
+    const frozenAssets = (input.assetsByRef ?? {}) as Record<
+      string,
+      {
+        assetRef: string;
+        kind: "image" | "video";
+        objectKey: string;
+        thumbKey?: string;
+        width: number;
+        height: number;
+        aspect: "portrait" | "landscape" | "square";
+        durationMs?: number;
+      }
+    >;
 
     const brandTokens =
       (input.institution.brandTokens as Record<string, unknown> | null) ?? null;
@@ -139,6 +200,7 @@ export const runPublish = internalAction({
         promptVersions: input.run.promptVersions as Record<string, unknown>,
         publishedAtIso: new Date().toISOString(),
         units: manifestUnits,
+        assets: frozenAssets,
       });
       manifest = built.manifest;
       warnings = built.warnings;
@@ -157,6 +219,13 @@ export const runPublish = internalAction({
     for (const unit of manifest.units) {
       for (const sentence of unit.audio.sentences) {
         audioKeys.add(sentence.audioKey);
+      }
+    }
+    const mediaKeys = new Set<string>();
+    for (const asset of Object.values(manifest.assets)) {
+      mediaKeys.add(asset.objectKey);
+      if (asset.thumbKey !== undefined) {
+        mediaKeys.add(asset.thumbKey);
       }
     }
 
@@ -189,6 +258,21 @@ export const runPublish = internalAction({
       }
     }
 
+    if (mediaKeys.size > 0) {
+      const missing: string[] = [];
+      for (const key of mediaKeys) {
+        if (!(await headObjectExists(store, key))) missing.push(key);
+      }
+      if (missing.length > 0) {
+        return {
+          status: "failed",
+          cause: `missing media artifact(s) in object store: ${missing
+            .slice(0, 5)
+            .join(", ")}${missing.length > 5 ? ` (+${missing.length - 5} more)` : ""}`,
+        };
+      }
+    }
+
     try {
       await putObjectIfAbsent(store, exportKey, exportJson, "application/json");
       for (const unit of manifestUnits) {
@@ -209,7 +293,8 @@ export const runPublish = internalAction({
       };
     }
 
-    const finalized: { version: number } = await ctx.runMutation(
+    const finalized: { courseVersionId: Id<"courseVersions">; version: number } =
+      await ctx.runMutation(
       internal.pipeline.publishedCourses.finalizePublish,
       {
         runId: args.runId,
@@ -225,6 +310,49 @@ export const runPublish = internalAction({
         publishedBy: input.publishedBy,
       }
     );
+
+    try {
+      const profile = DEFAULT_RENDER_PROFILE;
+      await ctx.runMutation(internal.pipeline.render.enqueueRenderJobs, {
+        runId: args.runId,
+        courseVersionId: finalized.courseVersionId,
+        manifestKey,
+        exportKey,
+        specHash,
+        profile,
+        units: manifest.units.map((unit, unitIndex) => ({
+          unitId: unit.unitId,
+          moduleId: unit.moduleId,
+          unitIndex,
+          contentHash: unit.contentHash,
+          renderSpecHash: sha256(
+            JSON.stringify({
+              specHash,
+              unitId: unit.unitId,
+              contentHash: unit.contentHash,
+              profile,
+              rendererVersion: "renderer@1",
+            })
+          ),
+        })),
+      });
+
+      const dispatch = await ctx.runAction(
+        internal.pipeline.render.dispatchQueuedForRun,
+        { runId: args.runId }
+      );
+      if (dispatch.failed > 0) {
+        warnings.push(
+          `render dispatch: ${dispatch.dispatched} accepted, ${dispatch.failed} failed`
+        );
+      }
+    } catch (error) {
+      warnings.push(
+        `render enqueue failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
 
     return {
       status: "ok",

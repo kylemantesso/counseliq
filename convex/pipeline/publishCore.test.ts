@@ -81,6 +81,7 @@ function makeManifestInput(): BuildPublishManifestInput {
         unitDefinitionHash: "cafe0001",
         timing: makeTiming(),
         timingKey: "sha256/t101.json",
+        assetRefs: ["asset-1", "asset-2"],
       },
       {
         unitId: "mu-102",
@@ -100,8 +101,30 @@ function makeManifestInput(): BuildPublishManifestInput {
           ],
         }),
         timingKey: "sha256/t102.json",
+        assetRefs: ["asset-1"],
       },
     ],
+    assets: {
+      "asset-1": {
+        assetRef: "asset-1",
+        kind: "image",
+        objectKey: "sha256/img1.png",
+        thumbKey: "sha256/img1-thumb.jpg",
+        width: 1600,
+        height: 900,
+        aspect: "landscape",
+      },
+      "asset-2": {
+        assetRef: "asset-2",
+        kind: "video",
+        objectKey: "sha256/vid2.mp4",
+        thumbKey: "sha256/vid2-poster.jpg",
+        width: 1080,
+        height: 1920,
+        aspect: "portrait",
+        durationMs: 6800,
+      },
+    },
   };
 }
 
@@ -182,7 +205,7 @@ describe("buildPublishManifest", () => {
     expect(first.warnings).toEqual([]);
   });
 
-  test("artifactKeys contains every audio + timing key + exportKey exactly once", () => {
+  test("artifactKeys contains every audio + timing + media key + exportKey once", () => {
     const { manifest } = buildPublishManifest(makeManifestInput());
     const keys = collectArtifactKeys(manifest);
     expect(new Set(keys).size).toBe(keys.length);
@@ -192,7 +215,11 @@ describe("buildPublishManifest", () => {
     expect(keys).toContain("sha256/cccc.mp3");
     expect(keys).toContain("sha256/t101.json");
     expect(keys).toContain("sha256/t102.json");
-    expect(keys).toHaveLength(6);
+    expect(keys).toContain("sha256/img1.png");
+    expect(keys).toContain("sha256/img1-thumb.jpg");
+    expect(keys).toContain("sha256/vid2.mp4");
+    expect(keys).toContain("sha256/vid2-poster.jpg");
+    expect(keys).toHaveLength(10);
   });
 
   test("manifest voice is the synthesis voice, with a warning on divergence", () => {
@@ -220,5 +247,11 @@ describe("buildPublishManifest", () => {
     const input = makeManifestInput();
     input.units = [];
     expect(() => buildPublishManifest(input)).toThrow("no units");
+  });
+
+  test("a referenced assetRef missing from the frozen asset map throws", () => {
+    const input = makeManifestInput();
+    input.units[0].assetRefs.push("asset-missing");
+    expect(() => buildPublishManifest(input)).toThrow("asset-missing");
   });
 });

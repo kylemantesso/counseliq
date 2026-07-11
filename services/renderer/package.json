@@ -1,0 +1,30 @@
+{
+  "name": "@counseliq/renderer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.700.0",
+    "@aws-sdk/s3-request-presigner": "^3.700.0",
+    "@counseliq/cards": "*",
+    "@counseliq/course-schema": "*",
+    "@remotion/bundler": "^4.0.294",
+    "@remotion/renderer": "^4.0.294",
+    "fastify": "^5.0.0",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "remotion": "^4.0.294",
+    "tsx": "^4.19.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/react": "~19.1.0",
+    "typescript": "~5.9.3"
+  }
+}

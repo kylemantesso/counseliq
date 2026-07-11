@@ -22,6 +22,7 @@ describe("publishManifestSchema", () => {
     expect(manifest.$schema).toBe(PUBLISH_MANIFEST_SCHEMA_REF);
     expect(manifest.units).toHaveLength(2);
     expect(manifest.artifactKeys).toContain(manifest.exportKey);
+    expect(Object.keys(manifest.assets).length).toBeGreaterThan(0);
   });
 
   test("a dangling audio artifact reference fails with the sentence path", () => {
@@ -80,6 +81,28 @@ describe("publishManifestSchema", () => {
     expect(result.success).toBe(false);
     if (!result.success) {
       expect(result.error.issues.some((issue) => issue.message.includes("duplicates"))).toBe(true);
+    }
+  });
+
+  test("a unit assetRef must exist in the manifest asset map", () => {
+    const broken = cloneExample();
+    (broken.units as Array<{ assetRefs: string[] }>)[0].assetRefs.push("missing-ref");
+    const result = publishManifestSchema.safeParse(broken);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some((issue) => issue.message.includes("missing from assets"))).toBe(true);
+    }
+  });
+
+  test("asset object bytes must appear in artifactKeys", () => {
+    const broken = cloneExample();
+    const assets = broken.assets as Record<string, { objectKey: string }>;
+    const missing = assets[Object.keys(assets)[0]].objectKey;
+    (broken.artifactKeys as string[]) = (broken.artifactKeys as string[]).filter((key) => key !== missing);
+    const result = publishManifestSchema.safeParse(broken);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some((issue) => issue.message.includes("objectKey"))).toBe(true);
     }
   });
 

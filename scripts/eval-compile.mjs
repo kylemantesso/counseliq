@@ -2,7 +2,7 @@
 
 /**
  * M4 compiler eval (exit test): drives a REAL run over golden fixture #1's
- * source docs, auto-resolves gate 1 (walkthrough-style), waits for the
+ * source docs, auto-approves the outline (walkthrough-style), waits for the
  * compiled + judged course at GATE_2_COURSE_REVIEW, and scores it against
  * packages/course-schema/fixtures/golden-fixture-1.json.
  *
@@ -164,7 +164,6 @@ async function driveFreshRun(institutionName) {
   const timeoutMs = CONFIG.compileTimeoutMs ?? 1_800_000;
   let lastState = null;
   let lastCost = 0;
-  let gate1Resolved = false;
   let outlineApproved = false;
   for (;;) {
     if (Date.now() - startedAt > timeoutMs) {
@@ -184,31 +183,6 @@ async function driveFreshRun(institutionName) {
         lastCost = cost.totalUsd;
         console.log(`  LLM cost so far: $${cost.totalUsd.toFixed(4)} (${cost.totalCalls} calls)`);
       }
-    }
-    if (run.state === "GATE_1_KNOWLEDGE_REVIEW" && !gate1Resolved) {
-      gate1Resolved = true;
-      const items = await convexRun("pipeline/reviewItems:listReviewItemsForRun", {
-        runId,
-        gate: 1,
-      });
-      const pending = items.filter((item) => item.status === "pending");
-      console.log(`  gate 1: resolving ${pending.length} flagged-fact item(s)…`);
-      for (const item of pending) {
-        await convexRun("pipeline/reviewItems:resolveReviewItem", {
-          reviewItemId: item._id,
-          resolution: "approve",
-          sourceLabel: "eval-compile-auto",
-          year: new Date().getFullYear(),
-          reviewer: "eval-compile-script",
-        });
-      }
-      console.log("  approving gate 1…");
-      await convexRun("pipeline/runs:decideGate", {
-        runId,
-        gate: 1,
-        decision: "approve",
-        reviewer: "eval-compile-script",
-      });
     }
     if (run.state === "OUTLINE_REVIEW" && !outlineApproved) {
       outlineApproved = true;

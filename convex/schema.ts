@@ -27,7 +27,10 @@ export const runStateValidator = v.union(
   v.literal("CONVERTED"),
   v.literal("EXTRACTING"),
   v.literal("EXTRACTED"),
+  // Legacy gate name retained for older runEvents / runs rows.
   v.literal("GATE_1_KNOWLEDGE_REVIEW"),
+  // Legacy gate name retained for older runEvents / runs rows.
+  v.literal("GATE_2_QUIZ_REVIEW"),
   /** M6.5: outline pass running (brief + approved facts + cleared assets). */
   v.literal("OUTLINING"),
   /** M6.5: outline parked for operator editing/approval. */
@@ -49,6 +52,7 @@ export const runStateValidator = v.union(
 );
 
 export const reviewGateValidator = v.union(
+  // Legacy gate retained for schema-compat with older reviewItems rows.
   v.literal(1),
   v.literal(2),
   v.literal(3)
@@ -78,25 +82,19 @@ export const microUnitStateValidator = v.union(
   v.literal("published")
 );
 
+export const renderJobStatusValidator = v.union(
+  v.literal("queued"),
+  v.literal("dispatched"),
+  v.literal("rendering"),
+  v.literal("succeeded"),
+  v.literal("failed")
+);
+
 export const courseStatusValidator = v.union(
   v.literal("draft"),
   v.literal("in_review"),
   v.literal("published")
 );
-
-/**
- * Candidate brand theme: `ooxml` = extracted by the converter from pptx;
- * `llm-inferred` = vision-model candidates for pdf-native docs (M3).
- * Optional to tolerate rows written before the method field existed.
- */
-export const candidateThemeValidator = v.object({
-  method: v.optional(
-    v.union(v.literal("ooxml"), v.literal("llm-inferred"))
-  ),
-  colors: v.array(v.string()),
-  fonts: v.array(v.string()),
-  logoCandidates: v.array(v.string()),
-});
 
 export default defineSchema({
   users: defineTable({
@@ -164,6 +162,7 @@ export default defineSchema({
     brandTokens: v.any(),
     pronunciationLexicon: v.any(),
     market: v.string(),
+    websiteUrl: v.optional(v.union(v.string(), v.null())),
     /**
      * Brand narrator voice (M5). `voiceRef` is the stable brand-level name
      * written into CourseDefinition.voice; `voiceId` is the TTS provider's
@@ -184,13 +183,16 @@ export default defineSchema({
     runId: v.optional(v.id("runs")),
     kind: v.string(),
     objectKey: v.string(),
+    /** Original uploaded file name (for human-readable doc labels). */
+    originalFilename: v.optional(v.string()),
     shape: v.optional(v.string()),
     status: sourceDocStatusValidator,
+    // Legacy fields kept temporarily so existing rows still validate.
     themeExtracted: v.optional(v.boolean()),
+    theme: v.optional(v.any()),
     // Populated by the conversion callback.
     sourceDocHash: v.optional(v.string()),
     pageCount: v.optional(v.number()),
-    theme: v.optional(v.union(candidateThemeValidator, v.null())),
   })
     .index("by_institution", ["institutionId"])
     .index("by_run", ["runId"]),
@@ -233,7 +235,7 @@ export default defineSchema({
     provenance: v.array(v.string()),
     flagged: v.boolean(),
     flagReason: v.optional(v.string()),
-    /** Set at gate-1 review; excluded facts are invisible to the compiler. */
+    /** Set during fact review; excluded facts are invisible to the compiler. */
     excluded: v.optional(v.boolean()),
   })
     .index("by_run", ["runId"])
@@ -287,6 +289,8 @@ export default defineSchema({
     courseId: v.optional(v.id("courses")),
     state: runStateValidator,
     promptVersions: v.any(),
+    /** Present and true when this run uses normalized per-run media selection. */
+    hasExplicitAssetSelection: v.optional(v.literal(true)),
     /** M6.5: operator brief directing the course's purpose and outcomes. */
     brief: v.optional(v.string()),
     error: v.optional(
@@ -296,6 +300,15 @@ export default defineSchema({
       })
     ),
   }).index("by_state", ["state"]),
+
+  /** Normalized media assets explicitly selected for one run. */
+  runAssetSelections: defineTable({
+    runId: v.id("runs"),
+    assetId: v.id("assets"),
+  })
+    .index("by_run", ["runId"])
+    .index("by_run_and_asset", ["runId", "assetId"])
+    .index("by_asset", ["assetId"]),
 
   runEvents: defineTable({
     runId: v.id("runs"),
@@ -381,7 +394,7 @@ export default defineSchema({
     status: reviewItemStatusValidator,
     reviewer: v.optional(v.string()),
     decidedAt: v.optional(v.number()),
-    /** Gate-1 items link back to the flagged fact they review. */
+    /** Optional linkage for review items tied to a single inventory fact. */
     inventoryItemId: v.optional(v.id("inventoryItems")),
   })
     .index("by_run", ["runId"])
@@ -392,6 +405,8 @@ export default defineSchema({
     /** Absent for run-less workloads (institution-scoped asset tagging). */
     runId: v.optional(v.id("runs")),
     institutionId: v.optional(v.id("institutions")),
+    /** Present for source-doc extraction usage rows. */
+    sourceDocId: v.optional(v.id("sourceDocs")),
     stage: v.string(),
     promptVersion: v.string(),
     model: v.string(),
@@ -401,7 +416,16 @@ export default defineSchema({
     latencyMs: v.number(),
   })
     .index("by_run", ["runId"])
-    .index("by_institution", ["institutionId"]),
+    .index("by_institution", ["institutionId"])
+    .index("by_source_doc", ["sourceDocId"]),
+
+  /** Admin-selected OpenRouter model by pipeline task. */
+  llmTaskModels: defineTable({
+    task: v.string(),
+    model: v.string(),
+    updatedAt: v.number(),
+    updatedByUserId: v.id("users"),
+  }).index("by_task", ["task"]),
 
   /**
    * Per-sentence TTS cache (M5): content-addressed by the SPOKEN text (post
@@ -543,4 +567,62 @@ export default defineSchema({
     .index("by_course", ["courseId"])
     .index("by_course_and_version", ["courseId", "version"])
     .index("by_run", ["runId"]),
+
+  /**
+   * Per-unit rendered outputs for a published course version. Rendering is a
+   * post-publish rendition pipeline (publish remains the source of truth).
+   */
+  renderJobs: defineTable({
+    runId: v.id("runs"),
+    courseId: v.id("courses"),
+    courseVersionId: v.id("courseVersions"),
+    institutionId: v.id("institutions"),
+    unitId: v.string(),
+    moduleId: v.string(),
+    unitIndex: v.number(),
+    contentHash: v.string(),
+    renderSpecHash: v.string(),
+    profile: v.object({
+      container: v.literal("mp4"),
+      width: v.number(),
+      height: v.number(),
+      fps: v.number(),
+      videoCodec: v.string(),
+      audioCodec: v.string(),
+    }),
+    manifestKey: v.string(),
+    exportKey: v.string(),
+    specHash: v.string(),
+    status: renderJobStatusValidator,
+    attempts: v.number(),
+    maxAttempts: v.number(),
+    callbackUrl: v.optional(v.string()),
+    dispatchedAt: v.optional(v.number()),
+    startedAt: v.optional(v.number()),
+    completedAt: v.optional(v.number()),
+    rendererVersion: v.optional(v.string()),
+    output: v.optional(
+      v.object({
+        objectKey: v.string(),
+        sha256: v.string(),
+        sizeBytes: v.number(),
+        durationMs: v.number(),
+        width: v.number(),
+        height: v.number(),
+        fps: v.number(),
+      })
+    ),
+    error: v.optional(
+      v.object({
+        code: v.string(),
+        message: v.string(),
+        retryable: v.boolean(),
+      })
+    ),
+  })
+    .index("by_run", ["runId"])
+    .index("by_status", ["status"])
+    .index("by_course_version", ["courseVersionId"])
+    .index("by_course_version_and_unit", ["courseVersionId", "unitId"])
+    .index("by_run_and_render_spec", ["runId", "renderSpecHash"]),
 });

@@ -59,12 +59,12 @@ function RootStack() {
         <Stack.Screen name="index" />
         <Stack.Screen name="login" />
         <Stack.Screen name="signup" />
-        <Stack.Screen name="dashboard" />
-        <Stack.Screen name="tasks" />
         <Stack.Screen name="admin/index" />
+        <Stack.Screen name="admin/institutions" />
         <Stack.Screen name="admin/email-test" />
         <Stack.Screen name="admin/notifications-test" />
         <Stack.Screen name="admin/notification-deliveries" />
+        <Stack.Screen name="admin/model-routing" />
         <Stack.Screen name="admin/sentry-test" />
         <Stack.Screen name="admin/posthog-test" />
       </Stack>

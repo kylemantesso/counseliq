@@ -7,17 +7,11 @@ export const workflow = new WorkflowManager(components.workflow);
 const ACTOR = "workflow";
 
 /**
- * Phase 1: UPLOADED -> CONVERTING -> CONVERTED -> EXTRACTING -> EXTRACTED,
- * then park the run at gate 1 with one review item per flagged fact. The
- * compiler runs AFTER gate 1 (M4 resequencing) so it only ever consumes the
- * reviewed inventory.
- */
-/**
  * M6.5: the outline step. Runs the outline pass (brief + approved facts +
  * cleared assets) and parks the run at OUTLINE_REVIEW for operator
- * editing/approval. Started by gate-1 approval and by
- * regenerate-with-feedback; authoring spend only begins when the operator
- * approves the outline (approveOutline → compileAndJudge).
+ * editing/approval. Started at course creation and by regenerate-with-feedback;
+ * authoring spend only begins when the operator approves the outline
+ * (approveOutline -> compileAndJudge).
  */
 export const generateOutline = workflow
   .define({
@@ -26,7 +20,7 @@ export const generateOutline = workflow
   .handler(async (step, args): Promise<void> => {
     const { runId } = args;
 
-    const outline: { status: string; cause?: string } = await step.runAction(
+    const outline: { status: string; cause?: string; warning?: string } = await step.runAction(
       internal.pipeline.compiler.outline.runOutlineGeneration,
       { runId }
     );
@@ -47,116 +41,18 @@ export const generateOutline = workflow
       runId,
       toState: "OUTLINE_REVIEW",
       actor: ACTOR,
-      detail: "generateOutline: outline ready for review",
-    });
-  });
-
-export const ingestAndExtract = workflow
-  .define({
-    args: { runId: v.id("runs") },
-  })
-  .handler(async (step, args): Promise<void> => {
-    const { runId } = args;
-
-    await step.runMutation(internal.pipeline.transitions.transitionRun, {
-      runId,
-      toState: "CONVERTING",
-      actor: ACTOR,
-      detail: "ingestAndCompile: dispatching source doc conversion",
-    });
-    const conversion: { status: string; cause?: string } =
-      await step.runAction(
-        internal.pipeline.ingestion.dispatchAndAwaitConversions,
-        { runId }
-      );
-    if (conversion.status === "empty") {
-      // No source docs on the run (M1-style walkthroughs, tests): nothing to
-      // convert, advance directly.
-      await step.runMutation(internal.pipeline.transitions.transitionRun, {
-        runId,
-        toState: "CONVERTED",
-        actor: ACTOR,
-        detail: "ingestAndExtract: no source docs to convert",
-      });
-    } else if (conversion.status === "timeout") {
-      await step.runMutation(internal.pipeline.transitions.transitionRun, {
-        runId,
-        toState: "FAILED",
-        actor: ACTOR,
-        detail: "ingestAndExtract: conversion timed out",
-        error: {
-          retryable: true,
-          cause: conversion.cause ?? "conversion timed out",
-        },
-      });
-      return;
-    }
-    // status === "converted": the callback already transitioned the run to
-    // CONVERTED when the final source doc landed.
-
-    await step.runMutation(internal.pipeline.transitions.transitionRun, {
-      runId,
-      toState: "EXTRACTING",
-      actor: ACTOR,
-      detail: "ingestAndExtract: starting extraction",
-    });
-    const extraction: {
-      status: string;
-      cause?: string;
-      counts?: {
-        total: number;
-        concepts: number;
-        facts: number;
-        entities: number;
-        quotes: number;
-        flaggedFacts: number;
-      };
-      pages?: number;
-    } = await step.runAction(internal.pipeline.extract.runExtraction, {
-      runId,
-    });
-    if (extraction.status !== "ok") {
-      await step.runMutation(internal.pipeline.transitions.transitionRun, {
-        runId,
-        toState: "FAILED",
-        actor: ACTOR,
-        detail: "ingestAndExtract: extraction failed",
-        error: {
-          retryable: true,
-          cause: extraction.cause ?? "extraction failed",
-        },
-      });
-      return;
-    }
-    const counts = extraction.counts;
-    await step.runMutation(internal.pipeline.transitions.transitionRun, {
-      runId,
-      toState: "EXTRACTED",
-      actor: ACTOR,
-      detail:
-        `ingestAndExtract: extraction complete — ${counts?.total ?? 0} inventory items ` +
-        `(${counts?.concepts ?? 0} concepts, ${counts?.facts ?? 0} facts, ` +
-        `${counts?.flaggedFacts ?? 0} flagged) from ${extraction.pages ?? 0} page(s)`,
-    });
-
-    await step.runMutation(internal.pipeline.transitions.transitionRun, {
-      runId,
-      toState: "GATE_1_KNOWLEDGE_REVIEW",
-      actor: ACTOR,
-      detail: "ingestAndExtract: awaiting knowledge review",
-    });
-    await step.runMutation(internal.pipeline.reviewItems.createGateReviewItems, {
-      runId,
-      gate: 1,
+      detail: outline.warning
+        ? `generateOutline: outline ready for review (${outline.warning})`
+        : "generateOutline: outline ready for review",
     });
   });
 
 /**
  * Phase 2: COMPILING -> COMPILED -> QA_RUNNING -> QA_PASSED | QA_FLAGGED,
- * then park the run at gate 2 (course review). Started by decideGate(1)
- * approval (full compile) or by adminSendBackForReauthoring (partial
- * re-authoring of flagged units) — both transition the run to COMPILING
- * before starting this workflow.
+ * then park the run at gate 2 (course review). Started by outline approval
+ * (full compile) or by adminSendBackForReauthoring (partial re-authoring of
+ * flagged units) — both transition the run to COMPILING before starting this
+ * workflow.
  */
 export const compileAndJudge = workflow
   .define({
@@ -174,6 +70,7 @@ export const compileAndJudge = workflow
       unitCount?: number;
       moduleCount?: number;
       questionCount?: number;
+      warning?: string;
     } = await step.runAction(
       internal.pipeline.compiler.compile.runCompilation,
       {
@@ -202,7 +99,8 @@ export const compileAndJudge = workflow
       actor: ACTOR,
       detail:
         `compileAndJudge: compiled ${compilation.unitCount ?? 0} micro-unit(s) across ` +
-        `${compilation.moduleCount ?? 0} module(s) with ${compilation.questionCount ?? 0} question(s)`,
+        `${compilation.moduleCount ?? 0} module(s) with ${compilation.questionCount ?? 0} question(s)` +
+        (compilation.warning ? ` (${compilation.warning})` : ""),
     });
 
     await step.runMutation(internal.pipeline.transitions.transitionRun, {
@@ -314,10 +212,6 @@ export const generateAssets = workflow
         `${assets.cached} cached, ${assets.failed.length} failed, ` +
         `${assets.blockedSkipped} blocked; ${assets.characters} character(s), ` +
         `~$${assets.costUsd.toFixed(4)} (estimated)`,
-    });
-    await step.runMutation(internal.pipeline.reviewItems.createGateReviewItems, {
-      runId,
-      gate: 3,
     });
   });
 

@@ -19,6 +19,7 @@
     "dev": "npm run dev --workspace=web",
     "dev:all": "concurrently \"npm run convex:dev\" \"turbo run dev --parallel --filter=web --filter=mobile\"",
     "dev:mobile": "npm run dev --workspace=mobile",
+    "dev:renderer": "npm run dev --workspace=@counseliq/renderer",
     "dev:stack": "node scripts/dev-local-stack.mjs",
     "dev:web": "npm run dev --workspace=web",
     "env:sync:convex-email": "node scripts/sync-convex-email-env.mjs",

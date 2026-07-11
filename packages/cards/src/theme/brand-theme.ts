@@ -122,8 +122,187 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function isHexColor(value: unknown): value is string {
-  return typeof value === "string" && /^#[0-9a-fA-F]{3,8}$/.test(value.trim());
+function asNonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function asTitleCase(value: unknown): "none" | "uppercase" | null {
+  const normalized = asNonEmptyString(value)?.toLowerCase();
+  if (normalized === "none" || normalized === "uppercase") {
+    return normalized;
+  }
+  return null;
+}
+
+function isCssColor(value: unknown): value is string {
+  const color = asNonEmptyString(value);
+  if (color === null) return false;
+  return (
+    /^#[0-9a-fA-F]{3,8}$/.test(color) ||
+    /^rgba?\(\s*[\d.]+\s*,\s*[\d.]+\s*,\s*[\d.]+(?:\s*,\s*[\d.]+)?\s*\)$/i.test(
+      color
+    ) ||
+    /^hsla?\(\s*[\d.]+(?:deg|rad|turn)?\s*,\s*[\d.]+%\s*,\s*[\d.]+%(?:\s*,\s*[\d.]+)?\s*\)$/i.test(
+      color
+    )
+  );
+}
+
+type Rgba = { r: number; g: number; b: number; a: number };
+
+function parseCssColor(value: string): Rgba | null {
+  const color = value.trim();
+  if (color.startsWith("#")) {
+    const hex = color.slice(1);
+    if (![3, 4, 6, 8].includes(hex.length) || !/^[0-9a-fA-F]+$/.test(hex)) {
+      return null;
+    }
+    if (hex.length === 3 || hex.length === 4) {
+      const r = Number.parseInt(hex[0] + hex[0], 16);
+      const g = Number.parseInt(hex[1] + hex[1], 16);
+      const b = Number.parseInt(hex[2] + hex[2], 16);
+      const a =
+        hex.length === 4 ? Number.parseInt(hex[3] + hex[3], 16) / 255 : 1;
+      return { r, g, b, a };
+    }
+    const r = Number.parseInt(hex.slice(0, 2), 16);
+    const g = Number.parseInt(hex.slice(2, 4), 16);
+    const b = Number.parseInt(hex.slice(4, 6), 16);
+    const a = hex.length === 8 ? Number.parseInt(hex.slice(6, 8), 16) / 255 : 1;
+    return { r, g, b, a };
+  }
+
+  const rgb = color.match(/^rgba?\(([^)]+)\)$/i);
+  if (rgb) {
+    const parts = rgb[1].split(",").map((part) => part.trim());
+    if (parts.length < 3) return null;
+    const channels = parts.slice(0, 3).map((part) => {
+      if (part.endsWith("%")) {
+        const pct = Number.parseFloat(part.slice(0, -1));
+        return Number.isFinite(pct) ? Math.round((pct / 100) * 255) : null;
+      }
+      const n = Number.parseFloat(part);
+      return Number.isFinite(n) ? Math.round(n) : null;
+    });
+    if (channels.some((entry) => entry === null)) return null;
+    const alpha = parts[3] ? Number.parseFloat(parts[3]) : 1;
+    if (!Number.isFinite(alpha)) return null;
+    return {
+      r: clamp(channels[0] as number, 0, 255),
+      g: clamp(channels[1] as number, 0, 255),
+      b: clamp(channels[2] as number, 0, 255),
+      a: clamp(alpha, 0, 1),
+    };
+  }
+
+  const hsl = color.match(/^hsla?\(([^)]+)\)$/i);
+  if (hsl) {
+    const parts = hsl[1].split(",").map((part) => part.trim());
+    if (parts.length < 3) return null;
+    const h = Number.parseFloat(parts[0].replace(/deg|rad|turn/gi, ""));
+    const s = Number.parseFloat(parts[1].replace("%", "")) / 100;
+    const l = Number.parseFloat(parts[2].replace("%", "")) / 100;
+    const alpha = parts[3] ? Number.parseFloat(parts[3]) : 1;
+    if (![h, s, l, alpha].every(Number.isFinite)) return null;
+    const rgbFromHsl = hslToRgb(h, clamp(s, 0, 1), clamp(l, 0, 1));
+    return { ...rgbFromHsl, a: clamp(alpha, 0, 1) };
+  }
+
+  return null;
+}
+
+function hslToRgb(
+  h: number,
+  s: number,
+  l: number
+): { r: number; g: number; b: number } {
+  const hue = ((h % 360) + 360) % 360;
+  if (s === 0) {
+    const grey = Math.round(l * 255);
+    return { r: grey, g: grey, b: grey };
+  }
+  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+  const p = 2 * l - q;
+  const hk = hue / 360;
+  const toChannel = (t: number) => {
+    let tc = t;
+    if (tc < 0) tc += 1;
+    if (tc > 1) tc -= 1;
+    if (tc < 1 / 6) return p + (q - p) * 6 * tc;
+    if (tc < 1 / 2) return q;
+    if (tc < 2 / 3) return p + (q - p) * (2 / 3 - tc) * 6;
+    return p;
+  };
+  return {
+    r: Math.round(toChannel(hk + 1 / 3) * 255),
+    g: Math.round(toChannel(hk) * 255),
+    b: Math.round(toChannel(hk - 1 / 3) * 255),
+  };
+}
+
+function relativeLuminance({ r, g, b }: Pick<Rgba, "r" | "g" | "b">): number {
+  const toLinear = (channel: number) => {
+    const srgb = channel / 255;
+    return srgb <= 0.03928
+      ? srgb / 12.92
+      : ((srgb + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * toLinear(r) + 0.7152 * toLinear(g) + 0.0722 * toLinear(b);
+}
+
+function contrastRatio(a: Pick<Rgba, "r" | "g" | "b">, b: Pick<Rgba, "r" | "g" | "b">): number {
+  const l1 = relativeLuminance(a);
+  const l2 = relativeLuminance(b);
+  const lighter = Math.max(l1, l2);
+  const darker = Math.min(l1, l2);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+function textColorForBackground(color: string): string {
+  const bg = parseCssColor(color);
+  if (!bg) return "#111827";
+  const light = parseCssColor("#FFFFFF") as Rgba;
+  const dark = parseCssColor("#111827") as Rgba;
+  return contrastRatio(bg, light) >= contrastRatio(bg, dark) ? "#FFFFFF" : "#111827";
+}
+
+function toRgbaString(color: string, alpha: number): string | null {
+  const parsed = parseCssColor(color);
+  if (!parsed) return null;
+  return `rgba(${parsed.r},${parsed.g},${parsed.b},${clamp(alpha, 0, 1)})`;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function normalizedBrandRef(value: unknown): string | null {
+  const raw = asNonEmptyString(value);
+  if (raw === null) return null;
+  return raw.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function baseThemeFromTokens(tokens: unknown): BrandTheme {
+  const pick = (value: unknown) => {
+    const normalized = normalizedBrandRef(value);
+    if (normalized !== null && normalized.includes("latrobe")) return latrobeTheme;
+    return null;
+  };
+
+  if (typeof tokens === "string") {
+    return pick(tokens) ?? counseliqTheme;
+  }
+  if (!isRecord(tokens)) return counseliqTheme;
+
+  return (
+    pick(tokens.brandRef) ??
+    pick(tokens.theme) ??
+    pick(tokens.themeName) ??
+    pick(tokens.preset) ??
+    counseliqTheme
+  );
 }
 
 /**
@@ -133,15 +312,55 @@ function isHexColor(value: unknown): value is string {
  * malformed. Colors: [0] → accent. Fonts: [0] → display stack head.
  */
 export function brandThemeFromTokens(tokens: unknown): BrandTheme {
-  const base = counseliqTheme;
+  const base = baseThemeFromTokens(tokens);
   if (!isRecord(tokens)) return base;
 
   const out: BrandTheme = { ...base };
 
+  const titleCase = asTitleCase(tokens.titleCase);
+  if (titleCase !== null) {
+    out.titleCase = titleCase;
+  }
+
   const colors = Array.isArray(tokens.colors) ? tokens.colors : [];
-  if (isHexColor(colors[0])) out.accent = colors[0].trim();
+  if (isCssColor(colors[0])) out.accent = colors[0].trim();
   // Explicit named tokens win over positional candidate colors.
-  if (isHexColor(tokens.primaryColor)) out.accent = (tokens.primaryColor as string).trim();
+  if (isCssColor(tokens.primaryColor)) {
+    out.accent = (tokens.primaryColor as string).trim();
+  }
+  const secondary = isCssColor(tokens.secondaryColor)
+    ? (tokens.secondaryColor as string).trim()
+    : isCssColor(colors[1])
+      ? colors[1].trim()
+      : null;
+  if (secondary !== null) {
+    out.chip = toRgbaString(secondary, 0.2) ?? out.chip;
+    out.rule = toRgbaString(secondary, 0.38) ?? out.rule;
+    out.paperRule = toRgbaString(secondary, 0.28) ?? out.paperRule;
+  }
+  out.accentInk = textColorForBackground(out.accent);
+
+  if (isCssColor(tokens.backgroundColor)) {
+    out.bg = (tokens.backgroundColor as string).trim();
+    const requestedInk = isCssColor(tokens.textColor)
+      ? (tokens.textColor as string).trim()
+      : null;
+    const safeInk = textColorForBackground(out.bg);
+    if (requestedInk) {
+      const bg = parseCssColor(out.bg);
+      const ink = parseCssColor(requestedInk);
+      if (bg && ink && contrastRatio(bg, ink) >= 4.5) {
+        out.ink = requestedInk;
+      } else {
+        out.ink = safeInk;
+      }
+    } else {
+      out.ink = safeInk;
+    }
+    out.dim = toRgbaString(out.ink, 0.64) ?? out.dim;
+    out.rule = toRgbaString(out.ink, 0.16) ?? out.rule;
+    out.chip = toRgbaString(out.ink, 0.07) ?? out.chip;
+  }
 
   const fonts = Array.isArray(tokens.fonts) ? tokens.fonts : [];
   const font = typeof tokens.fontFamily === "string" ? tokens.fontFamily : fonts[0];

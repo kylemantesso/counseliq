@@ -1,15 +1,16 @@
 # CounselIQ pipeline (Milestone 6 — media enrichment)
 
 Durable state machine that walks a course-generation "run" from upload to
-publication, pausing at three human review gates. As of M2, **ingestion is
+publication, pausing at two run-level human review gates (plus source-doc fact
+review before a run starts). As of M2, **ingestion is
 real**: uploaded source documents (pptx/pdf) are converted by an external
 converter service into per-page artifacts — rendered PNG, extracted text +
 speaker notes, embedded images, candidate brand theme — content-addressed in
 an S3-compatible object store, with every artifact carrying a provenance ID.
 As of M3, **EXTRACTING is real**: a per-page multimodal LLM pass (via
 OpenRouter) produces a structured knowledge inventory (concepts, facts with
-claim classes, entities, quotes), unsourced statistics are flagged in code,
-and the flagged facts become real gate-1 review items. As of M4,
+claim classes, entities, quotes), unsourced statistics are flagged in code.
+As of M4,
 **COMPILING and QA are real**: a two-pass compiler turns the reviewed
 inventory into a schema-valid Course Definition, an adversarial QA judge on
 a different model family traces every narration sentence back to provenance,
@@ -29,9 +30,8 @@ re-synthesis), and approval assembles the canonical Course Definition export
 ```
 UPLOADED → CONVERTING → CONVERTED
   → EXTRACTING → EXTRACTED
-  → GATE_1_KNOWLEDGE_REVIEW   (waits for decideGate(1))
   → OUTLINING                 (M6.5: brief-directed outline pass — approved
-                               facts + cleared assets, no authoring spend)
+                                facts + cleared assets, no authoring spend)
   → OUTLINE_REVIEW            (editable outline; approve → COMPILING,
                                regenerate-with-feedback → OUTLINING)
   → COMPILING → COMPILED
@@ -53,10 +53,10 @@ UPLOADED → CONVERTING → CONVERTED
 The full map lives in [`states.ts`](./states.ts) (`ALLOWED_TRANSITIONS`).
 
 **M4 resequencing rationale** (one-time sanctioned contract change): the old
-order compiled before knowledge review, which meant the compiler consumed
-unreviewed facts. Now gate 1 feeds the compiler — the compiler only ever
-sees the reviewed inventory (approved facts with confirmed sources; excluded
-facts filtered out in code). The QA judge runs on the compiled course
+order compiled before fact review, which meant the compiler consumed
+unreviewed facts. Now source-doc fact review happens before `startRun`, so the
+compiler only ever sees reviewed inventory (approved facts; excluded facts
+filtered out in code). The QA judge runs on the compiled course
 *before* any money is spent on TTS/assets, and `QA_FLAGGED` routes to gate 2
 with the flags attached so a human decides: send flagged units back to
 COMPILING for re-authoring, or approve. Gate 2 (renamed from
@@ -65,8 +65,8 @@ provenance, cards, questions, and judge flags — in the course viewer.
 
 ## Course outline step (M6.5)
 
-Gate-1 approval no longer starts compilation directly. The **outline
-pass** (`outline-course@1`, `compiler/outline.ts`) proposes course title,
+After extraction, the **outline pass** (`outline-course@1`,
+`compiler/outline.ts`) proposes course title,
 3–7 learning outcomes, and the module/unit structure from the approved
 inventory, the CLEARED asset catalogue (per-unit `mediaAssetIds`
 suggestions), and the **operator brief** entered on the generate page —
@@ -117,8 +117,8 @@ Convex http action /converter/callback (http.ts)
     │    upsert slides (provenance doc:{sourceDocId}:page:{n}) + assets →
     │    when all docs converted: transition CONVERTED
     ▼
-workflow continues: EXTRACTING → EXTRACTED → GATE_1_KNOWLEDGE_REVIEW
-(gate-1 approval starts the compileAndJudge workflow)
+workflow continues: EXTRACTING → EXTRACTED → OUTLINING
+(outline approval starts the compileAndJudge workflow)
 ```
 
 - **The manifest contract lives in one place** —
@@ -174,14 +174,10 @@ runExtraction (merge + write)
     │ 11. infer-theme for docs with no OOXML theme (2-3 page renders →
     │     CandidateTheme{method:"llm-inferred"}; non-fatal on failure)
     ▼
-EXTRACTED → GATE_1_KNOWLEDGE_REVIEW
-    │ 12. one reviewItem per flagged fact (payload: fact + provenance +
-    │     page thumb key), replacing gate-1 placeholders
-    │ 13. adminResolveReviewItem per item: approve-with-source (operator
-    │     supplies sourceLabel/year → fact unflagged) or exclude (fact
-    │     marked excluded — invisible to the compiler)
-    │ 14. decideGate(1) approval requires every item resolved
-    │     (GATE_ITEMS_UNRESOLVED otherwise); approval starts compileAndJudge
+EXTRACTED → OUTLINING → OUTLINE_REVIEW
+    │ 12. source-doc fact review already happened before `startRun`
+    │     (approve/exclude on pageExtractions; safe bulk approval available)
+    │ 13. approveOutline starts compileAndJudge
     ▼
 COMPILING → COMPILED → QA_RUNNING → … (see "Compiler architecture" below)
 ```
@@ -189,7 +185,7 @@ COMPILING → COMPILED → QA_RUNNING → … (see "Compiler architecture" below
 ## Compiler architecture (M4)
 
 ```
-GATE_1_KNOWLEDGE_REVIEW approved → compileAndJudge workflow
+OUTLINE_REVIEW approved → compileAndJudge workflow
     │ 1. COMPILING; record runs.promptVersions (compile-structure@1,
     │    author-unit@1, judge-course@1 + routed models)
     ▼
@@ -507,10 +503,10 @@ media-irrelevant flags).
    for real voice.
 2. In another terminal: `npm run walkthrough:local -- --yes --pause-at-gate-3`.
    The script prints the cost estimate (LLM + TTS characters/$), uploads the
-   fixture docs, and drives conversion → extraction → gate 1 (auto-resolved)
-   → compile → QA → the TTS estimate → gate 2 → synthesis.
-3. While it runs, open `/admin/runs/{id}/gate-1` and `gate-2` to show the
-   human gates (the script auto-approves them).
+   fixture docs, and drives conversion → extraction → outline review
+   (auto-approved) → compile → QA → the TTS estimate → gate 2 → synthesis.
+3. While it runs, open `/admin/runs/{id}/gate-2` to show the
+   human review gate (the script auto-approves it).
 4. At gate 3 the script pauses and prints the player URL. Open it: **watch a
    unit play** — real voice, cards firing on their word anchors, captions
    with current-word emphasis, hook and retrieve questions inline.
@@ -605,7 +601,7 @@ npm run eval:compile -- --yes --judge-only   # judge eval on seeded bad courses
 The script prints a cost estimate (from `estimateCompileCost` +
 `llm/pricing.ts`) and requires `--yes`. A full run drives the REAL pipeline
 over golden fixture #1's source docs (`fixtures/ingestion/doc-a`/`doc-b`),
-auto-resolves gate 1 the same way `walkthrough.mjs` does, waits for
+auto-approves the outline the same way `walkthrough.mjs` does, waits for
 `GATE_2_COURSE_REVIEW`, then scores the compiled course.
 [`golden-fixture-1.json`](../../packages/course-schema/fixtures/golden-fixture-1.json)
 was authored from different source material (a specific requested course),
@@ -655,7 +651,7 @@ characters, TTS cost vs estimate, and the publish specHash.
   `startRun` inserts the run already in `UPLOADED`.
 - Gates only advance via `decideGate` (human/admin action) — workflows park
   runs at gate states and stop.
-- Rejecting gate 1 or 2 transitions the run to `FAILED { retryable: true }`.
+- Rejecting gate 2 transitions the run to `FAILED { retryable: true }`.
   Rejecting gate 3 routes back to `GATE_2_COURSE_REVIEW` with the reviewer's
   notes journaled and a pending `gate3_rejection` review item.
 - Gate 3 cannot be approved while any unit is `blocked` (unresolved
@@ -680,7 +676,7 @@ characters, TTS cost vs estimate, and the publish specHash.
 | `steps.ts` | `runNoopStage` — stand-in for still-stubbed pipeline work |
 | `workflows.ts` | `ingestAndExtract`, `compileAndJudge`, `generateAssets`, `publishPhase` (durable, via `@convex-dev/workflow`) |
 | `runs.ts` | `startRun`, `decideGate` (internal) + `adminStartRun`, `adminDecideGate`, `adminSendBackForReauthoring` (public, admin-gated) |
-| `reviewItems.ts` | Gate-1 flagged-fact items + `adminResolveReviewItem`; placeholders for gate 3 |
+| `reviewItems.ts` | Gate-3 review item helpers (`blocked_unit`, `failed_unit`) + list query |
 | `courses.ts` | Course persistence: `saveCompiledCourse`, reviewed-inventory query, unit-authoring cache, QA writes, question edit/regenerate |
 | `compiler/compile.ts` | `runCompilation` — structure pass + authoring fan-out via `compilePool` + `regenerateQuestion` (`"use node"`) |
 | `compiler/assemble.ts` | Pure assembly: prompt builders, unit compliance, `assembleCourseDefinition`, `tryAssemble` |
@@ -719,7 +715,7 @@ Tests: [`../pipeline.test.ts`](../pipeline.test.ts) (transitions/gates,
 resequenced map), [`../ingestion.test.ts`](../ingestion.test.ts) (callback
 HMAC/validation/idempotency),
 [`../extraction.test.ts`](../extraction.test.ts) (inventory idempotency,
-gate-1 item generation and resolution rules, page cache),
+source-doc fact bulk approval, page cache),
 [`../courses.test.ts`](../courses.test.ts) (course persistence, reviewed
 inventory filtering, definition round-trip, authoring cache),
 [`../compiler.test.ts`](../compiler.test.ts) (send-back mutation),
@@ -748,9 +744,7 @@ round-trip).
 Admin UI: `/admin/source-docs` (list → per-doc page grid with PNG, text,
 notes, provenance ID, theme candidates), `/admin/runs/[id]` (state, events,
 itemized LLM cost, inventory browser with claim-class chips and flagged
-filter), `/admin/runs/[id]/gate-1` (flagged-fact review queue with
-approve-with-source / exclude; the gate decision unlocks once every item is
-resolved), `/admin/runs/[id]/gate-2` (course viewer — see "Gate-2
+filter), `/admin/runs/[id]/gate-2` (course viewer — see "Gate-2
 course viewer" above), `/admin/runs/[id]/gate-3` (the playable studio —
 see "Player architecture" above), and `/ui/cards` (dev gallery: all 21 card
 templates, theme/reduced-motion toggles, timing scrubber).

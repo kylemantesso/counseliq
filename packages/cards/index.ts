@@ -58,3 +58,8 @@ export {
   type CardImageProps,
 } from "./src/assets";
 export { CardVideo, type CardVideoProps } from "./src/card-video";
+export {
+  MediaModeProvider,
+  useMediaMode,
+  type MediaMode,
+} from "./src/media-mode";

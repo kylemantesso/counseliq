@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { Box, Pressable, Text } from "@counseliq/ui";
 import {
+  AssetResolverContext,
   BrandThemeProvider,
   CardRenderer,
   CardStage,
@@ -11,9 +12,15 @@ import {
   counseliqTheme,
 } from "@counseliq/cards";
 import { validateCardProps } from "@counseliq/course-schema";
+import { GoogleBrandFontLoader } from "./theme/google-brand-font-loader.web";
+import { fontFamilyFromBrandTokens } from "../theme/google-brand-fonts";
+import {
+  logoUrlFromBrandTokens,
+  withInstitutionLogoOnTitleCard,
+} from "../theme/brand-tokens";
 
 /**
- * Settled card render for review surfaces (gate 2/3): the real
+ * Settled card render for review surfaces (steps 2/3): the real
  * @counseliq/cards renderer at SETTLED_TIMING inside a scaled 9:16 stage,
  * with prop-validation issue chips and a raw-props toggle underneath.
  */
@@ -23,12 +30,18 @@ export interface CardStaticPreviewProps {
   props: Record<string, unknown>;
   /** institutions.brandTokens; absent → counseliq default theme. */
   brandTokens?: unknown;
+  /** Optional media resolver (asset id -> presigned URL). */
+  resolveAssetRef?: (ref: string) => string | null;
+  /** Hide prop-toggle and validation chips when embedded as a thumbnail. */
+  showControls?: boolean;
 }
 
 export function CardStaticPreview({
   template,
   props,
   brandTokens,
+  resolveAssetRef,
+  showControls = true,
 }: CardStaticPreviewProps) {
   const [showProps, setShowProps] = useState(false);
   const theme = useMemo(
@@ -42,9 +55,45 @@ export function CardStaticPreview({
     () => validateCardProps(template, props),
     [template, props]
   );
+  const brandFontFamily = useMemo(
+    () => fontFamilyFromBrandTokens(brandTokens),
+    [brandTokens]
+  );
+  const resolver = useMemo(
+    () => ({ resolve: (ref: string) => resolveAssetRef?.(ref) ?? null }),
+    [resolveAssetRef]
+  );
+  const institutionLogoUrl = useMemo(
+    () => logoUrlFromBrandTokens(brandTokens),
+    [brandTokens]
+  );
+  const renderProps = useMemo(
+    () => withInstitutionLogoOnTitleCard(template, props, institutionLogoUrl),
+    [template, props, institutionLogoUrl]
+  );
+
+  if (!showControls) {
+    return (
+      <div style={{ width: "100%", height: "100%" }}>
+        <GoogleBrandFontLoader fontFamily={brandFontFamily} />
+        <AssetResolverContext.Provider value={resolver}>
+          <BrandThemeProvider theme={theme}>
+            <CardStage style={{ borderRadius: 10, boxShadow: "none" }}>
+              <CardRenderer
+                template={template}
+                props={renderProps}
+                timing={SETTLED_TIMING}
+              />
+            </CardStage>
+          </BrandThemeProvider>
+        </AssetResolverContext.Provider>
+      </div>
+    );
+  }
 
   return (
     <Box className="gap-1 w-full">
+      <GoogleBrandFontLoader fontFamily={brandFontFamily} />
       {showProps ? (
         <Box
           className="bg-card border border-border rounded-xl p-3 gap-1"
@@ -68,37 +117,41 @@ export function CardStaticPreview({
         </Box>
       ) : (
         <div style={{ width: "100%", aspectRatio: "9 / 16" }}>
-          <BrandThemeProvider theme={theme}>
-            <CardStage>
-              <CardRenderer
-                template={template}
-                props={props}
-                timing={SETTLED_TIMING}
-              />
-            </CardStage>
-          </BrandThemeProvider>
+          <AssetResolverContext.Provider value={resolver}>
+            <BrandThemeProvider theme={theme}>
+              <CardStage>
+                <CardRenderer
+                  template={template}
+                  props={renderProps}
+                  timing={SETTLED_TIMING}
+                />
+              </CardStage>
+            </BrandThemeProvider>
+          </AssetResolverContext.Provider>
         </div>
       )}
-      <Box className="flex-row flex-wrap items-center gap-1">
-        <Pressable
-          onPress={() => setShowProps((current) => !current)}
-          className="border border-border rounded-full px-2 py-0.5"
-        >
-          <Text className="text-xs text-muted-foreground">
-            {showProps ? "card" : "props"}
-          </Text>
-        </Pressable>
-        {issues.map((issue, index) => (
-          <Box
-            key={`issue-${index}`}
-            className="bg-destructive/10 border border-destructive rounded-full px-2 py-0.5"
+      {showControls ? (
+        <Box className="flex-row flex-wrap items-center gap-1">
+          <Pressable
+            onPress={() => setShowProps((current) => !current)}
+            className="border border-border rounded-full px-2 py-0.5"
           >
-            <Text className="text-xs text-destructive" numberOfLines={1}>
-              {issue.path.join(".") || "props"}: {truncate(issue.message, 60)}
+            <Text className="text-xs text-muted-foreground">
+              {showProps ? "card" : "props"}
             </Text>
-          </Box>
-        ))}
-      </Box>
+          </Pressable>
+          {issues.map((issue, index) => (
+            <Box
+              key={`issue-${index}`}
+              className="bg-destructive/10 border border-destructive rounded-full px-2 py-0.5"
+            >
+              <Text className="text-xs text-destructive" numberOfLines={1}>
+                {issue.path.join(".") || "props"}: {truncate(issue.message, 60)}
+              </Text>
+            </Box>
+          ))}
+        </Box>
+      ) : null}
     </Box>
   );
 }

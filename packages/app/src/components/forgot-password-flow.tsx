@@ -79,7 +79,7 @@ export function ForgotPasswordFlow({
     result: NonNullable<typeof signIn>,
   ): Promise<void> => {
     await activateSignInSession(result, setActive);
-    router.replace("/dashboard");
+    router.replace("/admin");
   };
 
   const handleMfaIfNeeded = async (
@@ -108,7 +108,7 @@ export function ForgotPasswordFlow({
     if (!signInReady || !signIn) return;
 
     if (isSignedIn) {
-      router.replace("/dashboard");
+      router.replace("/admin");
       return;
     }
 
@@ -121,7 +121,7 @@ export function ForgotPasswordFlow({
       setResendCooldownSeconds(RESEND_COOLDOWN_SECONDS);
     } catch (err: unknown) {
       if (isSessionExistsError(err)) {
-        router.replace("/dashboard");
+        router.replace("/admin");
         return;
       }
       setError(
@@ -213,7 +213,7 @@ export function ForgotPasswordFlow({
       await finishSignIn(result);
     } catch (err: unknown) {
       if (isSessionExistsError(err)) {
-        router.replace("/dashboard");
+          router.replace("/admin");
         return;
       }
       setError(
@@ -246,7 +246,7 @@ export function ForgotPasswordFlow({
       await finishSignIn(result);
     } catch (err: unknown) {
       if (isSessionExistsError(err)) {
-        router.replace("/dashboard");
+          router.replace("/admin");
         return;
       }
       setError(clerkErrorMessage(err, "Invalid or expired code. Try again or resend."));

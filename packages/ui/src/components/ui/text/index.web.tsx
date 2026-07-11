@@ -6,6 +6,7 @@ import { flattenWebStyle } from '../../../utils/flatten-web-style';
 type ITextProps = React.ComponentProps<'span'> &
   VariantProps<typeof textStyle> & {
     style?: React.ComponentProps<'span'>['style'] | Record<string, unknown> | Array<unknown>;
+    numberOfLines?: number;
   };
 
 const Text = React.forwardRef<React.ComponentRef<'span'>, ITextProps>(
@@ -21,10 +22,33 @@ const Text = React.forwardRef<React.ComponentRef<'span'>, ITextProps>(
       sub,
       italic,
       highlight,
+      numberOfLines,
       ...props
     }: { className?: string } & ITextProps,
     ref
   ) {
+    const lineClamp =
+      typeof numberOfLines === 'number' && Number.isFinite(numberOfLines) && numberOfLines > 0
+        ? Math.floor(numberOfLines)
+        : undefined;
+
+    const lineClampStyle: React.CSSProperties =
+      lineClamp == null
+        ? {}
+        : lineClamp === 1
+          ? {
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }
+          : {
+              overflow: 'hidden',
+              display: '-webkit-box',
+              WebkitBoxOrient: 'vertical',
+              WebkitLineClamp: lineClamp,
+              whiteSpace: 'normal',
+            };
+
     return (
       <span
         className={textStyle({
@@ -38,7 +62,10 @@ const Text = React.forwardRef<React.ComponentRef<'span'>, ITextProps>(
           highlight: highlight as boolean,
           class: className,
         })}
-        style={flattenWebStyle(style as Parameters<typeof flattenWebStyle>[0])}
+        style={{
+          ...flattenWebStyle(style as Parameters<typeof flattenWebStyle>[0]),
+          ...lineClampStyle,
+        }}
         {...props}
         ref={ref}
       />

@@ -41,8 +41,11 @@ export type { CardPropsFor, TypedCardContent } from "./src/card-props";
 export { CARD_PROP_FIXTURES } from "./src/card-props-fixtures";
 
 export {
+  FINAL_CONTENT_HOLD_MS,
   TIMING_VERSION,
+  audioEndMsForSentences,
   cardBeatSchema,
+  contentEndMsForTiming,
   mediaWindowSchema,
   scriptAlignmentSegmentSchema,
   scriptSentenceSchema,
@@ -92,6 +95,7 @@ export type {
 export {
   PUBLISH_MANIFEST_SCHEMA_REF,
   PublishManifestParseError,
+  manifestAssetSchema,
   manifestAudioSentenceSchema,
   manifestUnitSchema,
   parsePublishManifest,
@@ -99,6 +103,7 @@ export {
 } from "./src/publish-manifest";
 
 export type {
+  ManifestAsset,
   ManifestAudioSentence,
   ManifestUnit,
   PublishManifest,
@@ -111,7 +116,6 @@ export {
   assetIngestManifestSchema,
   assetIngestRequestSchema,
   assetManifestEntrySchema,
-  candidateThemeSchema,
   contentAddressedKeySchema,
   conversionCallbackSchema,
   conversionManifestSchema,
@@ -123,7 +127,6 @@ export {
   pdfImageManifestSchema,
   pdfImagesCallbackSchema,
   sourceDocKindSchema,
-  themeMethodSchema,
 } from "./src/ingestion";
 
 export type {
@@ -132,7 +135,6 @@ export type {
   AssetIngestManifest,
   AssetIngestRequest,
   AssetManifestEntry,
-  CandidateTheme,
   ConversionCallback,
   ConversionManifest,
   ConvertRequest,
@@ -143,7 +145,6 @@ export type {
   PdfImageManifest,
   PdfImagesCallback,
   SourceDocKind,
-  ThemeMethod,
 } from "./src/ingestion";
 
 export {
@@ -163,7 +164,6 @@ export {
   llmExtractedEntitySchema,
   llmExtractedFactSchema,
   llmExtractedQuoteSchema,
-  llmInferredThemeSchema,
   llmMergeResultSchema,
   llmMergedConceptSchema,
   llmPageExtractionSchema,
@@ -183,8 +183,23 @@ export type {
   KnownDirtyStatistic,
   LabelledConcept,
   LabelsFile,
-  LlmInferredTheme,
   LlmMergeResult,
   LlmPageExtraction,
   Quote,
 } from "./src/inventory";
+
+export {
+  renderCallbackSchema,
+  renderFailurePayloadSchema,
+  renderJobRequestSchema,
+  renderProfileSchema,
+  renderSuccessPayloadSchema,
+} from "./src/render";
+
+export type {
+  RenderCallback,
+  RenderFailurePayload,
+  RenderJobRequest,
+  RenderProfile,
+  RenderSuccessPayload,
+} from "./src/render";

@@ -11,6 +11,10 @@ export interface CardStaticPreviewProps {
   props: Record<string, unknown>;
   /** institutions.brandTokens (web render themes with it; unused here). */
   brandTokens?: unknown;
+  /** Optional web resolver for media refs (asset id -> presigned URL). */
+  resolveAssetRef?: (ref: string) => string | null;
+  /** Web-only: hide preview controls/chips when embedded as a thumbnail. */
+  showControls?: boolean;
 }
 
 export function CardStaticPreview({ template, props }: CardStaticPreviewProps) {

@@ -1,3 +1,5 @@
-'use client';
+import { redirect } from 'next/navigation';
 
-export { AdminGenerateCourseScreen as default } from '@counseliq/app';
+export default function AdminGenerateAliasPage() {
+  redirect('/admin/runs/new');
+}

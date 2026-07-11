@@ -170,6 +170,13 @@ export const MEDIA_CARD_TEMPLATES: readonly string[] = [
   "image-text-card",
 ];
 
+/** Non-media templates allowed to carry subtle background imagery. */
+export const BACKGROUND_MEDIA_TEMPLATES: readonly string[] = [
+  "stat-card",
+  "list-reveal",
+  "takeaway-card",
+];
+
 /** Templates that read as dense text walls (pacing rule counterweight). */
 export const TEXT_DENSE_TEMPLATES: readonly string[] = [
   "text-card",
@@ -224,36 +231,66 @@ export function validateAssetRefs(
   const violations: string[] = [];
   cards.forEach((card, index) => {
     const assetRef = card.props.assetRef;
-    if (assetRef === undefined) return;
-    if (typeof assetRef !== "string" || assetRef.trim() === "") {
+    if (assetRef !== undefined) {
+      if (typeof assetRef !== "string" || assetRef.trim() === "") {
+        violations.push(
+          `card ${index + 1} (${card.template}): assetRef must be a catalogue asset id`
+        );
+      } else if (!MEDIA_CARD_TEMPLATES.includes(card.template)) {
+        violations.push(
+          `card ${index + 1} (${card.template}): assetRef is only valid on media templates (${MEDIA_CARD_TEMPLATES.join(", ")})`
+        );
+      } else {
+        const asset = catalogueById.get(assetRef);
+        if (!asset) {
+          violations.push(
+            `card ${index + 1} (${card.template}): assetRef "${assetRef}" is not in the cleared asset library — use an id EXACTLY as listed, never invent one`
+          );
+        } else if (!asset.cleared) {
+          violations.push(
+            `card ${index + 1} (${card.template}): asset "${assetRef}" is not rights-cleared and cannot appear in a course`
+          );
+        } else {
+          const fitProblem = assetFitsTemplate(card.template, asset);
+          if (fitProblem) {
+            violations.push(
+              `card ${index + 1} (${card.template}): ${fitProblem} (asset "${assetRef}" is ${asset.kind}${asset.aspect ? `, ${asset.aspect}` : ""})`
+            );
+          }
+        }
+      }
+    }
+
+    const bgAssetRef = card.props.bgAssetRef;
+    if (bgAssetRef === undefined) return;
+    if (typeof bgAssetRef !== "string" || bgAssetRef.trim() === "") {
       violations.push(
-        `card ${index + 1} (${card.template}): assetRef must be a catalogue asset id`
+        `card ${index + 1} (${card.template}): bgAssetRef must be a catalogue asset id`
       );
       return;
     }
-    if (!MEDIA_CARD_TEMPLATES.includes(card.template)) {
+    if (!BACKGROUND_MEDIA_TEMPLATES.includes(card.template)) {
       violations.push(
-        `card ${index + 1} (${card.template}): assetRef is only valid on media templates (${MEDIA_CARD_TEMPLATES.join(", ")})`
+        `card ${index + 1} (${card.template}): bgAssetRef is only valid on ${BACKGROUND_MEDIA_TEMPLATES.join(", ")}`
       );
       return;
     }
-    const asset = catalogueById.get(assetRef);
-    if (!asset) {
+    const bgAsset = catalogueById.get(bgAssetRef);
+    if (!bgAsset) {
       violations.push(
-        `card ${index + 1} (${card.template}): assetRef "${assetRef}" is not in the cleared asset library — use an id EXACTLY as listed, never invent one`
+        `card ${index + 1} (${card.template}): bgAssetRef "${bgAssetRef}" is not in the cleared asset library — use an id EXACTLY as listed, never invent one`
       );
       return;
     }
-    if (!asset.cleared) {
+    if (!bgAsset.cleared) {
       violations.push(
-        `card ${index + 1} (${card.template}): asset "${assetRef}" is not rights-cleared and cannot appear in a course`
+        `card ${index + 1} (${card.template}): background asset "${bgAssetRef}" is not rights-cleared and cannot appear in a course`
       );
       return;
     }
-    const fitProblem = assetFitsTemplate(card.template, asset);
-    if (fitProblem) {
+    if (bgAsset.kind !== "image") {
       violations.push(
-        `card ${index + 1} (${card.template}): ${fitProblem} (asset "${assetRef}" is ${asset.kind}${asset.aspect ? `, ${asset.aspect}` : ""})`
+        `card ${index + 1} (${card.template}): bgAssetRef requires an image asset (asset "${bgAssetRef}" is ${bgAsset.kind})`
       );
     }
   });
@@ -281,9 +318,14 @@ export function validateMediaPacing(
   if (available === 0) return [];
 
   const violations: string[] = [];
-  const isMediaCard = (card: { template: string; props: Record<string, unknown> }) =>
-    MEDIA_CARD_TEMPLATES.includes(card.template) &&
-    typeof card.props.assetRef === "string";
+  const isMediaCard = (card: {
+    template: string;
+    props: Record<string, unknown>;
+  }) =>
+    (MEDIA_CARD_TEMPLATES.includes(card.template) &&
+      typeof card.props.assetRef === "string") ||
+    (BACKGROUND_MEDIA_TEMPLATES.includes(card.template) &&
+      typeof card.props.bgAssetRef === "string");
   const mediaCount = cards.filter(isMediaCard).length;
   const required = Math.min(
     Math.max(Math.floor(cards.length / 3), cards.length >= 3 ? 1 : 0),
@@ -291,7 +333,7 @@ export function validateMediaPacing(
   );
   if (mediaCount < required) {
     violations.push(
-      `media pacing: ${mediaCount} media card(s) in ${cards.length} — the cleared asset library supports at least ${required} (>= 1 media card per 3 content cards); add video-card / photo-kenburns / image-text-card cards referencing library assets`
+      `media pacing: ${mediaCount} media card(s) in ${cards.length} — the cleared asset library supports at least ${required} (>= 1 media card per 3 content cards); add video-card / photo-kenburns / image-text-card cards, or use bgAssetRef on stat-card / list-reveal / takeaway-card`
     );
   }
 

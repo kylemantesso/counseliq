@@ -4,6 +4,7 @@ import { fade, fadeUp, msWindow, settle } from "../interpolate";
 import { visibleSourceLabels } from "../source-labels";
 import { cssVar } from "../theme/brand-theme-provider";
 import type { CardComponentProps } from "../timing";
+import { BackgroundMediaLayer } from "../background-media";
 
 /**
  * stat-card — one oversized statistic. Choreography (mockup 02): kicker
@@ -46,9 +47,15 @@ export const StatCard: FC<CardComponentProps<CardPropsFor<"stat-card">>> = ({ pr
         fontFamily: cssVar("fontText"),
       }}
     >
+      <BackgroundMediaLayer
+        assetRef={props.bgAssetRef}
+        treatment={props.bgTreatment}
+      />
       {props.kicker ? (
         <div
           style={{
+            position: "relative",
+            zIndex: 1,
             fontFamily: cssVar("fontMono"),
             fontSize: 12,
             letterSpacing: "0.22em",
@@ -60,7 +67,17 @@ export const StatCard: FC<CardComponentProps<CardPropsFor<"stat-card">>> = ({ pr
           {props.kicker}
         </div>
       ) : null}
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", gap: 14 }}>
+      <div
+        style={{
+          position: "relative",
+          zIndex: 1,
+          flex: 1,
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "center",
+          gap: 14,
+        }}
+      >
         <div
           style={{
             ...display,
@@ -90,7 +107,14 @@ export const StatCard: FC<CardComponentProps<CardPropsFor<"stat-card">>> = ({ pr
       {sourceLabel ? (
         <div
           data-ciq-source-label=""
-          style={{ display: "flex", alignItems: "flex-start", gap: 7, ...fade(msWindow(timing, 1250, 600)) }}
+          style={{
+            position: "relative",
+            zIndex: 1,
+            display: "flex",
+            alignItems: "flex-start",
+            gap: 7,
+            ...fade(msWindow(timing, 1250, 600)),
+          }}
         >
           <span
             style={{

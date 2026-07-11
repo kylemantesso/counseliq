@@ -126,7 +126,6 @@ export function buildJudgeUserText(
           template: card.template,
           props: card.props,
           enterAt: card.enterAt,
-          provenance: card.provenance,
           ...(assetCaption !== undefined ? { assetCaption } : {}),
         };
       }),
@@ -147,7 +146,6 @@ export function buildJudgeUserText(
       claimClass: fact.claimClass,
       sourceLabel: fact.sourceLabel ?? null,
       year: fact.year ?? null,
-      provenance: fact.provenance,
     })),
   };
   return [

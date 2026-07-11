@@ -245,7 +245,7 @@ describe("approve / regenerate", () => {
   });
 
   test("approve refuses runs not parked at OUTLINE_REVIEW", async () => {
-    const { t, runId } = await seedWithOutline("GATE_1_KNOWLEDGE_REVIEW");
+    const { t, runId } = await seedWithOutline("EXTRACTED");
     await expect(
       t.mutation(internal.pipeline.outlineReview.approveOutline, { runId })
     ).rejects.toThrow(/RUN_NOT_AT_GATE/);
@@ -267,16 +267,6 @@ describe("approve / regenerate", () => {
     ).rejects.toThrow(/Component "workflow" is not registered/);
   });
 
-  test("gate-1 approval routes to OUTLINING (generateOutline workflow)", async () => {
-    const { t, runId } = await seed("GATE_1_KNOWLEDGE_REVIEW");
-    await expect(
-      t.mutation(internal.pipeline.runs.decideGate, {
-        runId,
-        gate: 1,
-        decision: "approve",
-      })
-    ).rejects.toThrow(/Component "workflow" is not registered/);
-  });
 });
 
 describe("adminGetOutline", () => {

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { voiceSchema } from "./course-definition";
+import { assetAspectSchema, mediaAssetKindSchema } from "./assets";
 
 /**
  * Publish manifest — the contract a gate-3 approval produces alongside the
@@ -14,7 +15,24 @@ import { voiceSchema } from "./course-definition";
  * verifies each key exists before finalizing).
  */
 
-export const PUBLISH_MANIFEST_SCHEMA_REF = "counseliq://publish-manifest/v1";
+export const PUBLISH_MANIFEST_SCHEMA_REF = "counseliq://publish-manifest/v2";
+
+export const manifestAssetSchema = z
+  .object({
+    /** Catalogue id captured at publish time (`assets._id` string). */
+    assetRef: z.string().min(1),
+    kind: mediaAssetKindSchema,
+    /** Content-addressed bytes (image/video payload). */
+    objectKey: z.string().min(1),
+    /** Thumbnail for images; poster frame for videos. */
+    thumbKey: z.string().min(1).optional(),
+    width: z.number().int().positive(),
+    height: z.number().int().positive(),
+    aspect: assetAspectSchema,
+    /** Video only. */
+    durationMs: z.number().int().positive().optional(),
+  })
+  .strict();
 
 export const manifestAudioSentenceSchema = z
   .object({
@@ -49,6 +67,8 @@ export const manifestUnitSchema = z
     timingKey: z.string().min(1),
     /** TIMING_VERSION of the referenced artifact. */
     timingSchemaVersion: z.number().int().positive(),
+    /** Asset refs used by this unit's cards + anchor (deduped). */
+    assetRefs: z.array(z.string().min(1)),
   })
   .strict();
 
@@ -92,6 +112,8 @@ const publishManifestObjectSchema = z
     /** ISO-8601 timestamp. */
     publishedAt: z.string().min(1),
     units: z.array(manifestUnitSchema).min(1),
+    /** Frozen catalogue snapshot keyed by assetRef for this version. */
+    assets: z.record(z.string().min(1), manifestAssetSchema),
     /**
      * Deduped union of every object-store key this manifest references
      * (export + timing + audio). The publish integrity check HEADs each.
@@ -159,10 +181,82 @@ export const publishManifestSchema = publishManifestObjectSchema.superRefine(
           });
         }
       });
+
+      const seenRefs = new Set<string>();
+      unit.assetRefs.forEach((assetRef, rIndex) => {
+        if (seenRefs.has(assetRef)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["units", uIndex, "assetRefs", rIndex],
+            message: `duplicate assetRef "${assetRef}" in unit "${unit.unitId}"`,
+          });
+          return;
+        }
+        seenRefs.add(assetRef);
+
+        const asset = manifest.assets[assetRef];
+        if (!asset) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["units", uIndex, "assetRefs", rIndex],
+            message: `assetRef "${assetRef}" in unit "${unit.unitId}" is missing from assets`,
+          });
+          return;
+        }
+
+        if (!keySet.has(asset.objectKey)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["assets", assetRef, "objectKey"],
+            message: `objectKey "${asset.objectKey}" for assetRef "${assetRef}" is missing from artifactKeys`,
+          });
+        }
+        if (asset.thumbKey !== undefined && !keySet.has(asset.thumbKey)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["assets", assetRef, "thumbKey"],
+            message: `thumbKey "${asset.thumbKey}" for assetRef "${assetRef}" is missing from artifactKeys`,
+          });
+        }
+      });
     });
+
+    for (const [assetRef, asset] of Object.entries(manifest.assets)) {
+      if (asset.assetRef !== assetRef) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["assets", assetRef, "assetRef"],
+          message: `asset map key "${assetRef}" must match assetRef "${asset.assetRef}"`,
+        });
+      }
+
+      if (!keySet.has(asset.objectKey)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["assets", assetRef, "objectKey"],
+          message: `objectKey "${asset.objectKey}" for assetRef "${assetRef}" is missing from artifactKeys`,
+        });
+      }
+      if (asset.thumbKey !== undefined && !keySet.has(asset.thumbKey)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["assets", assetRef, "thumbKey"],
+          message: `thumbKey "${asset.thumbKey}" for assetRef "${assetRef}" is missing from artifactKeys`,
+        });
+      }
+
+      if (asset.kind === "video" && asset.durationMs === undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["assets", assetRef, "durationMs"],
+          message: `video assetRef "${assetRef}" is missing durationMs`,
+        });
+      }
+    }
   }
 );
 
+export type ManifestAsset = z.infer<typeof manifestAssetSchema>;
 export type ManifestAudioSentence = z.infer<typeof manifestAudioSentenceSchema>;
 export type ManifestUnit = z.infer<typeof manifestUnitSchema>;
 export type PublishManifest = z.infer<typeof publishManifestSchema>;

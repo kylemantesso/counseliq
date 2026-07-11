@@ -1,7 +1,10 @@
 import { describe, expect, test } from "vitest";
+import { FINAL_CONTENT_HOLD_MS } from "@counseliq/course-schema";
 import {
+  CARD_SWAP_TRANSITION_MS,
   assetRefsForUnit,
   courseProgressPct,
+  deriveCardSwapTransition,
   flattenUnits,
   formatMs,
   nextAfterSentence,
@@ -9,6 +12,7 @@ import {
   phaseFraction,
   phasesForUnit,
   mediaKeysForUnits,
+  pickCardTransitionVariant,
   resolveAssetUrl,
   seekTarget,
   sentenceForClock,
@@ -83,8 +87,12 @@ describe("nextAfterSentence", () => {
     expect(nextAfterSentence(contiguous, 0)).toEqual({ kind: "play", sentenceIndex: 1 });
   });
 
-  test("last sentence → ended", () => {
-    expect(nextAfterSentence(TIMING, 2)).toEqual({ kind: "ended" });
+  test("last sentence → final content hold", () => {
+    expect(nextAfterSentence(TIMING, 2)).toEqual({
+      kind: "wait-gap",
+      untilMs: TIMING.totalDurationMs + FINAL_CONTENT_HOLD_MS,
+      sentenceIndex: 3,
+    });
   });
 });
 
@@ -101,6 +109,65 @@ describe("progress", () => {
     expect(courseProgressPct(9, 10, 1)).toBe(100);
     expect(courseProgressPct(4, 10, 0.5)).toBeCloseTo(45);
     expect(courseProgressPct(0, 0, 1)).toBe(0);
+  });
+});
+
+describe("card swap transitions", () => {
+  const CARD_BEATS = {
+    totalDurationMs: 2600,
+    cardBeats: [
+      { cardIndex: 0, atMs: 0 },
+      { cardIndex: 1, atMs: 700 },
+      { cardIndex: 2, atMs: 1400 },
+    ],
+  };
+
+  test("returns null before the second beat and after the transition window", () => {
+    expect(deriveCardSwapTransition(CARD_BEATS, 200, false)).toBeNull();
+    expect(
+      deriveCardSwapTransition(
+        CARD_BEATS,
+        700 + CARD_SWAP_TRANSITION_MS + 1,
+        false
+      )
+    ).toBeNull();
+  });
+
+  test("returns outgoing/incoming indices and progress inside the transition window", () => {
+    const swap = deriveCardSwapTransition(CARD_BEATS, 810, false);
+    expect(swap).toMatchObject({ fromCardIndex: 0, toCardIndex: 1 });
+    expect(swap?.progress).toBeCloseTo(110 / CARD_SWAP_TRANSITION_MS);
+  });
+
+  test("reduced motion disables swap transitions", () => {
+    expect(deriveCardSwapTransition(CARD_BEATS, 760, true)).toBeNull();
+  });
+});
+
+describe("card transition variants", () => {
+  test("selection is deterministic for the same card change", () => {
+    const args = {
+      unitId: "u-1",
+      fromCardIndex: 0,
+      toCardIndex: 1,
+      fromCard: { template: "stat-card", props: {} },
+      toCard: { template: "title-card", props: {} },
+    };
+    const first = pickCardTransitionVariant(args);
+    const second = pickCardTransitionVariant(args);
+    expect(first).toBe(second);
+    expect(["fade", "lift", "zoom"]).toContain(first);
+  });
+
+  test("media cards force fade transitions", () => {
+    const variant = pickCardTransitionVariant({
+      unitId: "u-1",
+      fromCardIndex: 1,
+      toCardIndex: 2,
+      fromCard: { template: "video-card", props: { assetRef: "asset:vid" } },
+      toCard: { template: "stat-card", props: {} },
+    });
+    expect(variant).toBe("fade");
   });
 });
 

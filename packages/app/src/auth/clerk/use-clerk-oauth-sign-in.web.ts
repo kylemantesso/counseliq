@@ -15,7 +15,7 @@ export function useClerkOAuthSignIn() {
 
   const startOAuth = async (
     strategy: OAuthStrategy,
-    redirectUrlComplete = "/dashboard",
+    redirectUrlComplete = "/admin",
   ): Promise<OAuthResult> => {
     if (!signInReady || !signIn) {
       return { type: "incomplete" };

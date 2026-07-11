@@ -1,7 +1,7 @@
 import type { EmailTemplateId, EmailTemplatePropsMap } from "./emailTemplateMeta";
 
 function emailShell(heading: string, bodyHtml: string): string {
-  const dashboardUrl = `${process.env.APP_WEB_ORIGIN ?? "http://localhost:3005"}/dashboard`;
+  const adminUrl = `${process.env.APP_WEB_ORIGIN ?? "http://localhost:3005"}/admin`;
   return `<!DOCTYPE html>
 <html>
   <head><meta charset="utf-8" /></head>
@@ -12,7 +12,7 @@ function emailShell(heading: string, bodyHtml: string): string {
       ${bodyHtml}
       <hr style="border:none;border-top:1px solid #E5E7EB;margin:28px 0 20px;" />
       <p style="color:#6B7280;font-size:12px;line-height:1.5;margin:0;">App Template — cross-platform starter with Convex.</p>
-      <p style="color:#6B7280;font-size:12px;line-height:1.5;margin:12px 0 0;"><a href="${dashboardUrl}" style="color:#6366F1;">Open dashboard</a></p>
+      <p style="color:#6B7280;font-size:12px;line-height:1.5;margin:12px 0 0;"><a href="${adminUrl}" style="color:#6366F1;">Open admin workspace</a></p>
     </div>
   </body>
 </html>`;
@@ -35,7 +35,7 @@ export function buildSamplePreviewHtml<T extends EmailTemplateId>(
       const p = props as EmailTemplatePropsMap["welcome"];
       return emailShell(
         `Welcome, ${p.recipientName}`,
-        `${paragraph("Thanks for signing up. Your account is ready.")}${button(p.dashboardUrl, "Go to dashboard")}`
+        `${paragraph("Thanks for signing up. Your account is ready.")}${button(p.dashboardUrl, "Open admin workspace")}`
       );
     }
   }

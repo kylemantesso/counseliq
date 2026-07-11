@@ -16,6 +16,8 @@ export const CARD_PROP_FIXTURES: Record<CardTemplate, Record<string, unknown>> =
     headline: "42nd",
     supporting: "in the world for nursing",
     sourceLabel: "QS 2024 by Subject",
+    bgAssetRef: "asset:masterdeck:12:photo",
+    bgTreatment: "duotone",
   },
   "list-reveal": {
     heading: "The health portfolio",
@@ -24,6 +26,8 @@ export const CARD_PROP_FIXTURES: Record<CardTemplate, Record<string, unknown>> =
       { text: "Top 150 — Public Health", sourceLabel: "ShanghaiRanking 2024" },
       { text: "Australia's largest Rural Health School" },
     ],
+    bgAssetRef: "asset:masterdeck:18:photo",
+    bgTreatment: "faded",
   },
   "comparison-split": {
     leftHeading: "Registration-track",
@@ -63,6 +67,8 @@ export const CARD_PROP_FIXTURES: Record<CardTemplate, Record<string, unknown>> =
   },
   "takeaway-card": {
     text: "Evidence, not adjectives: every ranking you quote carries its source and its year.",
+    bgAssetRef: "asset:masterdeck:12:photo",
+    bgTreatment: "spotlight",
   },
   "pathway-card": {
     heading: "The matching method",

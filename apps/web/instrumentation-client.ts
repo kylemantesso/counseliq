@@ -10,7 +10,7 @@ Sentry.init({
   dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
   enabled: Boolean(process.env.NEXT_PUBLIC_SENTRY_DSN),
   environment: process.env.NODE_ENV,
-  release: `app-template-web@${appVersion}`,
+  release: `counseliq-web@${appVersion}`,
   sendDefaultPii: true,
   tracesSampleRate: isDev ? 1.0 : 0.1,
   replaysSessionSampleRate: isDev ? 1.0 : 0.1,

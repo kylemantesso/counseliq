@@ -279,9 +279,9 @@ export const applyAssetManifest = internalMutation({
 
 /**
  * Retroactive pdf-image callback: catalogue the extracted images, reflect
- * them onto the doc's slides (gate-1 inspector parity with pptx), and merge
- * repeat images into the doc theme's logoCandidates. jobId is the
- * sourceDocs id (mirrors /convert). Idempotent.
+ * them onto the doc's slides (fact-review inspector parity with pptx), and index
+ * repeat images as logo-candidate assets. jobId is the sourceDocs id
+ * (mirrors /convert). Idempotent.
  */
 export const applyPdfImagesManifest = internalMutation({
   args: {
@@ -345,22 +345,6 @@ export const applyPdfImagesManifest = internalMutation({
           sourceProvenance: docProvenance,
         });
       }
-    }
-    if (manifest.logoCandidates.length > 0) {
-      const theme = doc.theme ?? {
-        method: "llm-inferred" as const,
-        colors: [],
-        fonts: [],
-        logoCandidates: [],
-      };
-      await ctx.db.patch(sourceDocId, {
-        theme: {
-          ...theme,
-          logoCandidates: [
-            ...new Set([...theme.logoCandidates, ...manifest.logoCandidates]),
-          ],
-        },
-      });
     }
     if (manifest.images.length > 0) {
       await ctx.scheduler.runAfter(

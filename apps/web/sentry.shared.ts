@@ -15,7 +15,7 @@ export function getServerSentryOptions(
     dsn,
     enabled: Boolean(dsn),
     environment: process.env.NODE_ENV,
-    release: `app-template-web@${appVersion}`,
+    release: `counseliq-web@${appVersion}`,
     sendDefaultPii: true,
     tracesSampleRate: isDev ? 1.0 : 0.1,
     enableLogs: true,

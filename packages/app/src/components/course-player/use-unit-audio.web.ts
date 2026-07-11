@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { UnitTiming } from "@counseliq/course-schema";
+import { contentEndMsForTiming, type UnitTiming } from "@counseliq/course-schema";
 import type { UnitClockStore } from "./clock-store.web";
 import { nextAfterSentence, seekTarget } from "./timeline-helpers";
 
@@ -31,7 +31,7 @@ export interface UseUnitAudioInput {
   urls: ReadonlyMap<string, string>;
   muted: boolean;
   clock: UnitClockStore;
-  /** Fired when the final sentence finishes. */
+  /** Fired after the final sentence and content hold finish. */
   onEnded?: () => void;
   /** Fired on a media error for an audioKey (host re-presigns). */
   onError?: (audioKey: string) => void;
@@ -145,7 +145,7 @@ export function useUnitAudio({
   const finishUnit = useCallback(() => {
     const t = timingRef.current;
     if (!t) return;
-    clock.set(t.totalDurationMs);
+    clock.set(contentEndMsForTiming(t));
     setPlayingBoth(false);
     stopRaf();
     onEndedRef.current?.();
@@ -201,7 +201,7 @@ export function useUnitAudio({
       setCurrentSentenceIndex(index);
       const anchor = Math.max(fromMs ?? s.startMs, s.startMs);
       gapRef.current = {
-        untilMs: next ? next.startMs : t.totalDurationMs,
+        untilMs: next ? next.startMs : contentEndMsForTiming(t),
         nextIndex: index + 1,
         anchorClockMs: anchor,
         anchorPerfMs: performance.now(),
@@ -255,7 +255,7 @@ export function useUnitAudio({
     const idx = sentenceRef.current;
     const action = nextAfterSentence(t, idx);
     if (action.kind === "ended") {
-      clock.set(t.totalDurationMs);
+      clock.set(contentEndMsForTiming(t));
       setPlayingBoth(false);
       stopRaf();
       onEndedRef.current?.();
@@ -386,7 +386,7 @@ export function useUnitAudio({
       const target = seekTarget(t.sentences, ms);
       if (!target) {
         pause();
-        clock.set(t.totalDurationMs);
+        clock.set(Math.min(contentEndMsForTiming(t), Math.max(0, ms)));
         return;
       }
       const wasPlaying = playingRef.current;

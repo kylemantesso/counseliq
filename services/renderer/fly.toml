@@ -1,0 +1,30 @@
+# Deploy from the REPO ROOT:
+#   fly deploy --config services/renderer/fly.toml --dockerfile services/renderer/Dockerfile .
+#
+# Required secrets:
+#   OBJECT_STORE_ENDPOINT, OBJECT_STORE_REGION, OBJECT_STORE_BUCKET,
+#   OBJECT_STORE_ACCESS_KEY_ID, OBJECT_STORE_SECRET_ACCESS_KEY,
+#   RENDERER_CALLBACK_SECRET
+app = "counseliq-renderer"
+primary_region = "syd"
+
+[http_service]
+  internal_port = 8081
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[vm]]
+  memory = "4gb"
+  cpu_kind = "shared"
+  cpus = 2
+
+[checks]
+  [checks.health]
+    type = "http"
+    port = 8081
+    path = "/health"
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "20s"

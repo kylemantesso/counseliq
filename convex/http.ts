@@ -4,6 +4,7 @@ import {
   assetIngestCallbackSchema,
   conversionCallbackSchema,
   pdfImagesCallbackSchema,
+  renderCallbackSchema,
 } from "@counseliq/course-schema";
 import { httpAction } from "./_generated/server";
 import { internal } from "./_generated/api";
@@ -189,6 +190,59 @@ http.route({
       if (
         error instanceof ConvexError &&
         (error.data as { code?: string })?.code === "SOURCE_DOC_NOT_FOUND"
+      ) {
+        return jsonResponse(404, { error: "unknown jobId" });
+      }
+      throw error;
+    }
+
+    return jsonResponse(200, { ok: true });
+  }),
+});
+
+/** Render completion callback from services/renderer. */
+http.route({
+  path: "/renderer/callback",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const secret = process.env.RENDERER_CALLBACK_SECRET;
+    if (!secret) {
+      console.error("[render] RENDERER_CALLBACK_SECRET not configured");
+      return jsonResponse(500, { error: "not configured" });
+    }
+
+    const rawBody = await request.text();
+    const signature = request.headers.get(SIGNATURE_HEADER);
+    if (!(await verifyHmacHex(rawBody, signature, secret))) {
+      return jsonResponse(401, { error: "invalid signature" });
+    }
+
+    let parsedJson: unknown;
+    try {
+      parsedJson = JSON.parse(rawBody);
+    } catch {
+      return jsonResponse(400, { error: "invalid JSON" });
+    }
+
+    const parsed = renderCallbackSchema.safeParse(parsedJson);
+    if (!parsed.success) {
+      return jsonResponse(400, {
+        error: "invalid callback",
+        issues: parsed.error.issues,
+      });
+    }
+
+    try {
+      await ctx.runMutation(internal.pipeline.render.applyRenderCallback, {
+        jobId: parsed.data.jobId,
+        status: parsed.data.status,
+        ...(parsed.data.output !== undefined ? { output: parsed.data.output } : {}),
+        ...(parsed.data.error !== undefined ? { error: parsed.data.error } : {}),
+      });
+    } catch (error) {
+      if (
+        error instanceof ConvexError &&
+        (error.data as { code?: string })?.code === "RENDER_JOB_NOT_FOUND"
       ) {
         return jsonResponse(404, { error: "unknown jobId" });
       }

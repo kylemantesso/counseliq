@@ -21,6 +21,12 @@ import { CARD_TEMPLATES, cardTemplateSchema, type CardTemplate } from "./course-
  */
 
 const sourceLabel = z.string().min(1).optional();
+export const bgTreatmentSchema = z.enum([
+  "subtle",
+  "faded",
+  "duotone",
+  "spotlight",
+]);
 
 const listRevealItemSchema = z
   .object({
@@ -58,12 +64,20 @@ export const CARD_PROP_SCHEMAS = {
       supporting: z.string().min(1).optional(),
       kicker: z.string().min(1).optional(),
       sourceLabel,
+      /** Optional subtle background image (catalogue asset id). */
+      bgAssetRef: z.string().min(1).optional(),
+      /** Background media treatment preset (defaults to subtle). */
+      bgTreatment: bgTreatmentSchema.optional(),
     })
     .passthrough(),
   "list-reveal": z
     .object({
       heading: z.string().min(1).optional(),
       items: z.array(listRevealItemSchema).min(1),
+      /** Optional subtle background image (catalogue asset id). */
+      bgAssetRef: z.string().min(1).optional(),
+      /** Background media treatment preset (defaults to subtle). */
+      bgTreatment: bgTreatmentSchema.optional(),
     })
     .passthrough(),
   "comparison-split": z
@@ -115,6 +129,10 @@ export const CARD_PROP_SCHEMAS = {
   "takeaway-card": z
     .object({
       text: z.string().min(1),
+      /** Optional subtle background image (catalogue asset id). */
+      bgAssetRef: z.string().min(1).optional(),
+      /** Background media treatment preset (defaults to subtle). */
+      bgTreatment: bgTreatmentSchema.optional(),
     })
     .passthrough(),
   "pathway-card": z

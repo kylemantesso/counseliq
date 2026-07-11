@@ -62,6 +62,9 @@ export const unitScriptSchema = z
 
 export const TIMING_VERSION = 2 as const;
 
+/** Settled time after the final narration word before content advances. */
+export const FINAL_CONTENT_HOLD_MS = 1500;
+
 export const timingWordSchema = z
   .object({
     /** Token of speakText (display-safe, used for captions). */
@@ -134,3 +137,23 @@ export type TimingSentence = z.infer<typeof timingSentenceSchema>;
 export type CardBeat = z.infer<typeof cardBeatSchema>;
 export type MediaWindow = z.infer<typeof mediaWindowSchema>;
 export type UnitTiming = z.infer<typeof unitTimingSchema>;
+
+type SentenceClockWindow = Pick<TimingSentence, "startMs" | "durationMs">;
+
+export function audioEndMsForSentences(
+  sentences: readonly SentenceClockWindow[]
+): number {
+  const last = sentences.at(-1);
+  return last ? last.startMs + last.durationMs : 0;
+}
+
+export function contentEndMsForTiming(
+  timing: {
+    sentences: readonly SentenceClockWindow[];
+    totalDurationMs?: number;
+  },
+  holdMs = FINAL_CONTENT_HOLD_MS
+): number {
+  const audioEndMs = audioEndMsForSentences(timing.sentences);
+  return Math.max(timing.totalDurationMs ?? 0, audioEndMs + holdMs);
+}

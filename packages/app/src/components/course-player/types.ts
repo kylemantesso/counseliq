@@ -78,7 +78,7 @@ export interface PreviewAsset {
 export interface RunPreviewData {
   runId: string;
   runState: string;
-  course: { title: string; version: number };
+  course: { title: string; version: number; brandRef?: string | null };
   institution: { name: string; brandTokens?: unknown };
   modules: PreviewModule[];
   questions: PreviewQuestion[];

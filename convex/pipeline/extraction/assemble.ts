@@ -30,6 +30,8 @@ export interface StoredPageExtraction {
   facts: Fact[];
   entities: Entity[];
   quotes: Quote[];
+  /** Present when we had to persist a best-effort empty extraction fallback. */
+  fallbackCause?: string;
 }
 
 /**
@@ -177,7 +179,8 @@ function uniqueSorted(values: string[]): string[] {
 export function assembleInventory(
   pages: StoredPageExtraction[],
   groups: ConceptGroup[],
-  mergeResult: LlmMergeResult | null
+  mergeResult: LlmMergeResult | null,
+  options: { preserveReviewedFacts?: boolean } = {}
 ): InventoryItem[] {
   const groupByKey = new Map(groups.map((g) => [g.key, g]));
 
@@ -291,9 +294,10 @@ export function assembleInventory(
       }
     }
   }
-  // Re-apply the floor after dedupe in case a merge filled sourceLabel/year.
+  // Upload-time assembly enforces the floor. Course creation instead preserves
+  // the operator-reviewed flags stored on the source document.
   for (const fact of factByKey.values()) {
-    items.push(applyFlagFloor(fact));
+    items.push(options.preserveReviewedFacts ? fact : applyFlagFloor(fact));
   }
 
   // Entities: dedupe by kind + case-insensitive value.

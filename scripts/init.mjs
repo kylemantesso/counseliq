@@ -841,6 +841,12 @@ async function main() {
 
   // --- Replacements ---
   const replacements = [
+    ["counseliq", slug],
+    ["CounselIQ", displayName.trim()],
+    ["com.counseliq", bundlePrefix],
+    ["@counseliq/app", `@${slug}/app`],
+    ["@counseliq/ui", `@${slug}/ui`],
+    ["@counseliq/course-schema", `@${slug}/course-schema`],
     ["app-template", slug],
     ["App Template", displayName.trim()],
     ["app template", displayName.trim().toLowerCase()],

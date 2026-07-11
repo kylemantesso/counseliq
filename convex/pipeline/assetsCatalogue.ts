@@ -9,12 +9,14 @@ import {
   mutation,
   query,
 } from "../_generated/server";
-import type { Doc } from "../_generated/dataModel";
+import type { Doc, Id } from "../_generated/dataModel";
+import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { requireAdmin } from "../admin";
 import {
   assetFitsTemplate,
   validateAssetRefs,
   validateMediaPacing,
+  BACKGROUND_MEDIA_TEMPLATES,
   MEDIA_CARD_TEMPLATES,
   type CatalogueAssetInfo,
 } from "./compiler/rules";
@@ -63,6 +65,43 @@ export function isTaggedWith(
     asset.taggedAt !== undefined &&
     asset.tagPromptVersion === promptVersion &&
     asset.tagModel === model
+  );
+}
+
+/** Null means the legacy institution-wide catalogue; a Set is explicit selection. */
+export async function getExplicitRunAssetIds(
+  ctx: QueryCtx | MutationCtx,
+  run: Doc<"runs">
+): Promise<Set<Id<"assets">> | null> {
+  if (run.hasExplicitAssetSelection !== true) return null;
+  const rows = await ctx.db
+    .query("runAssetSelections")
+    .withIndex("by_run", (q) => q.eq("runId", run._id))
+    .take(2000);
+  return new Set(rows.map((row) => row.assetId));
+}
+
+/** Explicit runs load selected rows directly; legacy runs use the institution catalogue. */
+export async function getRunCatalogueAssets(
+  ctx: QueryCtx | MutationCtx,
+  run: Doc<"runs">
+): Promise<Doc<"assets">[]> {
+  const explicitAssetIds = await getExplicitRunAssetIds(ctx, run);
+  if (explicitAssetIds === null) {
+    return await ctx.db
+      .query("assets")
+      .withIndex("by_institution", (q) =>
+        q.eq("institutionId", run.institutionId)
+      )
+      .take(2000);
+  }
+
+  const assets = await Promise.all(
+    [...explicitAssetIds].map((assetId) => ctx.db.get(assetId))
+  );
+  return assets.filter(
+    (asset): asset is Doc<"assets"> =>
+      asset !== null && asset.institutionId === run.institutionId
   );
 }
 
@@ -151,17 +190,16 @@ export const getClearedCatalogueForRun = internalQuery({
   handler: async (ctx, args): Promise<CompactCatalogueAsset[]> => {
     const run = await ctx.db.get(args.runId);
     if (!run) appError(AppErrorCode.RUN_NOT_FOUND);
-    const assets = await ctx.db
-      .query("assets")
-      .withIndex("by_institution", (q) =>
-        q.eq("institutionId", run.institutionId)
-      )
-      .take(2000);
+    const assets = await getRunCatalogueAssets(ctx, run);
     const qualityById = new Map(
       assets.map((asset) => [String(asset._id), asset.qualityScore ?? 0])
     );
     return assets
-      .filter((asset) => isCatalogueAsset(asset) && isAssetCleared(asset))
+      .filter(
+        (asset) =>
+          isCatalogueAsset(asset) &&
+          isAssetCleared(asset)
+      )
       .map(toCompactCatalogueAsset)
       .filter((entry): entry is CompactCatalogueAsset => entry !== null)
       .sort((a, b) => {
@@ -306,10 +344,16 @@ export const getRunMediaReport = internalQuery({
         | undefined;
       const withAnchor = meta?.anchor ? [...cards, meta.anchor] : cards;
       for (const card of withAnchor) {
-        const ref = card.props.assetRef;
-        if (typeof ref !== "string") continue;
-        distinctAssets.add(ref);
-        if (MEDIA_CARD_TEMPLATES.includes(card.template)) {
+        const refs = [card.props.assetRef, card.props.bgAssetRef].filter(
+          (value): value is string => typeof value === "string"
+        );
+        for (const ref of refs) distinctAssets.add(ref);
+        const isMedia =
+          (MEDIA_CARD_TEMPLATES.includes(card.template) &&
+            typeof card.props.assetRef === "string") ||
+          (BACKGROUND_MEDIA_TEMPLATES.includes(card.template) &&
+            typeof card.props.bgAssetRef === "string");
+        if (isMedia) {
           mediaCards += 1;
           if (card.template === "video-card") videoCards += 1;
         }
@@ -320,8 +364,10 @@ export const getRunMediaReport = internalQuery({
         pacingViolations: validateMediaPacing(cards, availability),
         mediaCardCount: cards.filter(
           (card) =>
-            MEDIA_CARD_TEMPLATES.includes(card.template) &&
-            typeof card.props.assetRef === "string"
+            (MEDIA_CARD_TEMPLATES.includes(card.template) &&
+              typeof card.props.assetRef === "string") ||
+            (BACKGROUND_MEDIA_TEMPLATES.includes(card.template) &&
+              typeof card.props.bgAssetRef === "string")
         ).length,
       });
     }
@@ -338,7 +384,148 @@ export const adminListInstitutions = query({
   handler: async (ctx) => {
     await requireAdmin(ctx);
     const institutions = await ctx.db.query("institutions").take(200);
-    return institutions.map((inst) => ({ _id: inst._id, name: inst.name }));
+    return institutions.map((inst) => ({
+      _id: inst._id,
+      _creationTime: inst._creationTime,
+      name: inst.name,
+      market: inst.market,
+      brandTokens: inst.brandTokens,
+      websiteUrl: inst.websiteUrl ?? null,
+    }));
+  },
+});
+
+function normalizeInstitutionName(name: string): string {
+  return name.trim().replace(/\s+/g, " ");
+}
+
+function normalizedMatch(name: string): string {
+  return normalizeInstitutionName(name).toLowerCase();
+}
+
+export function normalizeWebsiteUrl(rawUrl: string): string | null {
+  const trimmed = rawUrl.trim();
+  if (!trimmed) return null;
+  const withProtocol = /^https?:\/\//i.test(trimmed)
+    ? trimmed
+    : `https://${trimmed}`;
+  try {
+    const parsed = new URL(withProtocol);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return null;
+    }
+    parsed.hash = "";
+    return parsed.toString();
+  } catch {
+    return null;
+  }
+}
+
+export const adminCreateInstitution = mutation({
+  args: {
+    name: v.string(),
+    market: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+    const name = normalizeInstitutionName(args.name);
+    if (!name) {
+      appError(AppErrorCode.INSTITUTION_NAME_REQUIRED);
+    }
+
+    const existing = await ctx.db.query("institutions").take(400);
+    const duplicate = existing.find(
+      (institution) => normalizedMatch(institution.name) === normalizedMatch(name)
+    );
+    if (duplicate) {
+      appError(AppErrorCode.INSTITUTION_ALREADY_EXISTS);
+    }
+
+    const institutionId = await ctx.db.insert("institutions", {
+      name,
+      brandTokens: {
+        placeholder: true,
+        primaryColor: "#1a365d",
+        secondaryColor: "#c53030",
+        fontFamily: "system-ui",
+      },
+      pronunciationLexicon: { placeholder: true },
+      market: args.market?.trim() || "AU",
+      websiteUrl: null,
+    });
+
+    return { institutionId };
+  },
+});
+
+export const adminUpdateInstitution = mutation({
+  args: {
+    institutionId: v.id("institutions"),
+    name: v.string(),
+    market: v.optional(v.string()),
+    brandTokens: v.optional(v.any()),
+    websiteUrl: v.optional(v.union(v.string(), v.null())),
+  },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+    const institution = await ctx.db.get(args.institutionId);
+    if (!institution) {
+      appError(AppErrorCode.INSTITUTION_NOT_FOUND);
+    }
+
+    const name = normalizeInstitutionName(args.name);
+    if (!name) {
+      appError(AppErrorCode.INSTITUTION_NAME_REQUIRED);
+    }
+
+    const existing = await ctx.db.query("institutions").take(400);
+    const duplicate = existing.find(
+      (row) =>
+        row._id !== args.institutionId &&
+        normalizedMatch(row.name) === normalizedMatch(name)
+    );
+    if (duplicate) {
+      appError(AppErrorCode.INSTITUTION_ALREADY_EXISTS);
+    }
+
+    const normalizedWebsiteUrl =
+      args.websiteUrl === undefined
+        ? undefined
+        : args.websiteUrl === null
+          ? null
+          : normalizeWebsiteUrl(args.websiteUrl);
+    if (args.websiteUrl !== undefined && args.websiteUrl !== null && !normalizedWebsiteUrl) {
+      appError(AppErrorCode.INSTITUTION_WEBSITE_URL_INVALID);
+    }
+
+    await ctx.db.patch(args.institutionId, {
+      name,
+      ...(args.market ? { market: args.market.trim() || institution.market } : {}),
+      ...(args.brandTokens !== undefined ? { brandTokens: args.brandTokens } : {}),
+      ...(normalizedWebsiteUrl !== undefined
+        ? { websiteUrl: normalizedWebsiteUrl }
+        : {}),
+    });
+
+    return { institutionId: args.institutionId };
+  },
+});
+
+export const getInstitutionThemeExtractionContext = internalQuery({
+  args: {
+    institutionId: v.id("institutions"),
+  },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+    const institution = await ctx.db.get(args.institutionId);
+    if (!institution) {
+      appError(AppErrorCode.INSTITUTION_NOT_FOUND);
+    }
+    return {
+      institutionId: institution._id,
+      name: institution.name,
+      websiteUrl: institution.websiteUrl ?? null,
+    };
   },
 });
 
@@ -357,6 +544,49 @@ export const adminListAssets = query({
     return assets
       .filter(isCatalogueAsset)
       .map((asset) => ({ ...asset, cleared: isAssetCleared(asset) }));
+  },
+});
+
+/** Effective media selection and rights status for one run. */
+export const adminGetRunMediaSelection = query({
+  args: { runId: v.id("runs") },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+    const run = await ctx.db.get(args.runId);
+    if (!run) appError(AppErrorCode.RUN_NOT_FOUND);
+
+    const catalogueAssets = await getRunCatalogueAssets(ctx, run);
+    const assets = catalogueAssets
+      .filter(isCatalogueAsset)
+      .map((asset) => {
+        const cleared = isAssetCleared(asset);
+        return {
+          _id: asset._id,
+          kind: asset.kind,
+          caption: asset.caption ?? null,
+          thumbKey:
+            asset.thumbKey ?? (asset.kind === "image" ? asset.objectKey : null),
+          rights: asset.rights ?? "unknown",
+          identifiablePeople: asset.identifiablePeople ?? false,
+          peopleConsentConfirmed: asset.peopleConsentConfirmed ?? false,
+          tagged: asset.taggedAt !== undefined,
+          cleared,
+          needsRights: !cleared,
+        };
+      });
+    const cleared = assets.filter((asset) => asset.cleared).length;
+
+    return {
+      runId: run._id,
+      institutionId: run.institutionId,
+      explicitSelection: run.hasExplicitAssetSelection === true,
+      counts: {
+        selected: assets.length,
+        cleared,
+        needsRights: assets.length - cleared,
+      },
+      assets,
+    };
   },
 });
 
@@ -387,12 +617,7 @@ export const adminListSwappableAssets = query({
     await requireAdmin(ctx);
     const run = await ctx.db.get(args.runId);
     if (!run) appError(AppErrorCode.RUN_NOT_FOUND);
-    const assets = await ctx.db
-      .query("assets")
-      .withIndex("by_institution", (q) =>
-        q.eq("institutionId", run.institutionId)
-      )
-      .take(2000);
+    const assets = await getRunCatalogueAssets(ctx, run);
     return assets
       .filter(
         (asset) =>

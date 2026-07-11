@@ -212,7 +212,7 @@ describe("applyPdfImagesManifest", () => {
     };
   }
 
-  test("catalogues images, reflects slides, merges theme logo candidates — idempotently", async () => {
+  test("catalogues images, reflects slides, and indexes logo candidates — idempotently", async () => {
     const { t, institutionId, sourceDocId, slideId } = await seedPdfDoc();
     await t.mutation(internal.pipeline.assetsIngest.applyPdfImagesManifest, {
       jobId: sourceDocId,
@@ -224,10 +224,9 @@ describe("applyPdfImagesManifest", () => {
       manifest: makePdfManifest(),
     });
 
-    const { assets, slide, doc } = await t.run(async (ctx) => ({
+    const { assets, slide } = await t.run(async (ctx) => ({
       assets: await ctx.db.query("assets").take(100),
       slide: await ctx.db.get(slideId),
-      doc: await ctx.db.get(sourceDocId),
     }));
 
     const catalogued = assets.filter((a) => a.objectKey === IMG_KEY);
@@ -248,41 +247,6 @@ describe("applyPdfImagesManifest", () => {
     const logoRows = assets.filter((a) => a.objectKey === LOGO_KEY);
     expect(logoRows).toHaveLength(1);
     expect(logoRows[0].kind).toBe("logo-candidate");
-    expect(doc?.theme).toEqual({
-      method: "llm-inferred",
-      colors: [],
-      fonts: [],
-      logoCandidates: [LOGO_KEY],
-    });
-  });
-
-  test("infer-theme later fills colors/fonts while preserving logo candidates", async () => {
-    const { t, sourceDocId } = await seedPdfDoc();
-    await t.mutation(internal.pipeline.assetsIngest.applyPdfImagesManifest, {
-      jobId: sourceDocId,
-      manifest: makePdfManifest(),
-    });
-    await t.mutation(internal.pipeline.inventory.setDocInferredTheme, {
-      sourceDocId,
-      colors: ["#112233"],
-      fonts: ["Georgia"],
-    });
-    const doc = await t.run(async (ctx) => ctx.db.get(sourceDocId));
-    expect(doc?.theme).toEqual({
-      method: "llm-inferred",
-      colors: ["#112233"],
-      fonts: ["Georgia"],
-      logoCandidates: [LOGO_KEY],
-    });
-
-    // A second inference must not clobber already-present colors.
-    await t.mutation(internal.pipeline.inventory.setDocInferredTheme, {
-      sourceDocId,
-      colors: ["#FFFFFF"],
-      fonts: ["Arial"],
-    });
-    const after = await t.run(async (ctx) => ctx.db.get(sourceDocId));
-    expect(after?.theme?.colors).toEqual(["#112233"]);
   });
 });
 

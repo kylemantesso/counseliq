@@ -9,8 +9,14 @@ import {
   query,
 } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
+import type { MutationCtx } from "../_generated/server";
 import { AppErrorCode, appError } from "../errors";
 import { requireAdmin } from "../admin";
+import {
+  assembleInventory,
+  preGroupConcepts,
+  type StoredPageExtraction,
+} from "./extraction/assemble";
 
 /**
  * Data layer for the extraction pipeline: extraction plan, per-page result
@@ -62,7 +68,6 @@ export const getExtractionPlan = internalQuery({
       docs: docs.map((doc) => ({
         _id: doc._id,
         kind: doc.kind,
-        theme: doc.theme ?? null,
         pageCount: doc.pageCount ?? 0,
       })),
       pages,
@@ -172,6 +177,17 @@ export const listPageExtractionsForRun = internalQuery({
   },
 });
 
+/** All cached page extractions for one source doc. */
+export const listPageExtractionsForDoc = internalQuery({
+  args: { sourceDocId: v.id("sourceDocs") },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("pageExtractions")
+      .withIndex("by_source_doc_and_n", (q) => q.eq("sourceDocId", args.sourceDocId))
+      .take(500);
+  },
+});
+
 /**
  * Replaces the run's inventory atomically: validates every item against the
  * shared Zod contract, deletes the previous inventory, inserts the new one.
@@ -232,6 +248,56 @@ export const replaceInventory = internalMutation({
   },
 });
 
+/** Build a run inventory from facts extracted and reviewed during upload. */
+export async function materializeReviewedInventory(
+  ctx: MutationCtx,
+  runId: Id<"runs">,
+  sourceDocIds: Id<"sourceDocs">[]
+): Promise<void> {
+  const pages: StoredPageExtraction[] = [];
+  for (const sourceDocId of sourceDocIds) {
+    const rows = await ctx.db
+      .query("pageExtractions")
+      .withIndex("by_source_doc_and_n", (q) => q.eq("sourceDocId", sourceDocId))
+      .take(500);
+    for (const row of rows.sort((left, right) => left.n - right.n)) {
+      pages.push(row.result as StoredPageExtraction);
+    }
+  }
+
+  const items = assembleInventory(pages, preGroupConcepts(pages), null, {
+    preserveReviewedFacts: true,
+  });
+  const existing = await ctx.db
+    .query("inventoryItems")
+    .withIndex("by_run", (q) => q.eq("runId", runId))
+    .take(5000);
+  for (const row of existing) {
+    await ctx.db.delete(row._id);
+  }
+  for (const item of items) {
+    const parsed = inventoryItemSchema.safeParse(item);
+    if (!parsed.success) appError(AppErrorCode.RUN_TRANSITION_INVALID);
+    const validated = parsed.data;
+    const provenance =
+      validated.type === "concept" ? validated.pageProvenance : validated.provenance;
+    await ctx.db.insert("inventoryItems", {
+      runId,
+      kind: validated.type,
+      body: validated,
+      ...(validated.type === "fact" ? { claimClass: validated.claimClass } : {}),
+      provenance,
+      flagged: validated.type === "fact" ? validated.flagged : false,
+      ...(validated.type === "fact" && validated.flagReason !== undefined
+        ? { flagReason: validated.flagReason }
+        : {}),
+      ...(validated.type === "fact" && validated.excluded !== undefined
+        ? { excluded: validated.excluded }
+        : {}),
+    });
+  }
+}
+
 /** Records the prompt versions + routed models a run used (reproducibility). */
 export const setRunPromptVersions = internalMutation({
   args: {
@@ -242,35 +308,6 @@ export const setRunPromptVersions = internalMutation({
     const run = await ctx.db.get(args.runId);
     if (!run) appError(AppErrorCode.RUN_NOT_FOUND);
     await ctx.db.patch(args.runId, { promptVersions: args.promptVersions });
-    return null;
-  },
-});
-
-/** Stores an LLM-inferred candidate theme on a pdf-native source doc. */
-export const setDocInferredTheme = internalMutation({
-  args: {
-    sourceDocId: v.id("sourceDocs"),
-    colors: v.array(v.string()),
-    fonts: v.array(v.string()),
-  },
-  handler: async (ctx, args) => {
-    const doc = await ctx.db.get(args.sourceDocId);
-    if (!doc) appError(AppErrorCode.SOURCE_DOC_NOT_FOUND);
-    // ooxml extraction remains authoritative when present. A pdf converter
-    // manifest may have parked logoCandidates in an otherwise-empty
-    // llm-inferred theme (M6 pdfimages extraction) — merge colors/fonts in
-    // while PRESERVING those candidates; never overwrite colors that are
-    // already there.
-    if (doc.theme?.method === "ooxml") return null;
-    if ((doc.theme?.colors?.length ?? 0) > 0) return null;
-    await ctx.db.patch(args.sourceDocId, {
-      theme: {
-        method: "llm-inferred",
-        colors: args.colors,
-        fonts: args.fonts,
-        logoCandidates: doc.theme?.logoCandidates ?? [],
-      },
-    });
     return null;
   },
 });

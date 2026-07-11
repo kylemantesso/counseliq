@@ -13,7 +13,12 @@ import { internal } from "../_generated/api";
 import { AppErrorCode, appError } from "../errors";
 import { requireAdmin } from "../admin";
 import { applyRunTransition } from "./transitions";
-import { isAssetCleared, isCatalogueAsset } from "./assetsCatalogue";
+import {
+  getExplicitRunAssetIds,
+  getRunCatalogueAssets,
+  isAssetCleared,
+  isCatalogueAsset,
+} from "./assetsCatalogue";
 import {
   llmCourseOutlineSchema,
   type LlmCourseOutline,
@@ -59,8 +64,8 @@ async function conceptContext(
 
 /**
  * Code checks shared by generation-save and operator edits: concept keys
- * must exist in the run's inventory, unit count within the configured
- * range, and media suggestions must reference CLEARED catalogue assets.
+ * must exist in the run's inventory, at least one unit must be present,
+ * and media suggestions must reference CLEARED catalogue assets.
  */
 async function validateOutlineAgainstRun(
   ctx: QueryCtx,
@@ -69,19 +74,32 @@ async function validateOutlineAgainstRun(
 ): Promise<void> {
   const units = outline.modules.flatMap((m) => m.units);
   const unitRange = parseRange(process.env.COMPILE_UNIT_RANGE, UNIT_RANGE_DEFAULT);
-  if (units.length < 1 || units.length > unitRange[1]) {
+  if (units.length < 1) {
     appError(AppErrorCode.OUTLINE_INVALID);
+  }
+  if (units.length > unitRange[1]) {
+    console.warn(
+      `[pipeline] run ${runId}: outline has ${units.length} units; target is ${unitRange[0]}-${unitRange[1]} units`
+    );
   }
   const { conceptKeys } = await conceptContext(ctx, runId);
   if (units.some((unit) => !conceptKeys.has(unit.conceptKey))) {
     appError(AppErrorCode.OUTLINE_INVALID);
   }
+  const run = await ctx.db.get(runId);
+  if (!run) appError(AppErrorCode.RUN_NOT_FOUND);
+  const explicitAssetIds = await getExplicitRunAssetIds(ctx, run);
   for (const unit of units) {
     for (const assetRef of unit.mediaAssetIds ?? []) {
       const assetId = ctx.db.normalizeId("assets", assetRef);
       if (!assetId) appError(AppErrorCode.ASSET_NOT_FOUND);
       const asset = await ctx.db.get(assetId);
-      if (!asset || !isCatalogueAsset(asset)) {
+      if (
+        !asset ||
+        !isCatalogueAsset(asset) ||
+        asset.institutionId !== run.institutionId ||
+        (explicitAssetIds !== null && !explicitAssetIds.has(assetId))
+      ) {
         appError(AppErrorCode.ASSET_NOT_FOUND);
       }
       if (!isAssetCleared(asset)) appError(AppErrorCode.ASSET_NOT_CLEARED);
@@ -211,14 +229,13 @@ export const adminGetOutline = query({
 
     // Every cleared catalogue asset (compact), so the editor can add media
     // suggestions — same clearance predicate as everywhere else.
-    const institutionAssets = await ctx.db
-      .query("assets")
-      .withIndex("by_institution", (q) =>
-        q.eq("institutionId", run.institutionId)
+    const runAssets = await getRunCatalogueAssets(ctx, run);
+    const clearedAssets = runAssets
+      .filter(
+        (asset) =>
+          isCatalogueAsset(asset) &&
+          isAssetCleared(asset)
       )
-      .take(2000);
-    const clearedAssets = institutionAssets
-      .filter((asset) => isCatalogueAsset(asset) && isAssetCleared(asset))
       .slice(0, 150)
       .map((asset) => ({
         id: String(asset._id),

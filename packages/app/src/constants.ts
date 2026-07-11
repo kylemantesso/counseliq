@@ -1,7 +1,7 @@
 export const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export const GITHUB_REPO_URL =
-  "https://github.com/kylemantesso/app-template";
+  "https://github.com/kylemantesso/counsel-iq";
 
 export const ONBOARDING_SLIDES = [
   { icon: "✦", title: "Your\nHeadline\nGoes Here", badge: "⚡" },

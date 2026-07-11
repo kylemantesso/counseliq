@@ -43,7 +43,6 @@ interface PageArtifacts {
 /** Pure manifest assembly — kept separate so tests can validate the output shape. */
 export function buildManifest(input: {
   sourceDocHash: string;
-  theme: ConversionManifest["theme"];
   pages: PageArtifacts[];
 }): ConversionManifest {
   const pages: ManifestPage[] = input.pages.map((page) => ({
@@ -57,7 +56,6 @@ export function buildManifest(input: {
   const manifest = {
     sourceDocHash: input.sourceDocHash,
     pageCount: pages.length,
-    theme: input.theme,
     pages,
   };
   // Converter-side validation of the shared contract before it leaves here.
@@ -126,10 +124,6 @@ export async function runConversion(
     ? null
     : await extractPdfImages(pdf, store, media.pdfImages);
 
-  // Map pptx zip image paths to uploaded content-addressed keys as we go,
-  // so theme logo candidates can reference them.
-  const keyByZipPath = new Map<string, string>();
-
   const pages: PageArtifacts[] = [];
   for (const page of rendered) {
     const pngKey = contentAddressedKey(page.png, "png");
@@ -147,7 +141,6 @@ export async function runConversion(
         media.thumbEdgePx
       );
       if (uploaded) {
-        keyByZipPath.set(image.zipPath, uploaded.key);
         embeddedImages.push(uploaded);
       }
     }
@@ -171,39 +164,7 @@ export async function runConversion(
     });
   }
 
-  let theme: ConversionManifest["theme"] = null;
-  if (pdfEmbedded && pdfEmbedded.logoCandidates.length > 0) {
-    // Colors/fonts stay empty here — infer-theme fills them later and
-    // preserves these candidates (setDocInferredTheme merge).
-    theme = {
-      method: "llm-inferred",
-      colors: [],
-      fonts: [],
-      logoCandidates: pdfEmbedded.logoCandidates,
-    };
-  }
-  if (pptx) {
-    const logoCandidates: string[] = [];
-    for (const zipPath of pptx.theme.logoCandidateZipPaths) {
-      let key = keyByZipPath.get(zipPath);
-      if (!key) {
-        const image = pptx.images.find((i) => i.zipPath === zipPath);
-        if (image) {
-          const uploaded = await uploadImage(store, image.bytes, image.ext);
-          if (uploaded) key = uploaded.key;
-        }
-      }
-      if (key) logoCandidates.push(key);
-    }
-    theme = {
-      method: "ooxml",
-      colors: pptx.theme.colors,
-      fonts: pptx.theme.fonts,
-      logoCandidates: [...new Set(logoCandidates)],
-    };
-  }
-
-  return buildManifest({ sourceDocHash, theme, pages });
+  return buildManifest({ sourceDocHash, pages });
 }
 
 /** POSTs an HMAC-signed callback body back to Convex, with bounded retries. */

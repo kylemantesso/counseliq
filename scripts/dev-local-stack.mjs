@@ -21,6 +21,7 @@
  *
  * Options (env vars):
  *   CONVERTER_PORT=8090   host port for the converter (default 8090)
+ *   RENDERER_PORT=8081    host port for the renderer (default 8081)
  *   CONVERTER_REBUILD=1   rebuild converter image (default: reuse existing image)
  *   WEB_PORT=3005         port for the web dev server (default 3005)
  *   ADMIN_EMAILS=you@x.y  grant admin to your login on the local deployment
@@ -44,9 +45,12 @@ const LOCAL_CONVEX_URL = "http://127.0.0.1:3210";
 const LOCAL_CONVEX_SITE_URL = "http://127.0.0.1:3211";
 
 const CONVERTER_PORT = process.env.CONVERTER_PORT ?? "8090";
+const RENDERER_PORT = process.env.RENDERER_PORT ?? "8081";
 const WEB_PORT = process.env.WEB_PORT ?? "3005";
 const CALLBACK_SECRET =
   process.env.CONVERTER_CALLBACK_SECRET ?? "local-dev-secret";
+const RENDERER_CALLBACK_SECRET =
+  process.env.RENDERER_CALLBACK_SECRET ?? CALLBACK_SECRET;
 
 const convexEnv = { ...process.env, CONVEX_DEPLOYMENT: LOCAL_DEPLOYMENT };
 
@@ -126,6 +130,9 @@ function setConvexEnvVars() {
     // The converter runs in Docker and reaches the host's local deployment
     // via host.docker.internal.
     CONVERTER_CALLBACK_URL: `http://host.docker.internal:3211/converter/callback`,
+    RENDERER_URL: `http://127.0.0.1:${RENDERER_PORT}`,
+    RENDERER_CALLBACK_SECRET,
+    RENDERER_CALLBACK_URL: `${LOCAL_CONVEX_SITE_URL}/renderer/callback`,
   };
 
   const issuer = clerkIssuerFromWebEnv();
@@ -253,7 +260,7 @@ async function main() {
   console.log("Configuring local Convex deployment…");
   setConvexEnvVars();
 
-  console.log(`\nStarting convex dev + web (http://localhost:${WEB_PORT})…`);
+  console.log(`\nStarting convex dev + renderer + web (http://localhost:${WEB_PORT})…`);
   console.log(
     `  admin page:  http://localhost:${WEB_PORT}/admin/source-docs\n` +
       `  walkthrough: npm run walkthrough:local (in another terminal)\n` +
@@ -276,16 +283,32 @@ async function main() {
       PORT: WEB_PORT,
     },
   });
+  const rendererDev = spawn("npm", ["run", "dev", "--workspace=@counseliq/renderer"], {
+    cwd: ROOT,
+    env: {
+      ...process.env,
+      PORT: RENDERER_PORT,
+      RENDERER_CALLBACK_SECRET,
+      OBJECT_STORE_ENDPOINT: "http://127.0.0.1:9000",
+      OBJECT_STORE_REGION: "us-east-1",
+      OBJECT_STORE_BUCKET: "counseliq-ingestion",
+      OBJECT_STORE_ACCESS_KEY_ID: "minioadmin",
+      OBJECT_STORE_SECRET_ACCESS_KEY: "minioadmin",
+    },
+  });
 
   prefixStream(convexDev.stdout, "[convex]");
   prefixStream(convexDev.stderr, "[convex]");
   prefixStream(webDev.stdout, "[web]");
   prefixStream(webDev.stderr, "[web]");
+  prefixStream(rendererDev.stdout, "[renderer]");
+  prefixStream(rendererDev.stderr, "[renderer]");
 
   const shutdown = () => {
     console.log("\nShutting down…");
     convexDev.kill("SIGINT");
     webDev.kill("SIGINT");
+    rendererDev.kill("SIGINT");
     spawnSync("docker", ["compose", "-f", COMPOSE_FILE, "stop"], {
       cwd: ROOT,
       stdio: "inherit",
@@ -296,7 +319,7 @@ async function main() {
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
 
-  for (const child of [convexDev, webDev]) {
+  for (const child of [convexDev, webDev, rendererDev]) {
     child.on("exit", (code) => {
       if (code !== 0 && code !== null) {
         console.error(`A stack process exited with code ${code}`);

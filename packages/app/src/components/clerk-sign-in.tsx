@@ -89,7 +89,7 @@ export function ClerkSignIn({ onStepChange }: ClerkSignInProps = {}) {
     trackProductEvent(AnalyticsEvent.AUTH_SIGN_IN_COMPLETED, 'auth', {
       method,
     });
-    router.replace('/dashboard');
+    router.replace('/admin');
   };
 
   const handleSubmit = async () => {
@@ -108,7 +108,7 @@ export function ClerkSignIn({ onStepChange }: ClerkSignInProps = {}) {
     if (!signInReady || !signIn) return;
 
     if (isSignedIn) {
-      router.replace('/dashboard');
+      router.replace('/admin');
       return;
     }
 
@@ -153,7 +153,7 @@ export function ClerkSignIn({ onStepChange }: ClerkSignInProps = {}) {
       });
       if (isSessionExistsError(err)) {
         setStep('completing');
-        router.replace('/dashboard');
+        router.replace('/admin');
         completed = true;
         return;
       }
@@ -193,7 +193,7 @@ export function ClerkSignIn({ onStepChange }: ClerkSignInProps = {}) {
     } catch (err: unknown) {
       if (isSessionExistsError(err)) {
         setStep('completing');
-        router.replace('/dashboard');
+        router.replace('/admin');
         completed = true;
         return;
       }
@@ -236,14 +236,14 @@ export function ClerkSignIn({ onStepChange }: ClerkSignInProps = {}) {
           method: 'oauth',
           strategy,
         });
-        router.replace('/dashboard');
+        router.replace('/admin');
         return;
       }
 
       setError('Sign-in could not be completed.');
     } catch (err: unknown) {
       if (isSessionExistsError(err)) {
-        router.replace('/dashboard');
+        router.replace('/admin');
         return;
       }
       trackProductEvent(AnalyticsEvent.AUTH_SIGN_IN_FAILED, 'auth', {

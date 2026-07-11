@@ -8,7 +8,11 @@ import type { QueryCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
 import { requireAdmin } from "../admin";
 import { estimateCostUsd, PRICING } from "./llm/pricing";
-import { currentModelRouting, modelForTask } from "./llm/models";
+import {
+  currentModelRouting,
+  isLlmTask,
+  type LlmModelRouting,
+} from "./llm/models";
 
 /**
  * Cost + observability for LLM usage. Every OpenRouter call (including
@@ -21,6 +25,7 @@ export const recordLlmCall = internalMutation({
     /** Absent for run-less workloads (institution-scoped asset tagging). */
     runId: v.optional(v.id("runs")),
     institutionId: v.optional(v.id("institutions")),
+    sourceDocId: v.optional(v.id("sourceDocs")),
     stage: v.string(),
     promptVersion: v.string(),
     model: v.string(),
@@ -146,6 +151,18 @@ async function computeRunCost(
   };
 }
 
+async function resolveModelRouting(ctx: QueryCtx): Promise<LlmModelRouting> {
+  const rows = await ctx.db.query("llmTaskModels").take(50);
+  const overrides: Partial<LlmModelRouting> = {};
+  for (const row of rows) {
+    if (!isLlmTask(row.task)) continue;
+    const model = row.model.trim();
+    if (model.length === 0) continue;
+    overrides[row.task] = model;
+  }
+  return currentModelRouting(overrides);
+}
+
 /** Total LLM cost for a run, itemized by stage and model. */
 export const getRunCost = query({
   args: { runId: v.id("runs") },
@@ -179,10 +196,11 @@ export const estimateCompileCost = internalQuery({
     avgTokensInPerUnit: v.number(),
     avgTokensOutPerUnit: v.number(),
   },
-  handler: async (_ctx, args) => {
-    const structureModel = modelForTask("compile-structure");
-    const authorModel = modelForTask("author-unit");
-    const judgeModel = modelForTask("judge-course");
+  handler: async (ctx, args) => {
+    const models = await resolveModelRouting(ctx);
+    const structureModel = models["compile-structure"];
+    const authorModel = models["author-unit"];
+    const judgeModel = models["judge-course"];
     const structureEstimate = estimateCostUsd({
       model: structureModel,
       calls: 1,
@@ -207,7 +225,7 @@ export const estimateCompileCost = internalQuery({
       authorEstimate !== null &&
       judgeEstimate !== null;
     return {
-      models: currentModelRouting(),
+      models,
       priceSheetVerifiedAt: PRICING[authorModel]?.verifiedAt ?? null,
       estimateUsd: known
         ? (structureEstimate ?? 0) + (authorEstimate ?? 0) + (judgeEstimate ?? 0)
@@ -222,34 +240,28 @@ export const estimateExtractionCost = internalQuery({
     avgTokensInPerPage: v.number(),
     avgTokensOutPerPage: v.number(),
   },
-  handler: async (_ctx, args) => {
-    const model = modelForTask("extract-page");
+  handler: async (ctx, args) => {
+    const models = await resolveModelRouting(ctx);
+    const model = models["extract-page"];
     const pageEstimate = estimateCostUsd({
       model,
       calls: args.pages,
       avgTokensInPerCall: args.avgTokensInPerPage,
       avgTokensOutPerCall: args.avgTokensOutPerPage,
     });
-    // Merge sees every concept candidate; theme inference sends 2-3 renders.
+    // Merge sees every concept candidate.
     const mergeEstimate = estimateCostUsd({
-      model: modelForTask("merge-inventory"),
+      model: models["merge-inventory"],
       calls: 1,
       avgTokensInPerCall: args.pages * 120,
       avgTokensOutPerCall: args.pages * 60,
     });
-    const themeEstimate = estimateCostUsd({
-      model: modelForTask("infer-theme"),
-      calls: 2,
-      avgTokensInPerCall: 3 * args.avgTokensInPerPage,
-      avgTokensOutPerCall: 200,
-    });
-    const known =
-      pageEstimate !== null && mergeEstimate !== null && themeEstimate !== null;
+    const known = pageEstimate !== null && mergeEstimate !== null;
     return {
-      models: currentModelRouting(),
+      models,
       priceSheetVerifiedAt: PRICING[model]?.verifiedAt ?? null,
       estimateUsd: known
-        ? (pageEstimate ?? 0) + (mergeEstimate ?? 0) + (themeEstimate ?? 0)
+        ? (pageEstimate ?? 0) + (mergeEstimate ?? 0)
         : null,
     };
   },

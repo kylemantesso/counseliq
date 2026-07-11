@@ -14,6 +14,13 @@ type TransitionArgs = {
   error?: { retryable: boolean; cause: string };
 };
 
+type RecoverFailedArgs = {
+  runId: Id<"runs">;
+  toState: RunState;
+  actor: string;
+  detail?: string;
+};
+
 /**
  * The single place where runs.state is written after creation. Everything —
  * workflows, gate decisions, failure paths — funnels through here so every
@@ -51,6 +58,40 @@ export async function applyRunTransition(
 
   console.log(
     `[pipeline] run ${args.runId}: ${run.state} -> ${args.toState} (${args.actor})`
+  );
+}
+
+/**
+ * Controlled recovery path for retryable failures: move FAILED back into a
+ * resumable state and clear the run error before restarting workflow work.
+ */
+export async function recoverRunFromFailure(
+  ctx: MutationCtx,
+  args: RecoverFailedArgs
+): Promise<void> {
+  const run = await ctx.db.get(args.runId);
+  if (!run) {
+    appError(AppErrorCode.RUN_NOT_FOUND);
+  }
+  if (run.state !== "FAILED" || !run.error?.retryable || args.toState === "FAILED") {
+    appError(AppErrorCode.RUN_TRANSITION_INVALID);
+  }
+
+  await ctx.db.patch(args.runId, {
+    state: args.toState,
+    error: undefined,
+  });
+
+  await ctx.db.insert("runEvents", {
+    runId: args.runId,
+    fromState: "FAILED",
+    toState: args.toState,
+    actor: args.actor,
+    ...(args.detail !== undefined ? { detail: args.detail } : {}),
+  });
+
+  console.log(
+    `[pipeline] run ${args.runId}: FAILED -> ${args.toState} (${args.actor})`
   );
 }
 

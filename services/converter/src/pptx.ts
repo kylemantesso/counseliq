@@ -4,9 +4,7 @@ import { sha256Hex } from "./content-address";
 
 /**
  * Best-effort pptx (OOXML) extraction: per-slide text runs and speaker
- * notes, embedded images, and the candidate theme (colors/fonts from
- * ppt/theme/theme1.xml, logo candidates = distinct images referenced from
- * slide masters or the first slide).
+ * notes, and embedded images.
  */
 
 export interface PptxImage {
@@ -24,16 +22,8 @@ export interface PptxSlide {
   images: PptxImage[];
 }
 
-export interface PptxTheme {
-  colors: string[];
-  fonts: string[];
-  /** Zip paths of logo-candidate images (masters + first slide). */
-  logoCandidateZipPaths: string[];
-}
-
 export interface PptxExtraction {
   slides: PptxSlide[];
-  theme: PptxTheme;
   /** All embedded images across the deck, deduplicated by content hash. */
   images: PptxImage[];
 }
@@ -183,52 +173,14 @@ async function imagesFromRels(
   return images;
 }
 
-function themeColorsAndFonts(themeXml: string): {
-  colors: string[];
-  fonts: string[];
-} {
-  const doc = parser.parse(themeXml);
-  const themeElements = doc?.["a:theme"]?.["a:themeElements"];
-  const colors: string[] = [];
-  const clrScheme = themeElements?.["a:clrScheme"] ?? {};
-  for (const value of Object.values(clrScheme as Record<string, unknown>)) {
-    for (const node of asArray(value)) {
-      if (node === null || typeof node !== "object") continue;
-      const record = node as Record<string, unknown>;
-      const srgb = record["a:srgbClr"] as Record<string, unknown> | undefined;
-      const sys = record["a:sysClr"] as Record<string, unknown> | undefined;
-      const hex = srgb?.["@_val"] ?? sys?.["@_lastClr"];
-      if (typeof hex === "string" && /^[0-9A-Fa-f]{6}$/.test(hex)) {
-        colors.push(`#${hex.toUpperCase()}`);
-      }
-    }
-  }
-
-  const fonts: string[] = [];
-  const fontScheme = themeElements?.["a:fontScheme"];
-  for (const fontKey of ["a:majorFont", "a:minorFont"]) {
-    const latin = fontScheme?.[fontKey]?.["a:latin"];
-    const typeface = latin?.["@_typeface"];
-    if (typeof typeface === "string" && typeface.trim().length > 0) {
-      fonts.push(typeface.trim());
-    }
-  }
-
-  return {
-    colors: [...new Set(colors)],
-    fonts: [...new Set(fonts)],
-  };
-}
-
 export async function extractPptx(bytes: Buffer): Promise<PptxExtraction> {
   const zip = await JSZip.loadAsync(bytes);
   const slidePaths = await orderedSlidePaths(zip);
 
   const slides: PptxSlide[] = [];
   const imagesByHash = new Map<string, PptxImage>();
-  const firstSlideImageHashes = new Set<string>();
 
-  for (const [index, slidePath] of slidePaths.entries()) {
+  for (const [slideIndex, slidePath] of slidePaths.entries()) {
     const slideXml = await readEntry(zip, slidePath);
     if (!slideXml) continue;
 
@@ -252,54 +204,18 @@ export async function extractPptx(bytes: Buffer): Promise<PptxExtraction> {
     for (const image of slideImages) {
       const hash = sha256Hex(image.bytes);
       if (!imagesByHash.has(hash)) imagesByHash.set(hash, image);
-      if (index === 0) firstSlideImageHashes.add(hash);
     }
 
     slides.push({
-      n: index + 1,
+      n: slideIndex + 1,
       text: textFromSlideXml(slideXml),
       notes,
       images: slideImages,
     });
   }
 
-  // Theme colors/fonts from the first theme part.
-  const themePath = Object.keys(zip.files).find((p) =>
-    /^ppt\/theme\/theme\d+\.xml$/.test(p)
-  );
-  const themeXml = themePath ? await readEntry(zip, themePath) : null;
-  const { colors, fonts } = themeXml
-    ? themeColorsAndFonts(themeXml)
-    : { colors: [], fonts: [] };
-
-  // Logo candidates: images referenced from slide masters, plus images on
-  // the first slide (title slides commonly carry the institution logo).
-  const logoHashes = new Set<string>(firstSlideImageHashes);
-  const masterRelsPaths = Object.keys(zip.files).filter((p) =>
-    /^ppt\/slideMasters\/_rels\/slideMaster\d+\.xml\.rels$/.test(p)
-  );
-  for (const relsPath of masterRelsPaths) {
-    const relsXml = await readEntry(zip, relsPath);
-    if (!relsXml) continue;
-    const masterImages = await imagesFromRels(
-      zip,
-      parseRels(relsXml),
-      "ppt/slideMasters"
-    );
-    for (const image of masterImages) {
-      const hash = sha256Hex(image.bytes);
-      if (!imagesByHash.has(hash)) imagesByHash.set(hash, image);
-      logoHashes.add(hash);
-    }
-  }
-
-  const logoCandidateZipPaths = [...logoHashes]
-    .map((hash) => imagesByHash.get(hash)?.zipPath)
-    .filter((p): p is string => p !== undefined);
-
   return {
     slides,
-    theme: { colors, fonts, logoCandidateZipPaths },
     images: [...imagesByHash.values()],
   };
 }

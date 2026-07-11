@@ -33,22 +33,6 @@ const NOTES_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
   </p:spTree></p:cSld>
 </p:notes>`;
 
-const THEME_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="Test">
-  <a:themeElements>
-    <a:clrScheme name="Test">
-      <a:dk1><a:sysClr val="windowText" lastClr="000000"/></a:dk1>
-      <a:lt1><a:sysClr val="window" lastClr="FFFFFF"/></a:lt1>
-      <a:accent1><a:srgbClr val="1F4E79"/></a:accent1>
-      <a:accent2><a:srgbClr val="C00000"/></a:accent2>
-    </a:clrScheme>
-    <a:fontScheme name="Test">
-      <a:majorFont><a:latin typeface="Georgia"/></a:majorFont>
-      <a:minorFont><a:latin typeface="Calibri"/></a:minorFont>
-    </a:fontScheme>
-  </a:themeElements>
-</a:theme>`;
-
 const PRESENTATION_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <p:presentation xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
                 xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
@@ -71,11 +55,6 @@ const SLIDE1_RELS = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
   <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/image1.png"/>
 </Relationships>`;
 
-const MASTER_RELS = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/image1.png"/>
-</Relationships>`;
-
 async function buildTestPptx(): Promise<Buffer> {
   const zip = new JSZip();
   zip.file("ppt/presentation.xml", PRESENTATION_XML);
@@ -84,9 +63,7 @@ async function buildTestPptx(): Promise<Buffer> {
   zip.file("ppt/slides/slide2.xml", slideXml(["Second slide body"]));
   zip.file("ppt/slides/_rels/slide1.xml.rels", SLIDE1_RELS);
   zip.file("ppt/notesSlides/notesSlide1.xml", NOTES_XML);
-  zip.file("ppt/theme/theme1.xml", THEME_XML);
   zip.file("ppt/media/image1.png", PNG_1X1);
-  zip.file("ppt/slideMasters/_rels/slideMaster1.xml.rels", MASTER_RELS);
   return zip.generateAsync({ type: "nodebuffer" });
 }
 
@@ -113,19 +90,8 @@ describe("extractPptx", () => {
     expect(extraction.slides[0].images[0].bytes.equals(PNG_1X1)).toBe(true);
   });
 
-  it("extracts theme colors and fonts", async () => {
+  it("deduplicates deck images by content hash", async () => {
     const extraction = await extractPptx(await buildTestPptx());
-    expect(extraction.theme.colors).toContain("#1F4E79");
-    expect(extraction.theme.colors).toContain("#C00000");
-    expect(extraction.theme.colors).toContain("#000000");
-    expect(extraction.theme.fonts).toEqual(["Georgia", "Calibri"]);
-  });
-
-  it("flags master/first-slide images as logo candidates (deduped)", async () => {
-    const extraction = await extractPptx(await buildTestPptx());
-    // The same PNG appears on slide 1 and the master; content-hash dedupe
-    // must yield exactly one candidate.
-    expect(extraction.theme.logoCandidateZipPaths).toHaveLength(1);
     expect(extraction.images).toHaveLength(1);
   });
 });

@@ -5,6 +5,7 @@ import { fitDisplayFontSize } from "../fit";
 import { visibleSourceLabels } from "../source-labels";
 import { cssVar } from "../theme/brand-theme-provider";
 import type { CardComponentProps } from "../timing";
+import { BackgroundMediaLayer } from "../background-media";
 
 /**
  * list-reveal — numbered rows revealed one beat at a time (mockup 03).
@@ -47,9 +48,15 @@ export const ListReveal: FC<CardComponentProps<CardPropsFor<"list-reveal">>> = (
         fontFamily: cssVar("fontText"),
       }}
     >
+      <BackgroundMediaLayer
+        assetRef={props.bgAssetRef}
+        treatment={props.bgTreatment}
+      />
       {props.heading ? (
         <div
           style={{
+            position: "relative",
+            zIndex: 1,
             ...display,
             fontSize: fitDisplayFontSize(props.heading, 34),
             lineHeight: 1.12,
@@ -60,7 +67,15 @@ export const ListReveal: FC<CardComponentProps<CardPropsFor<"list-reveal">>> = (
           {props.heading}
         </div>
       ) : null}
-      <div style={{ marginTop: dense ? 22 : 34, display: "flex", flexDirection: "column" }}>
+      <div
+        style={{
+          position: "relative",
+          zIndex: 1,
+          marginTop: dense ? 22 : 34,
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
         {items.map((item, i) => (
           <div
             key={i}
@@ -88,6 +103,8 @@ export const ListReveal: FC<CardComponentProps<CardPropsFor<"list-reveal">>> = (
         <div
           data-ciq-source-label=""
           style={{
+            position: "relative",
+            zIndex: 1,
             marginTop: "auto",
             paddingTop: 14,
             display: "flex",

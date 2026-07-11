@@ -4,7 +4,6 @@ import type { ActionCtx } from "../../_generated/server";
 import type { Id } from "../../_generated/dataModel";
 import { internal } from "../../_generated/api";
 import { createOpenRouterClient } from "../llm/client";
-import { modelForTask } from "../llm/models";
 import { PROMPTS } from "../prompts";
 import { reconstructCourseDefinition } from "../courses";
 import { judgeCourse } from "./judgeCore";
@@ -60,6 +59,10 @@ async function runQaJudgeInner(
     internal.pipeline.courses.getReviewedInventoryInternal,
     { runId }
   );
+  const modelRouting = await ctx.runQuery(
+    internal.pipeline.queries.getLlmModelRoutingInternal,
+    {}
+  );
 
   // Resolve media-card asset captions so the judge can assess relevance
   // (media-irrelevant flags) without seeing pixels.
@@ -77,9 +80,9 @@ async function runQaJudgeInner(
         })
       : {};
 
-  const judgeModel = modelForTask("judge-course");
+  const judgeModel = modelRouting["judge-course"];
   const result = await judgeCourse(
-    createOpenRouterClient(),
+    createOpenRouterClient({ modelRouting }),
     definition,
     {
       concepts: inventory.concepts,

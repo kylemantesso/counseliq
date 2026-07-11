@@ -19,7 +19,11 @@ import type {
   UnitScript,
   UnitTiming,
 } from "@counseliq/course-schema";
-import { unitTimingSchema, TIMING_VERSION } from "@counseliq/course-schema";
+import {
+  contentEndMsForTiming,
+  unitTimingSchema,
+  TIMING_VERSION,
+} from "@counseliq/course-schema";
 import {
   alignmentToSpans,
   projectSpan,
@@ -149,11 +153,14 @@ export function assembleUnitClock(
  * beat resolution total).
  */
 export function resolveCardBeats(
-  cards: ReadonlyArray<{ enterAt: { narration: string; word: string } }>,
+  cards: ReadonlyArray<{
+    template?: string;
+    enterAt: { narration: string; word: string };
+  }>,
   script: UnitScript,
   timingSentences: readonly TimingSentence[]
 ): CardBeat[] {
-  return cards.map((card, cardIndex) => {
+  const beats = cards.map((card, cardIndex) => {
     const scriptSentence = script.sentences.find(
       (s) => s.narrationId === card.enterAt.narration
     );
@@ -187,6 +194,30 @@ export function resolveCardBeats(
     }
     return { cardIndex, atMs: Math.min(...overlappingTimes) };
   });
+
+  // Opener pacing policy (courses generated from this point onward): when a
+  // unit starts with a title-card, keep it visible for the full first
+  // narration sentence and begin the first content card exactly at sentence 2.
+  if (cards[0]?.template !== "title-card") return beats;
+
+  const firstSentenceStart = timingSentences[0]?.startMs;
+  if (firstSentenceStart === undefined) return beats;
+  beats[0] = { cardIndex: 0, atMs: firstSentenceStart };
+
+  const secondSentenceStart = timingSentences[1]?.startMs;
+  if (secondSentenceStart === undefined) return beats;
+
+  const firstContentCardIndex = cards.findIndex(
+    (card, index) => index > 0 && card.template !== "title-card"
+  );
+  if (firstContentCardIndex !== -1) {
+    beats[firstContentCardIndex] = {
+      cardIndex: firstContentCardIndex,
+      atMs: secondSentenceStart,
+    };
+  }
+
+  return beats;
 }
 
 /** Card templates whose active window plays/holds a media asset (M6). */
@@ -250,8 +281,7 @@ export function buildUnitTiming(input: {
   media: readonly MediaWindow[];
   generatedAt: number;
 }): UnitTiming {
-  const last = input.sentences.at(-1);
-  const totalDurationMs = last ? last.startMs + last.durationMs : 0;
+  const totalDurationMs = contentEndMsForTiming({ sentences: input.sentences });
   return unitTimingSchema.parse({
     version: TIMING_VERSION,
     unitKey: input.unitKey,

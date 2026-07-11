@@ -3,8 +3,6 @@
 import { v } from "convex/values";
 import { Workpool } from "@convex-dev/workpool";
 import {
-  llmInferredThemeSchema,
-  llmMergeResultSchema,
   llmPageExtractionSchema,
   type LlmPageExtraction,
 } from "@counseliq/course-schema";
@@ -15,19 +13,14 @@ import { components, internal } from "../_generated/api";
 import {
   completeStructured,
   createOpenRouterClient,
+  LlmError,
   type LlmClient,
   type LlmUsage,
 } from "./llm/client";
-import { currentModelRouting, modelForTask, type LlmTask } from "./llm/models";
-import {
-  INFERRED_THEME_JSON_SCHEMA,
-  MERGE_RESULT_JSON_SCHEMA,
-  PAGE_EXTRACTION_JSON_SCHEMA,
-} from "./llm/schemas";
+import { type LlmModelRouting, type LlmTask } from "./llm/models";
+import { PAGE_EXTRACTION_JSON_SCHEMA } from "./llm/schemas";
 import { PROMPTS } from "./prompts";
 import {
-  assembleInventory,
-  preGroupConcepts,
   restampPageExtraction,
   storePageExtraction,
   type StoredPageExtraction,
@@ -36,8 +29,8 @@ import {
 /**
  * The real EXTRACTING stage (M3): per-page multimodal extraction fanned out
  * through a dedicated workpool, a merge pass consolidating concepts across
- * all docs of the run into one inventory, and theme inference for pdf-native
- * docs. Never logs API keys, presigned URLs, or page image bytes.
+ * all docs of the run into one inventory. Never logs API keys, presigned
+ * URLs, or page image bytes.
  */
 
 const DEFAULT_PARALLELISM = 2;
@@ -61,23 +54,47 @@ export const extractionPool = new Workpool(components.extractionPool, {
   },
 });
 
-function defaultClient(): LlmClient {
-  return createOpenRouterClient();
+function defaultClient(modelRouting?: Partial<LlmModelRouting>): LlmClient {
+  return createOpenRouterClient({ modelRouting });
 }
 
-function pageCacheKey(pageHash: string, task: LlmTask): string {
-  return `${pageHash}:${PROMPTS[task].versionTag}:${modelForTask(task)}`;
+function pageCacheKey(pageHash: string, task: LlmTask, model: string): string {
+  return `${pageHash}:${PROMPTS[task].versionTag}:${model}`;
 }
 
-async function recordUsages(
+function isStructuredOutputFailure(error: unknown): error is LlmError {
+  return (
+    error instanceof LlmError &&
+    !error.retryable &&
+    error.message.includes("structured output failed validation after retry")
+  );
+}
+
+function emptyFallbackExtraction(
+  provenanceId: string,
+  cause: string
+): StoredPageExtraction {
+  return {
+    provenanceId,
+    concepts: [],
+    facts: [],
+    entities: [],
+    quotes: [],
+    fallbackCause: cause.slice(0, 500),
+  };
+}
+
+async function recordInstitutionScopedUsages(
   ctx: ActionCtx,
-  runId: Id<"runs">,
+  institutionId: Id<"institutions">,
   stage: LlmTask,
-  usages: LlmUsage[]
+  usages: LlmUsage[],
+  sourceDocId?: Id<"sourceDocs">
 ): Promise<void> {
   for (const usage of usages) {
     await ctx.runMutation(internal.pipeline.llmCalls.recordLlmCall, {
-      runId,
+      institutionId,
+      ...(sourceDocId ? { sourceDocId } : {}),
       stage,
       promptVersion: PROMPTS[stage].versionTag,
       model: usage.model,
@@ -104,20 +121,27 @@ async function fetchPngBase64(ctx: ActionCtx, key: string): Promise<string> {
 /**
  * Extracts the knowledge inventory of a single page. Idempotent: cached by
  * page content hash + prompt version + model, so workpool retries and
- * re-runs reuse the stored result instead of calling the LLM again.
+ * re-runs reuse the stored result instead of calling the LLM again. This is
+ * upload-time work and is deliberately scoped to an institution, not a run.
  */
 export const extractPage = internalAction({
   args: {
-    runId: v.id("runs"),
+    institutionId: v.id("institutions"),
     sourceDocId: v.id("sourceDocs"),
     n: v.number(),
+    extractModel: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const page = await ctx.runQuery(
       internal.pipeline.inventory.getPageForExtraction,
       { sourceDocId: args.sourceDocId, n: args.n }
     );
-    const cacheKey = pageCacheKey(page.hash, "extract-page");
+    const extractModel =
+      args.extractModel ??
+      (
+        await ctx.runQuery(internal.pipeline.queries.getLlmModelRoutingInternal, {})
+      )["extract-page"];
+    const cacheKey = pageCacheKey(page.hash, "extract-page", extractModel);
 
     const cached = await ctx.runQuery(
       internal.pipeline.inventory.getPageExtraction,
@@ -153,21 +177,48 @@ export const extractPage = internalAction({
       page.notes || "(none)",
     ].join("\n");
 
-    const { value, usages } = await completeStructured<LlmPageExtraction>(
-      defaultClient(),
+    let value: LlmPageExtraction;
+    let usages: LlmUsage[] = [];
+    try {
+      const response = await completeStructured<LlmPageExtraction>(
+        defaultClient({ "extract-page": extractModel }),
+        "extract-page",
+        {
+          system: PROMPTS["extract-page"].content,
+          user: [
+            { type: "image", base64Png },
+            { type: "text", text: contextText },
+          ],
+          schemaName: "page_extraction",
+          jsonSchema: PAGE_EXTRACTION_JSON_SCHEMA,
+        },
+        llmPageExtractionSchema
+      );
+      value = response.value;
+      usages = response.usages;
+    } catch (error) {
+      if (!isStructuredOutputFailure(error)) {
+        throw error;
+      }
+      const fallback = emptyFallbackExtraction(page.provenanceId, error.message);
+      await ctx.runMutation(internal.pipeline.inventory.savePageExtraction, {
+        sourceDocId: args.sourceDocId,
+        n: args.n,
+        cacheKey,
+        result: fallback,
+      });
+      console.warn(
+        `[pipeline] sourceDoc ${args.sourceDocId} page ${args.n}: extract-page output invalid after retries; stored empty fallback`
+      );
+      return { status: "fallback" as const };
+    }
+    await recordInstitutionScopedUsages(
+      ctx,
+      args.institutionId,
       "extract-page",
-      {
-        system: PROMPTS["extract-page"].content,
-        user: [
-          { type: "image", base64Png },
-          { type: "text", text: contextText },
-        ],
-        schemaName: "page_extraction",
-        jsonSchema: PAGE_EXTRACTION_JSON_SCHEMA,
-      },
-      llmPageExtractionSchema
+      usages,
+      args.sourceDocId
     );
-    await recordUsages(ctx, args.runId, "extract-page", usages);
 
     // Provenance stamping + code-level flag floor happen here, in code.
     const stored = storePageExtraction(page.provenanceId, value);
@@ -182,231 +233,99 @@ export const extractPage = internalAction({
   },
 });
 
-type ExtractionResult =
-  | {
-      status: "ok";
-      counts: {
-        total: number;
-        concepts: number;
-        facts: number;
-        entities: number;
-        quotes: number;
-        flaggedFacts: number;
-      };
-      pages: number;
-    }
+type SourceDocExtractionResult =
+  | { status: "ok"; pages: number }
   | { status: "failed"; cause: string };
 
-/**
- * Orchestrates the whole EXTRACTING stage for a run: fan out per-page
- * extraction (workpool, or sequential with EXTRACTION_MODE=sequential),
- * merge concepts across all docs into ONE inventory, infer candidate themes
- * for pdf-native docs, and write inventoryItems idempotently.
- */
-export const runExtraction = internalAction({
-  args: { runId: v.id("runs") },
-  handler: async (ctx, args): Promise<ExtractionResult> => {
+/** Upload-time extraction for standalone source docs (no run yet). */
+export const extractFactsForSourceDoc = internalAction({
+  args: { sourceDocId: v.id("sourceDocs") },
+  handler: async (ctx, args): Promise<SourceDocExtractionResult> => {
     try {
-      return await runExtractionInner(ctx, args.runId);
+      const doc = await ctx.runQuery(
+        internal.pipeline.ingestion.getSourceDocForDispatch,
+        {
+          sourceDocId: args.sourceDocId,
+        }
+      );
+      if (!doc || doc.status !== "converted" || doc.runId) {
+        return { status: "ok", pages: 0 };
+      }
+
+      const slides = await ctx.runQuery(
+        internal.pipeline.ingestion.listSlidesForDoc,
+        {
+          sourceDocId: args.sourceDocId,
+        }
+      );
+      if (slides.length === 0) {
+        return { status: "ok", pages: 0 };
+      }
+
+      const extractModel = (
+        await ctx.runQuery(internal.pipeline.queries.getLlmModelRoutingInternal, {})
+      )["extract-page"];
+
+      const sequential = process.env.EXTRACTION_MODE === "sequential";
+      if (sequential) {
+        for (const slide of slides) {
+          await ctx.runAction(internal.pipeline.extract.extractPage, {
+            institutionId: doc.institutionId,
+            sourceDocId: args.sourceDocId,
+            n: slide.n,
+            extractModel,
+          });
+        }
+      } else {
+        const workIds = await extractionPool.enqueueActionBatch(
+          ctx,
+          internal.pipeline.extract.extractPage,
+          slides.map((slide) => ({
+            institutionId: doc.institutionId,
+            sourceDocId: args.sourceDocId,
+            n: slide.n,
+            extractModel,
+          }))
+        );
+        const timeoutMs = Number(
+          process.env.EXTRACTION_TIMEOUT_MS ?? EXTRACTION_TIMEOUT_MS_DEFAULT
+        );
+        const startedAt = Date.now();
+        for (;;) {
+          const statuses = await extractionPool.statusBatch(ctx, workIds);
+          const finished = statuses.filter((s) => s.state === "finished").length;
+          if (finished === workIds.length) break;
+          if (Date.now() - startedAt > timeoutMs) {
+            return {
+              status: "failed",
+              cause: `source-doc extraction timed out after ${timeoutMs}ms (${finished}/${workIds.length} pages finished)`,
+            };
+          }
+          await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+        }
+      }
+
+      const rows = await ctx.runQuery(
+        internal.pipeline.inventory.listPageExtractionsForDoc,
+        { sourceDocId: args.sourceDocId }
+      );
+      const extractedPages = new Set(rows.map((row) => row.n));
+      const missing = slides.filter((slide) => !extractedPages.has(slide.n));
+      if (missing.length > 0) {
+        return {
+          status: "failed",
+          cause: `${missing.length} page(s) failed extraction (first: page ${missing[0].n})`,
+        };
+      }
+
+      return { status: "ok", pages: slides.length };
     } catch (error) {
       const cause = error instanceof Error ? error.message : String(error);
-      console.error(`[pipeline] run ${args.runId}: extraction failed`, cause);
+      console.error(
+        `[pipeline] sourceDoc ${args.sourceDocId}: upload-time extraction failed`,
+        cause
+      );
       return { status: "failed", cause };
     }
   },
 });
-
-async function runExtractionInner(
-  ctx: ActionCtx,
-  runId: Id<"runs">
-): Promise<ExtractionResult> {
-  const plan = await ctx.runQuery(
-    internal.pipeline.inventory.getExtractionPlan,
-    { runId }
-  );
-  if (plan.pages.length === 0) {
-    return { status: "failed", cause: "no converted pages to extract" };
-  }
-
-  await ctx.runMutation(internal.pipeline.inventory.setRunPromptVersions, {
-    runId,
-    promptVersions: {
-      "extract-page": PROMPTS["extract-page"].versionTag,
-      "merge-inventory": PROMPTS["merge-inventory"].versionTag,
-      "infer-theme": PROMPTS["infer-theme"].versionTag,
-      models: currentModelRouting(),
-    },
-  });
-
-  // --- Fan out per-page extraction ---
-  const sequential = process.env.EXTRACTION_MODE === "sequential";
-  console.log(
-    `[pipeline] run ${runId}: extracting ${plan.pages.length} page(s) ` +
-      `(${sequential ? "sequential" : `workpool, parallelism ${extractionParallelism()}`})`
-  );
-
-  if (sequential) {
-    for (const page of plan.pages) {
-      await ctx.runAction(internal.pipeline.extract.extractPage, {
-        runId,
-        sourceDocId: page.sourceDocId,
-        n: page.n,
-      });
-    }
-  } else {
-    const workIds = await extractionPool.enqueueActionBatch(
-      ctx,
-      internal.pipeline.extract.extractPage,
-      plan.pages.map((page) => ({
-        runId,
-        sourceDocId: page.sourceDocId,
-        n: page.n,
-      }))
-    );
-    const timeoutMs = Number(
-      process.env.EXTRACTION_TIMEOUT_MS ?? EXTRACTION_TIMEOUT_MS_DEFAULT
-    );
-    const startedAt = Date.now();
-    for (;;) {
-      const statuses = await extractionPool.statusBatch(ctx, workIds);
-      const finished = statuses.filter((s) => s.state === "finished").length;
-      if (finished === workIds.length) break;
-      if (Date.now() - startedAt > timeoutMs) {
-        return {
-          status: "failed",
-          cause: `page extraction timed out after ${timeoutMs}ms (${finished}/${workIds.length} pages finished)`,
-        };
-      }
-      await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
-    }
-  }
-
-  // --- Collect page results (verify none failed silently) ---
-  const rows = await ctx.runQuery(
-    internal.pipeline.inventory.listPageExtractionsForRun,
-    { runId }
-  );
-  const byPage = new Map<string, StoredPageExtraction>();
-  for (const row of rows) {
-    byPage.set(`${row.sourceDocId}:${row.n}`, row.result);
-  }
-  const missing = plan.pages.filter(
-    (p) => !byPage.has(`${p.sourceDocId}:${p.n}`)
-  );
-  if (missing.length > 0) {
-    return {
-      status: "failed",
-      cause: `${missing.length} page(s) failed extraction after retries (first: page ${missing[0].n})`,
-    };
-  }
-  const storedPages = plan.pages.map(
-    (p) => byPage.get(`${p.sourceDocId}:${p.n}`) as StoredPageExtraction
-  );
-
-  // --- Merge pass: one inventory across all docs of the run ---
-  const groups = preGroupConcepts(storedPages);
-  let mergeResult = null;
-  if (groups.length > 0) {
-    const mergeInput = groups.map((g) => ({
-      key: g.key,
-      title: g.title,
-      summary: g.summary,
-    }));
-    const { value, usages } = await completeStructured(
-      defaultClient(),
-      "merge-inventory",
-      {
-        system: PROMPTS["merge-inventory"].content,
-        user: [
-          {
-            type: "text",
-            text: `Candidate concepts:\n${JSON.stringify(mergeInput, null, 2)}`,
-          },
-        ],
-        schemaName: "merge_result",
-        jsonSchema: MERGE_RESULT_JSON_SCHEMA,
-      },
-      llmMergeResultSchema
-    );
-    await recordUsages(ctx, runId, "merge-inventory", usages);
-    mergeResult = value;
-  }
-
-  const items = assembleInventory(storedPages, groups, mergeResult);
-  const counts = await ctx.runMutation(
-    internal.pipeline.inventory.replaceInventory,
-    { runId, items }
-  );
-
-  // --- Theme inference for pdf-native docs (candidates only; non-fatal) ---
-  for (const doc of plan.docs) {
-    if (doc.theme !== null) continue;
-    try {
-      await inferThemeForDoc(ctx, runId, doc._id, plan.pages);
-    } catch (error) {
-      console.error(
-        `[pipeline] run ${runId}: theme inference failed for doc ${doc._id} (non-fatal)`,
-        error instanceof Error ? error.message : String(error)
-      );
-    }
-  }
-
-  console.log(
-    `[pipeline] run ${runId}: extraction complete — ${counts.total} items ` +
-      `(${counts.concepts} concepts, ${counts.facts} facts, ${counts.flaggedFacts} flagged)`
-  );
-  return { status: "ok", counts, pages: plan.pages.length };
-}
-
-async function inferThemeForDoc(
-  ctx: ActionCtx,
-  runId: Id<"runs">,
-  sourceDocId: Id<"sourceDocs">,
-  allPages: Array<{ sourceDocId: Id<"sourceDocs">; n: number; pngKey: string }>
-): Promise<void> {
-  const docPages = allPages
-    .filter((p) => p.sourceDocId === sourceDocId)
-    .sort((a, b) => a.n - b.n);
-  if (docPages.length === 0) return;
-
-  // 2-3 representative renders: first, middle, last.
-  const picks = [
-    docPages[0],
-    docPages[Math.floor(docPages.length / 2)],
-    docPages[docPages.length - 1],
-  ].filter(
-    (page, index, arr) => arr.findIndex((p) => p.n === page.n) === index
-  );
-
-  const images = await Promise.all(
-    picks.map((p) => fetchPngBase64(ctx, p.pngKey))
-  );
-
-  const { value, usages } = await completeStructured(
-    defaultClient(),
-    "infer-theme",
-    {
-      system: PROMPTS["infer-theme"].content,
-      user: [
-        ...images.map((base64Png) => ({
-          type: "image" as const,
-          base64Png,
-        })),
-        {
-          type: "text",
-          text: `These are ${picks.length} representative pages from the same document. Infer the brand theme candidates.`,
-        },
-      ],
-      schemaName: "inferred_theme",
-      jsonSchema: INFERRED_THEME_JSON_SCHEMA,
-    },
-    llmInferredThemeSchema
-  );
-  await recordUsages(ctx, runId, "infer-theme", usages);
-
-  await ctx.runMutation(internal.pipeline.inventory.setDocInferredTheme, {
-    sourceDocId,
-    colors: value.colors,
-    fonts: value.fonts,
-  });
-}

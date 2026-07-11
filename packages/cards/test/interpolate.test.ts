@@ -183,14 +183,14 @@ describe("fitBlockFontSize", () => {
   });
 });
 
-// --- visibleSourceLabels (provenance-class markers hidden) ---
+// --- visibleSourceLabels ---
 import { visibleSourceLabels } from "../src/source-labels";
 
 describe("visibleSourceLabels", () => {
-  test("hides Institution claim markers, keeps real citations", () => {
+  test("keeps non-empty labels and dedupes case-insensitively", () => {
     expect(
       visibleSourceLabels("Institution claim", "QS 2025", "INSTITUTION CLAIM", "THE 2024")
-    ).toEqual(["QS 2025", "THE 2024"]);
+    ).toEqual(["Institution claim", "QS 2025", "THE 2024"]);
   });
 
   test("dedupes case-insensitively and drops empties", () => {
@@ -199,7 +199,7 @@ describe("visibleSourceLabels", () => {
     ]);
   });
 
-  test("all-marker input renders nothing", () => {
-    expect(visibleSourceLabels("Institution claim", "institution claims")).toEqual([]);
+  test("normalizes surrounding whitespace", () => {
+    expect(visibleSourceLabels("  QILT 2024  ", "QILT   2024")).toEqual(["QILT 2024"]);
   });
 });

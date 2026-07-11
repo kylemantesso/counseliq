@@ -18,7 +18,7 @@ function AdminGate({ children }: AdminGuardProps) {
 
   useEffect(() => {
     if (page === null) {
-      router.replace("/dashboard");
+      router.replace("/");
     }
   }, [page, router]);
 

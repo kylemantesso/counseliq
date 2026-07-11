@@ -9,26 +9,26 @@ export type ReviewGate = Infer<typeof reviewGateValidator>;
  * appears in the source state's list — plus the blanket rule that any
  * non-FAILED state may transition to FAILED.
  *
- * M4 resequencing (sanctioned contract change): gate 1 (knowledge review)
- * comes BEFORE compilation so the compiler only ever consumes reviewed facts;
- * the QA judge runs on the compiled course BEFORE any asset money is spent;
- * gate 2 reviews the compiled course as a whole (judge flags attached) and
- * may send flagged units back to COMPILING for re-authoring.
+ * Source-doc conversion, extraction, and approval happen before runs start.
+ * Legacy ingestion states remain for historical rows and recovery only. New
+ * runs are created at OUTLINING. The QA judge runs on
+ * the compiled course BEFORE any asset money is spent; gate 2 reviews the
+ * compiled course as a whole (judge flags attached) and may send flagged
+ * units back to COMPILING for re-authoring.
  *
- * M6.5: an OUTLINE step sits between gate 1 and compilation — the structure
- * pass runs alone (brief + approved facts + cleared assets), parks at
- * OUTLINE_REVIEW for operator editing, and only approval starts the
- * authoring spend. OUTLINE_REVIEW → OUTLINING is regenerate-with-feedback.
+ * M6.5: OUTLINING runs the structure pass (brief + approved facts + cleared
+ * assets), parks at OUTLINE_REVIEW for operator editing, and only approval
+ * starts authoring spend. OUTLINE_REVIEW → OUTLINING is
+ * regenerate-with-feedback.
  */
 export const ALLOWED_TRANSITIONS: Record<RunState, RunState[]> = {
-  UPLOADED: ["CONVERTING"],
-  CONVERTING: ["CONVERTED"],
-  CONVERTED: ["EXTRACTING"],
-  EXTRACTING: ["EXTRACTED"],
-  EXTRACTED: ["GATE_1_KNOWLEDGE_REVIEW"],
-  // OUTLINING is the M6.5 path (decideGate routes there); the direct
-  // COMPILING edge remains legal for legacy/parked runs mid-flight.
+  UPLOADED: ["CONVERTING", "OUTLINING"],
+  CONVERTING: ["CONVERTED", "OUTLINING"],
+  CONVERTED: ["EXTRACTING", "OUTLINING"],
+  EXTRACTING: ["EXTRACTED", "OUTLINING"],
   GATE_1_KNOWLEDGE_REVIEW: ["OUTLINING", "COMPILING"],
+  GATE_2_QUIZ_REVIEW: ["GENERATING_SCRIPT", "COMPILING"],
+  EXTRACTED: ["OUTLINING"],
   OUTLINING: ["OUTLINE_REVIEW"],
   OUTLINE_REVIEW: ["COMPILING", "OUTLINING"],
   COMPILING: ["COMPILED"],
@@ -56,7 +56,8 @@ export function isTransitionAllowed(from: RunState, to: RunState): boolean {
 
 /** The run state a review gate corresponds to. */
 export const GATE_STATES: Record<ReviewGate, RunState> = {
-  1: "GATE_1_KNOWLEDGE_REVIEW",
+  // Legacy gate-1 rows can still exist in older deployments.
+  1: "EXTRACTED",
   2: "GATE_2_COURSE_REVIEW",
   3: "GATE_3_PREVIEW",
 };

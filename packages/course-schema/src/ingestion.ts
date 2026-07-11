@@ -49,32 +49,11 @@ export const manifestPageSchema = z
   })
   .strict();
 
-/**
- * How the candidate theme was obtained: `ooxml` = authoritative extraction
- * from the pptx theme part; `llm-inferred` = vision-model guess from page
- * renders (pdf-native docs) — candidates only, confirmed at review.
- */
-export const themeMethodSchema = z.enum(["ooxml", "llm-inferred"]);
-
-export const candidateThemeSchema = z
-  .object({
-    method: themeMethodSchema,
-    /** Hex colors, e.g. "#1A2B3C", from the document theme. */
-    colors: z.array(z.string().regex(/^#[0-9A-Fa-f]{6}$/)),
-    /** Font family names from the document theme. */
-    fonts: z.array(z.string().min(1)),
-    /** Object keys of images that recur on masters / the first slide. */
-    logoCandidates: z.array(contentAddressedKeySchema),
-  })
-  .strict();
-
 export const conversionManifestSchema = z
   .object({
     /** sha256 of the source document bytes. */
     sourceDocHash: sha256HexSchema,
     pageCount: z.number().int().positive(),
-    /** Candidate brand theme; null when none could be extracted (e.g. pdf). */
-    theme: candidateThemeSchema.nullable(),
     pages: z.array(manifestPageSchema),
   })
   .strict()
@@ -238,10 +217,8 @@ export const pdfImagesCallbackSchema = z
   })
   .strict();
 
-export type ThemeMethod = z.infer<typeof themeMethodSchema>;
 export type EmbeddedImage = z.infer<typeof embeddedImageSchema>;
 export type ManifestPage = z.infer<typeof manifestPageSchema>;
-export type CandidateTheme = z.infer<typeof candidateThemeSchema>;
 export type ConversionManifest = z.infer<typeof conversionManifestSchema>;
 export type SourceDocKind = z.infer<typeof sourceDocKindSchema>;
 export type ConvertRequest = z.infer<typeof convertRequestSchema>;

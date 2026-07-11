@@ -1,13 +1,11 @@
 /**
- * Source labels worth SHOWING. The compiler writes provenance-class
- * markers like "Institution claim" as sourceLabels for statements drawn
- * from the institution's own materials — meaningful for QA, noise on a
- * rendered card. Real citations (ranking bodies, reports, years) render;
- * class markers don't. The props are untouched — compliance checks read
- * them, not the pixels.
+ * Source labels worth SHOWING. Rendering keeps any non-empty label and only
+ * dedupes case-insensitively.
  */
 
-const HIDDEN_LABELS = new Set(["institution claim", "institution claims"]);
+function normalizeWhitespace(value: string): string {
+  return value.trim().replace(/\s+/g, " ");
+}
 
 export function visibleSourceLabels(
   ...values: Array<string | null | undefined>
@@ -16,9 +14,8 @@ export function visibleSourceLabels(
   const out: string[] = [];
   for (const value of values) {
     if (typeof value !== "string") continue;
-    const label = value.trim();
+    const label = normalizeWhitespace(value);
     if (label.length === 0) continue;
-    if (HIDDEN_LABELS.has(label.toLowerCase())) continue;
     const key = label.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);

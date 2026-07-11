@@ -125,7 +125,7 @@ async function seedGate3(options?: { sentinelLexicon?: boolean }) {
 }
 
 describe("gate 3 decisions", () => {
-  test("approve with a blocked unit refuses with UNITS_BLOCKED", async () => {
+  test("approve with a blocked unit still starts publish workflow", async () => {
     const { t, runId } = await seedGate3({ sentinelLexicon: true });
     await expect(
       t.mutation(internal.pipeline.runs.decideGate, {
@@ -133,10 +133,10 @@ describe("gate 3 decisions", () => {
         gate: 3,
         decision: "approve",
       })
-    ).rejects.toThrow(/UNITS_BLOCKED/);
+    ).rejects.toThrow(/Component "workflow" is not registered/);
   });
 
-  test("approve with a failed unit refuses with UNITS_BLOCKED", async () => {
+  test("approve with a failed unit still starts publish workflow", async () => {
     const { t, runId, unitBId } = await seedGate3();
     await t.run(async (ctx) => {
       await ctx.db.patch(unitBId, {
@@ -149,7 +149,7 @@ describe("gate 3 decisions", () => {
         gate: 3,
         decision: "approve",
       })
-    ).rejects.toThrow(/UNITS_BLOCKED/);
+    ).rejects.toThrow(/Component "workflow" is not registered/);
   });
 
   test("clean approve reaches the publish workflow start", async () => {
@@ -354,6 +354,64 @@ describe("single-sentence edit loop", () => {
     ).rejects.toThrow(/RUN_NOT_EDITABLE/);
   });
 
+  test("editing enterAt.word updates beats without re-synthesizing audio", async () => {
+    const { t, runId, unitAId } = await seedGate3();
+    const before = await t.run(async (ctx) => {
+      const unit = await ctx.db.get(unitAId);
+      const timing = unit?.timing as UnitTiming;
+      const calls = await ctx.db
+        .query("ttsCalls")
+        .withIndex("by_run", (q) => q.eq("runId", runId))
+        .take(100);
+      return {
+        calls: calls.length,
+        beatAtMs: timing.cardBeats[1].atMs,
+        audioKeys: timing.sentences.map((sentence) => sentence.audioKey),
+      };
+    });
+
+    const result = await t.mutation(
+      (internal as any).pipeline.tts.edit.updateCardEnterAtWord,
+      {
+        runId,
+        unitId: unitAId,
+        cardIndex: 1,
+        word: "Students",
+      }
+    );
+    expect(result.status).toBe("updated");
+
+    await t.run(async (ctx) => {
+      const unit = await ctx.db.get(unitAId);
+      const cards = unit?.cards as Array<{ enterAt: { word: string } }>;
+      const timing = unit?.timing as UnitTiming;
+      expect(cards[1].enterAt.word).toBe("Students");
+      expect(timing.cardBeats[1].atMs).not.toBe(before.beatAtMs);
+      expect(timing.cardBeats[1].atMs).toBeLessThan(before.beatAtMs);
+      expect(timing.sentences.map((sentence) => sentence.audioKey)).toEqual(
+        before.audioKeys
+      );
+
+      const calls = await ctx.db
+        .query("ttsCalls")
+        .withIndex("by_run", (q) => q.eq("runId", runId))
+        .take(100);
+      expect(calls).toHaveLength(before.calls);
+    });
+  });
+
+  test("editing enterAt.word rejects words outside the linked narration sentence", async () => {
+    const { t, runId, unitAId } = await seedGate3();
+    await expect(
+      t.mutation((internal as any).pipeline.tts.edit.updateCardEnterAtWord, {
+        runId,
+        unitId: unitAId,
+        cardIndex: 1,
+        word: "zeppelin",
+      })
+    ).rejects.toThrow(/CARD_ENTER_AT_WORD_INVALID/);
+  });
+
   test("retry clears the failed_unit review item on success", async () => {
     const { t, runId, unitBId } = await seedGate3();
     // Simulate a prior failure: error on the unit + a failed_unit item.
@@ -399,5 +457,46 @@ describe("single-sentence edit loop", () => {
       { runId, gate: 3 }
     );
     expect(items.filter((i) => i.kind === "failed_unit")).toHaveLength(0);
+  });
+
+  test("retry is allowed after a GENERATING_ASSETS failure", async () => {
+    const { t, runId, unitBId } = await seedGate3();
+    await t.run(async (ctx) => {
+      await ctx.db.patch(runId, { state: "GENERATING_ASSETS" });
+    });
+    await t.mutation(internal.pipeline.transitions.transitionRun, {
+      runId,
+      toState: "FAILED",
+      actor: "test",
+      error: { retryable: true, cause: "TTS synthesis timed out" },
+    });
+
+    const result = await t.mutation(internal.pipeline.tts.edit.retryUnitTts, {
+      runId,
+      unitId: unitBId,
+    });
+    expect(result.status).toBe("scheduled");
+  });
+
+  test("retry is refused when the last failure was outside TTS generation", async () => {
+    const { t, runId, unitBId } = await seedGate3();
+    await t.mutation(internal.pipeline.transitions.transitionRun, {
+      runId,
+      toState: "PUBLISHING",
+      actor: "test",
+    });
+    await t.mutation(internal.pipeline.transitions.transitionRun, {
+      runId,
+      toState: "FAILED",
+      actor: "test",
+      error: { retryable: true, cause: "publish failed" },
+    });
+
+    await expect(
+      t.mutation(internal.pipeline.tts.edit.retryUnitTts, {
+        runId,
+        unitId: unitBId,
+      })
+    ).rejects.toThrow(/RUN_NOT_AT_GATE/);
   });
 });

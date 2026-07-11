@@ -50,7 +50,7 @@ export const ADMIN_TOOLS: readonly AdminTool[] = [
     key: "generate-course",
     label: "Generate course",
     description: "Compile a course from an institution's facts and cleared assets.",
-    href: "/admin/generate",
+    href: "/admin/runs/new",
   },
   {
     key: "asset-library",

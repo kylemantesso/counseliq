@@ -195,12 +195,13 @@ async function main() {
   });
   console.log(`  run: ${runId}\n`);
 
-  // --- Wait for extraction to complete (run parks at gate 1) ---
+  // --- Wait for extraction to complete (run moves into outlining) ---
   const DONE_STATES = new Set([
     "EXTRACTED",
+    "OUTLINING",
+    "OUTLINE_REVIEW",
     "COMPILING",
     "COMPILED",
-    "GATE_1_KNOWLEDGE_REVIEW",
   ]);
   const startedAt = Date.now();
   let lastState = null;
