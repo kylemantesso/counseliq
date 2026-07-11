@@ -7,6 +7,7 @@
   "exports": {
     ".": "./index.ts",
     "./global.css": "./global.css",
+    "./global.native.css": "./global.native.css",
     "./postcss.config.js": "./postcss.config.js"
   },
   "scripts": {

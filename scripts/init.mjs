@@ -185,7 +185,7 @@ async function parseEnvFile(filePath) {
 }
 
 async function findLinkedVercelProjectName() {
-  for (const dir of [ROOT, path.join(ROOT, "apps/web")]) {
+  for (const dir of [ROOT, path.join(ROOT, "apps/admin-web")]) {
     try {
       const project = JSON.parse(
         await fs.readFile(path.join(dir, ".vercel", "project.json"), "utf8")
@@ -211,8 +211,8 @@ function projectNameFromVercelOidc(token) {
 
 async function loadExistingProvisioning() {
   const rootEnv = await parseEnvFile(path.join(ROOT, ".env.local"));
-  const webEnv = await parseEnvFile(path.join(ROOT, "apps/web/.env.local"));
-  const mobileEnv = await parseEnvFile(path.join(ROOT, "apps/mobile/.env"));
+  const webEnv = await parseEnvFile(path.join(ROOT, "apps/admin-web/.env.local"));
+  const mobileEnv = await parseEnvFile(path.join(ROOT, "apps/client-mobile/.env"));
 
   const convexUrl =
     rootEnv.NEXT_PUBLIC_CONVEX_URL ||
@@ -250,12 +250,12 @@ async function loadExistingProvisioning() {
 
 function validateExistingProvisioning({ convexUrl, clerkConfig }) {
   const missing = [];
-  if (!convexUrl) missing.push("NEXT_PUBLIC_CONVEX_URL (root, apps/web, or apps/mobile env)");
+  if (!convexUrl) missing.push("NEXT_PUBLIC_CONVEX_URL (root, apps/admin-web, or apps/client-mobile env)");
   if (!clerkConfig?.publishableKey) {
-    missing.push("NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY (apps/web or apps/mobile env)");
+    missing.push("NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY (apps/admin-web or apps/client-mobile env)");
   }
   if (!clerkConfig?.secretKey) {
-    missing.push("CLERK_SECRET_KEY (apps/web/.env.local)");
+    missing.push("CLERK_SECRET_KEY (apps/admin-web/.env.local)");
   }
   if (missing.length) {
     throw new Error(
@@ -341,7 +341,7 @@ async function runAuthOnly() {
   }
 
   let bundlePrefix = "com." + slug.replace(/-/g, "");
-  const appJsonPath = path.join(ROOT, "apps/mobile/app.json");
+  const appJsonPath = path.join(ROOT, "apps/client-mobile/app.json");
   try {
     const appJson = JSON.parse(await fs.readFile(appJsonPath, "utf8"));
     const bid = appJson?.expo?.ios?.bundleIdentifier || "";
@@ -351,7 +351,7 @@ async function runAuthOnly() {
   }
 
   let vercelProjectUrl = null;
-  for (const dir of [ROOT, path.join(ROOT, "apps/web")]) {
+  for (const dir of [ROOT, path.join(ROOT, "apps/admin-web")]) {
     const vercelProjectPath = path.join(dir, ".vercel", "project.json");
     try {
       const v = JSON.parse(await fs.readFile(vercelProjectPath, "utf8"));
@@ -375,8 +375,8 @@ async function runAuthOnly() {
   const googleAuth = await runGoogleProvisioning(slug, displayName, vercelProjectUrl);
   const appleAuth = await runAppleProvisioning(slug, bundlePrefix);
 
-  const webEnvPath = path.join(ROOT, "apps/web/.env.local");
-  const mobileEnvPath = path.join(ROOT, "apps/mobile/.env");
+  const webEnvPath = path.join(ROOT, "apps/admin-web/.env.local");
+  const mobileEnvPath = path.join(ROOT, "apps/client-mobile/.env");
   const webLines = [];
   const mobileLines = [];
   if (googleAuth) {
@@ -402,7 +402,7 @@ async function runAuthOnly() {
       await fs.appendFile(mobileEnvPath, (existing.endsWith("\n") ? "" : "\n") + line + "\n");
     }
   }
-  console.log("Appended OAuth vars to apps/web/.env.local and apps/mobile/.env");
+  console.log("Appended OAuth vars to apps/admin-web/.env.local and apps/client-mobile/.env");
 
   const vercelToken = process.env.VERCEL_TOKEN;
   if (vercelToken && (googleAuth || appleAuth)) {
@@ -817,7 +817,7 @@ async function main() {
         framework: "nextjs",
         installCommand: "npm install",
         buildCommand: "npm run build:web",
-        outputDirectory: "apps/web/.next",
+        outputDirectory: "apps/admin-web/.next",
       }),
     });
     if (!vercelRes.ok) {
@@ -844,7 +844,7 @@ async function main() {
     ["counseliq", slug],
     ["CounselIQ", displayName.trim()],
     ["com.counseliq", bundlePrefix],
-    ["@counseliq/app", `@${slug}/app`],
+    ["@counseliq/admin", `@${slug}/app`],
     ["@counseliq/ui", `@${slug}/ui`],
     ["@counseliq/course-schema", `@${slug}/course-schema`],
     ["app-template", slug],
@@ -898,7 +898,7 @@ async function main() {
   }
 
   // app.json: set name (display), slug (slug-mobile), scheme (slug), bundleIdentifier, package, OAuth plugins
-  const appJsonPath = path.join(ROOT, "apps/mobile/app.json");
+  const appJsonPath = path.join(ROOT, "apps/client-mobile/app.json");
   try {
     const appJson = JSON.parse(
       await fs.readFile(appJsonPath, "utf8")
@@ -929,12 +929,12 @@ async function main() {
   }
 
   if (Object.keys(webEnvUpdates).length) {
-    await writeEnvFile(path.join(ROOT, "apps/web/.env.local"), webEnvUpdates);
-    console.log("Wrote apps/web/.env.local");
+    await writeEnvFile(path.join(ROOT, "apps/admin-web/.env.local"), webEnvUpdates);
+    console.log("Wrote apps/admin-web/.env.local");
   }
   if (Object.keys(mobileEnvUpdates).length) {
-    await writeEnvFile(path.join(ROOT, "apps/mobile/.env"), mobileEnvUpdates);
-    console.log("Wrote apps/mobile/.env");
+    await writeEnvFile(path.join(ROOT, "apps/client-mobile/.env"), mobileEnvUpdates);
+    console.log("Wrote apps/client-mobile/.env");
   }
 
   // --- Vercel env vars ---
@@ -1091,7 +1091,7 @@ async function main() {
     console.log("  1. Clerk, Convex, and Vercel are configured for local dev");
   }
   console.log("  2. Run: npm run dev:all");
-  console.log("  3. Mobile: cd apps/mobile && npx expo run:ios (first time only)");
+  console.log("  3. Mobile: cd apps/client-mobile && npx expo run:ios (first time only)");
   console.log("  4. Sign up at /signup and verify /dashboard loads");
   } finally {
     prompter.close();

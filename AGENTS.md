@@ -1,17 +1,19 @@
 # Agent Instructions
 
-Cross-platform monorepo: Next.js (web) + Expo (mobile) sharing Convex backend, auth, and UI via workspace packages.
+Product-first monorepo: admin is Next.js-only, client is Next.js + Expo. Both products share Convex backend and UI via workspace packages.
 
 ## Architecture
 
 ```
 counsel-iq/
 ├── apps/
-│   ├── web/          # Next.js 15 App Router — thin routes + platform wiring only
-│   └── mobile/       # Expo Router — thin routes + platform wiring only
+│   ├── admin-web/     # Admin Next.js 15 App Router — thin routes + platform wiring only
+│   ├── client-web/    # Client Next.js 15 App Router — thin routes + platform wiring only
+│   └── client-mobile/ # Client Expo Router — thin routes + platform wiring only
 ├── packages/
 │   ├── ui/           # Design system (Gluestack v5 + NativeWind v5)
-│   ├── app/          # Product code: screens, auth, Convex client
+│   ├── admin/        # Admin product code: screens, auth, Convex client
+│   ├── client/       # Client product code: screens, auth, Convex client
 │   └── course-schema/ # Zod contracts: course definition + ingestion manifest
 ├── services/
 │   └── converter/    # Node/TS document converter (Fly.io/Docker; LibreOffice + poppler)
@@ -32,25 +34,25 @@ counsel-iq/
 - **Exports:** add new public components to `packages/ui/index.ts`; export `global.css` for web via `@counseliq/ui/global.css`
 - **v5 component APIs:** Button uses `variant` (`default`, `outline`, `destructive`, …) — not `action="primary"`. Alert uses `variant="default" | "destructive"`. See [v5 docs](https://v5.gluestack.io/ui/docs).
 
-### `@counseliq/app` — product layer
+### `@counseliq/admin` / `@counseliq/client` — product layers
 
 - **Contains:**
-  - `src/screens/` — full screen components (login, signup, onboarding, admin, workflow gates)
+  - `src/screens/` — full screen components for that product
   - `src/components/` — `AuthGuard`, `AppErrorBoundary`, `Screen`, `AuthScreen`
   - `src/auth/` — Clerk hooks, `AuthProvider`, `useAuth`
   - `src/db/` — `createConvexClient`, re-export of `api` from `convex/_generated`
 - **May depend on:** `@counseliq/ui`, `solito`, `convex`, `react-native`
 - **Screens must:** compose `@counseliq/ui` components; use `useAuth` from `../auth`; use Solito for navigation (`Link`, `useRouter`, `TextLink`); wrap protected screens in `AuthGuard`; wrap full-screen layouts in `Screen` (or `AuthScreen` for auth flows) for safe-area padding
-- **Exports:** add screens to `packages/app/index.ts`
+- **Exports:** add screens to the product package `index.ts`
 
-### `apps/web` and `apps/mobile` — platform shells
+### App Shells
 
 - **Routes are thin re-exports.** Do not put screen UI or business logic here.
-- **Both apps wrap the tree with `UIProvider`** from `@counseliq/ui` (inside `providers.tsx` / `_layout.tsx`)
+- **All apps wrap the tree with `UIProvider`** from `@counseliq/ui` (inside `providers.tsx` / `_layout.tsx`)
 - **Platform-only code stays in apps:**
   - Web: `providers.tsx`, `convex-client-provider.tsx`, `middleware.ts` (Clerk), Sentry/PostHog init
   - Mobile: `_layout.tsx` (Clerk + Convex), `babel.config.js`, `metro.config.js`. Uses **expo-dev-client**
-- **Web shared screens:** `'use client'` required on pages that re-export from `@counseliq/app` (they use React Native via `react-native-web`)
+- **Web shared screens:** `'use client'` required on pages that re-export from `@counseliq/admin` or `@counseliq/client` (they use React Native via `react-native-web`)
 
 ## Adding a new feature
 
@@ -62,17 +64,18 @@ counsel-iq/
 
 ### New screen
 
-1. Create `packages/app/src/screens/my-screen.tsx`
+1. Create `packages/admin/src/screens/my-screen.tsx` or `packages/client/src/screens/my-screen.tsx`
 2. Compose `@counseliq/ui` components
 3. Wrap the root layout in `Screen` from `../components/screen` (applies safe-area insets on mobile)
-4. Export from `packages/app/index.ts`
+4. Export from the product package `index.ts`
 5. Add thin route:
-   - Web: `apps/web/app/my-route/page.tsx` → `export { MyScreen as default } from '@counseliq/app'`
-   - Mobile: `apps/mobile/app/my-route.tsx` → same re-export
+   - Admin web: `apps/admin-web/app/my-route/page.tsx` → `export { MyScreen as default } from '@counseliq/admin'`
+   - Client web: `apps/client-web/app/my-route/page.tsx` → `export { MyScreen as default } from '@counseliq/client'`
+   - Client mobile: `apps/client-mobile/app/my-route.tsx` → same re-export from `@counseliq/client`
 
 ### Safe area (mobile + notched web)
 
-- App shells must wrap the tree in `SafeAreaProvider` (`apps/mobile/app/_layout.tsx`, `apps/web/app/providers.tsx`).
+- App shells must wrap the tree in `SafeAreaProvider` (`apps/client-mobile/app/_layout.tsx`, `apps/admin-web/app/providers.tsx`).
 - Shared screens must **not** hand-roll status bar padding. Use `Screen` (default top + bottom insets) or `AuthScreen` for login/signup flows.
 - Do not use raw `paddingTop: 20` or `useSafeAreaInsets()` in individual screens — keep inset logic in `Screen` / `AuthScreen`.
 
@@ -80,13 +83,13 @@ counsel-iq/
 
 1. Add to `convex/` at repo root (not inside apps)
 2. Run `npm run convex:dev` to regenerate types
-3. Import via `@counseliq/app/db/api` or `@counseliq/app`
+3. Import via `@counseliq/admin/db/api` or `@counseliq/admin`
 
 ### New auth behavior
 
 1. Configure Clerk dashboard + `CLERK_JWT_ISSUER_DOMAIN` on Convex
 2. Update `convex/auth.ts` for user mapping if needed
-3. Update `packages/app/src/auth/createAuth.tsx` for client context changes
+3. Update the product package auth context if needed
 
 ### Optional integrations
 
@@ -100,7 +103,7 @@ counsel-iq/
 Use structured error codes — never parse or display raw `error.message`.
 
 1. **Backend** (`convex/errors.ts`): throw `appError(AppErrorCode.X)` for expected failures. Codes live in `AppErrorCode`; handlers must not embed user-facing strings.
-2. **Frontend** (`packages/app/src/errors/messages.ts`): map each code to UI copy in `APP_ERROR_MESSAGES`.
+2. **Frontend** (`packages/admin/src/errors/messages.ts` or `packages/client/src/errors/messages.ts`): map each code to UI copy in `APP_ERROR_MESSAGES`.
 3. **UI**: always use `getUserFacingErrorMessage(error, fallback)` — resolves by code, falls back for unknown errors.
 
 ```typescript
@@ -108,7 +111,7 @@ Use structured error codes — never parse or display raw `error.message`.
 import { AppErrorCode, appError } from "./errors";
 if (!user) appError(AppErrorCode.INVALID_CREDENTIALS);
 
-// packages/app screen
+// product package screen
 catch (error) {
   setError(getUserFacingErrorMessage(error, "Login failed. Check your email and password."));
 }
@@ -126,23 +129,24 @@ catch (error) {
 
 | Command | Purpose |
 |---------|---------|
-| `npm run dev` / `dev:web` | Next.js dev server |
-| `npm run dev:mobile` | Metro dev server (requires dev client — run `npx expo run:ios` first) |
-| `npm run build:mobile:dev` | EAS development build |
-| `npm run dev:all` | Convex + web + mobile in parallel |
+| `npm run dev` / `dev:web` | Admin Next.js dev server |
+| `npm run dev:client:web` | Client Next.js dev server |
+| `npm run dev:client:mobile` | Metro dev server (requires dev client — run `npx expo run:ios` first) |
+| `npm run build:client:mobile:dev` | EAS development build |
+| `npm run dev:all` | Convex + admin web + client web + client mobile in parallel |
 | `npm run dev:stack` | Full local ingestion stack: MinIO + converter (Docker) + local Convex + web |
 | `npm run walkthrough:local` | E2e pipeline run against the `dev:stack` local deployment |
 | `npm run convex:dev` | Convex dev + codegen |
-| `npm run build:web` | Production web build |
+| `npm run build:admin:web` / `build:client:web` | Production web builds |
 | `npm run typecheck` | Turborepo typecheck across workspaces |
 | `npm run init` | Interactive new project setup (Convex + Clerk + Vercel) |
 | `npm run env:sync:convex-email` | Push Resend env vars to Convex |
 
 ## Environment variables
 
-- Web: `NEXT_PUBLIC_CONVEX_URL` in `apps/web/.env.local` (see `apps/web/.env.example`)
-- Mobile: `EXPO_PUBLIC_CONVEX_URL` in `apps/mobile/.env` (see `apps/mobile/.env.example`)
-- Use the **same** Convex deployment URL for both apps
+- Web: `NEXT_PUBLIC_CONVEX_URL` in `apps/admin-web/.env.local` and `apps/client-web/.env.local`
+- Mobile: `EXPO_PUBLIC_CONVEX_URL` in `apps/client-mobile/.env` (see `apps/client-mobile/.env.example`)
+- Use the **same** Convex deployment URL for client web and client mobile
 - Ingestion (Convex deployment, `npx convex env set`): `OBJECT_STORE_ENDPOINT`, `OBJECT_STORE_REGION`, `OBJECT_STORE_BUCKET`, `OBJECT_STORE_ACCESS_KEY_ID`, `OBJECT_STORE_SECRET_ACCESS_KEY`, `CONVERTER_URL`, `CONVERTER_CALLBACK_SECRET`, optional `CONVERTER_TIMEOUT_MS` / `CONVERTER_CALLBACK_URL`
 - Converter (Fly secrets / docker env): same `OBJECT_STORE_*` set plus `CONVERTER_CALLBACK_SECRET` and `CONVEX_CALLBACK_URL` — see `convex/pipeline/README.md` for setup steps
 
@@ -157,18 +161,18 @@ This repo uses **NativeWind v5 + Tailwind CSS v4** with semantic tokens. Key fil
 | `gluestack-ui.config.json` | CLI monorepo config (repo root) |
 | `packages/ui/src/nativewind-compat.ts` | `cssInterop` shim for generated components |
 
-Platform config: `apps/web/postcss.config.js`, `apps/mobile/metro.config.js`, `apps/mobile/babel.config.js`.
+Platform config: `apps/admin-web/postcss.config.js`, `apps/client-mobile/metro.config.js`, `apps/client-mobile/babel.config.js`.
 
 Full LLM-oriented docs: [gluestack.io/llms.txt](https://gluestack.io/llms.txt) · Component API: [v5.gluestack.io](https://v5.gluestack.io/ui/docs)
 
 ## Do not
 
-- Put screen UI in `apps/web` or `apps/mobile` — use `packages/app`
+- Put screen UI in app shells — use `packages/admin` or `packages/client`
 - Put business logic or Convex hooks in `packages/ui`
 - Add raw StyleSheet-based components in `packages/ui` — use Gluestack + NativeWind
 - Use v3 color classes (`text-typography-500`, `bg-background-0`, `border-outline-200`, `action="primary"`) — v5 uses semantic tokens (`text-muted-foreground`, `bg-card`, `border-border`, `variant="default"`)
 - Add `tailwind.config.js` or `nativewind/babel` — v5 is CSS-first via PostCSS
-- Create separate `auth` or `db` packages (consolidated in `@counseliq/app`)
+- Create separate `auth` or `db` packages (consolidated in `@counseliq/admin`)
 - Use DOM-only components (`div`, Tailwind class strings on web-only elements) in shared screens — use RN primitives / Gluestack for cross-platform
 - Commit unless explicitly asked
 - Edit generated files in `convex/_generated/`

@@ -8,13 +8,13 @@ alwaysApply: true
 Three layers — respect boundaries:
 
 1. **`packages/ui`** — Gluestack v5 design system (NativeWind v5 + Tailwind CSS v4). Components + theme only. No screens, auth, Convex, or Solito.
-2. **`packages/app`** — screens, auth, db client. Composes `@app-template/ui`.
-3. **`apps/web` + `apps/mobile`** — thin routes and platform wiring only.
+2. **`packages/admin` + `packages/client`** — product screens, auth, and db clients. Compose `@counseliq/ui`.
+3. **`apps/admin-web`, `apps/client-web`, `apps/client-mobile`** — thin routes and platform wiring only.
 
 When adding UI:
 - Reusable presentational piece → `packages/ui`
-- Full screen or feature logic → `packages/app/src/screens`
-- Route file → one-line re-export in `apps/web` or `apps/mobile`
+- Full screen or feature logic → `packages/admin/src/screens` or `packages/client/src/screens`
+- Route file → one-line re-export in the relevant app shell
 
 Convex backend lives in repo-root `convex/`. Never duplicate backend logic in apps.
 

@@ -12,7 +12,7 @@ A production-ready universal counseliq with Next.js 15, Expo (React Native), Con
 - **Convex** — Real-time database, notification outbox, Resend email, push notifications
 - **PostHog + Sentry** — Optional analytics and error monitoring (no-op without env vars)
 - **Gluestack UI v5** — Universal component library in `@counseliq/ui` (NativeWind v5 / Tailwind v4)
-- **Shared packages** — `@counseliq/ui` (design system) and `@counseliq/app` (screens, auth, db)
+- **Shared packages** — `@counseliq/ui` (design system) and `@counseliq/admin` (screens, auth, db)
 - **Turborepo** — Cached builds and parallel dev tasks
 - **Admin workflow** — `/admin` workspace with run orchestration and gate reviews
 - **Vercel + EAS** — Web deploy config and mobile build profiles
@@ -70,7 +70,7 @@ The wizard asks for a display name and bundle ID prefix (e.g. `com.mycompany`), 
 2. Creates a **Vercel** project and sets env vars
 3. Creates a **Clerk** application (via Clerk CLI or Platform API), sets up the Convex JWT template, and writes Clerk keys locally + on Vercel/Convex
 
-After init, set your Apple Team ID in `apps/mobile/app.json` if building for iOS:
+After init, set your Apple Team ID in `apps/client-mobile/app.json` if building for iOS:
 
 ```json
 "ios": {
@@ -85,8 +85,8 @@ If you prefer to set things up yourself:
 ```bash
 npm run convex:dev   # log in, create a Convex project, copy the deployment URL
 
-cp apps/web/.env.example apps/web/.env.local
-cp apps/mobile/.env.example apps/mobile/.env
+cp apps/admin-web/.env.example apps/admin-web/.env.local
+cp apps/client-mobile/.env.example apps/client-mobile/.env
 # Set NEXT_PUBLIC_CONVEX_URL and EXPO_PUBLIC_CONVEX_URL to the same Convex URL
 ```
 
@@ -113,8 +113,8 @@ npx convex deploy
 
 **2. Local env files** — ensure these exist:
 
-- `apps/web/.env.local` — `NEXT_PUBLIC_CONVEX_URL`, `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`
-- `apps/mobile/.env` — `EXPO_PUBLIC_CONVEX_URL`, `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY`
+- `apps/admin-web/.env.local` — `NEXT_PUBLIC_CONVEX_URL`, `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`
+- `apps/client-mobile/.env` — `EXPO_PUBLIC_CONVEX_URL`, `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY`
 
 **3. Vercel** — connect **your** GitHub repo (not the template repo), then:
 
@@ -122,7 +122,7 @@ npx convex deploy
 npm run deploy          # or: npx vercel deploy --prod from repo root
 ```
 
-If Vercel shows "No framework detected", confirm root `vercel.json` has `buildCommand: npm run build:web` and `outputDirectory: apps/web/.next`.
+If Vercel shows "No framework detected", confirm root `vercel.json` has `buildCommand: npm run build:web` and `outputDirectory: apps/admin-web/.next`.
 
 **4. Local dev** (works without Vercel deploy):
 
@@ -135,7 +135,7 @@ npm run dev:all
 Mobile uses **development builds** (`expo-dev-client`), not Expo Go.
 
 ```bash
-cd apps/mobile
+cd apps/client-mobile
 npx expo run:ios        # iOS simulator (requires Xcode)
 # or: npx expo run:android
 # or: npx eas build --profile development --platform ios
@@ -206,7 +206,7 @@ counseliq/
 
 This template uses **development builds** (`expo-dev-client`), not Expo Go. OAuth (Google/Apple) and native modules require your app's bundle identifier.
 
-**First time setup** (from `apps/mobile`):
+**First time setup** (from `apps/client-mobile`):
 
 ```bash
 # Local build (requires Xcode or Android Studio)
@@ -221,13 +221,13 @@ Then from repo root, `npm run dev:mobile` starts Metro. Open the dev client app 
 
 Rebuild the dev client when you add or change native dependencies.
 
-Add app icons and splash images in `apps/mobile/app.json` when you're ready to ship (see [Expo app config](https://docs.expo.dev/develop/user-interface/splash-screen-and-app-icon/)).
+Add app icons and splash images in `apps/client-mobile/app.json` when you're ready to ship (see [Expo app config](https://docs.expo.dev/develop/user-interface/splash-screen-and-app-icon/)).
 
 ## Authentication
 
 - **Web:** `/signup`, `/login`, `/admin` (protected via `AuthGuard` + `AdminGuard`)
 - **Mobile:** Same flows; token in `expo-secure-store`
-- Auth backend: `convex/auth.ts`; client: `packages/app/src/auth/`
+- Auth backend: `convex/auth.ts`; clients: `packages/admin/src/auth/` and `packages/client/src/auth/`
 
 ## Example: Admin workflow
 
@@ -250,22 +250,22 @@ After logging in, visit `/admin` to manage run generation and gate reviews. Back
 
 ## Environment Variables
 
-See `apps/web/.env.example` and `apps/mobile/.env.example`. Both apps must use the **same** Convex deployment URL.
+See `apps/admin-web/.env.example` and `apps/client-mobile/.env.example`. Both apps must use the **same** Convex deployment URL.
 
 ## Deployment
 
 ### Web (Vercel)
 
-Import the repo with **Root Directory** at repo root. Set `NEXT_PUBLIC_CONVEX_URL`. Root `vercel.json` builds from `apps/web`.
+Import the repo with **Root Directory** at repo root. Set `NEXT_PUBLIC_CONVEX_URL`. Root `vercel.json` builds from `apps/admin-web`.
 
 ### Mobile (EAS)
 
-`apps/mobile/eas.json` includes development, preview, and production profiles. Set `EXPO_PUBLIC_CONVEX_URL` via EAS environment variables.
+`apps/client-mobile/eas.json` includes development, preview, and production profiles. Set `EXPO_PUBLIC_CONVEX_URL` via EAS environment variables.
 
 Build a development client before first mobile run:
 
 ```bash
-cd apps/mobile && npx eas build --profile development --platform ios
+cd apps/client-mobile && npx eas build --profile development --platform ios
 ```
 
 Or build locally: `npx expo run:ios` / `npx expo run:android`.

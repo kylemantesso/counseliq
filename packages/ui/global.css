@@ -4,9 +4,11 @@
 @import "nativewind/theme";
 
 @source "./src/**/*.{js,jsx,ts,tsx}";
-@source "../app/src/**/*.{js,jsx,ts,tsx}";
-@source "../../apps/web/**/*.{js,jsx,ts,tsx}";
-@source "../../apps/mobile/**/*.{js,jsx,ts,tsx}";
+@source "../admin/src/**/*.{js,jsx,ts,tsx}";
+@source "../client/src/**/*.{js,jsx,ts,tsx}";
+@source "../../apps/admin-web/**/*.{js,jsx,ts,tsx}";
+@source "../../apps/client-web/**/*.{js,jsx,ts,tsx}";
+@source "../../apps/client-mobile/**/*.{js,jsx,ts,tsx}";
 
 @layer theme {
   :root {

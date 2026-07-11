@@ -1,12 +1,12 @@
 ---
 description: PostHog product analytics conventions for shared app code
-globs: packages/app/**
+globs: packages/{admin,client}/**
 alwaysApply: false
 ---
 
 # Product analytics (PostHog)
 
-Product analytics lives in `packages/app/src/analytics/`. Platform init stays in `apps/web` (`instrumentation-client.ts`) and `apps/mobile` (`PostHogRuntime` in `_layout.tsx`).
+Product analytics lives in each product package under `src/analytics/`. Platform init stays in app shells (`instrumentation-client.ts` on web and `PostHogRuntime` in mobile `_layout.tsx`).
 
 ## APIs (shared code)
 
@@ -16,7 +16,7 @@ Product analytics lives in `packages/app/src/analytics/`. Platform init stays in
 | `AnalyticsEvent` | Named constants — never hard-code event strings |
 | `useAnalytics()` | Rare — only when you need `identify` / `reset` / low-level capture |
 
-Import from `@app-template/app` or relative `../analytics/...`.
+Import from the product package (`@counseliq/admin` / `@counseliq/client`) or relative `../analytics/...`.
 
 ## Do / don't
 

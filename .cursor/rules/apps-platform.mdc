@@ -1,10 +1,10 @@
 ---
-description: Platform app conventions for apps/web and apps/mobile
+description: Platform app conventions for app shells
 globs: apps/**
 alwaysApply: false
 ---
 
-# apps/web and apps/mobile — platform shells
+# App Shells
 
 ## Routes must stay thin
 
@@ -24,8 +24,8 @@ Do not add screen UI, forms, or business logic in route files.
 
 Mobile uses **expo-dev-client**, not Expo Go. OAuth and native modules require a dev build with the app's bundle ID.
 
-- First run: `cd apps/mobile && npx expo run:ios` (or `eas build --profile development`)
-- Daily dev: `npm run dev:mobile` from repo root (Metro for dev client)
+- First run: `cd apps/client-mobile && npx expo run:ios` (or `eas build --profile development`)
+- Daily dev: `npm run dev:client:mobile` from repo root (Metro for dev client)
 - Rebuild dev client when adding/changing native dependencies
 
 ## Auth wiring pattern
@@ -44,7 +44,7 @@ Platform routes and callbacks must never render `error.message` directly. Use `g
 
 Both apps import `@app-template/ui/global.css`. Do not add `tailwind.config.js` or `nativewind/babel`.
 
-- **Web:** PostCSS via `@tailwindcss/postcss` (`apps/web/postcss.config.js`). `next.config.mjs` transpiles `nativewind`, `react-native-css`, `@gluestack-ui/*` and defines `__DEV__` for RN-web SSR. No `@gluestack/ui-next-adapter`.
+- **Web:** PostCSS via `@tailwindcss/postcss` (`apps/admin-web/postcss.config.js`, `apps/client-web/postcss.config.js`). `next.config.mjs` transpiles `nativewind`, `react-native-css`, `@gluestack-ui/*` and defines `__DEV__` for RN-web SSR. No `@gluestack/ui-next-adapter`.
 - **Mobile:** Metro uses `withNativewind` from `nativewind/metro` with `input` pointing to `packages/ui/global.css`. Babel uses `babel-preset-expo` only (no NativeWind babel plugin). Rebuild dev client after native/Metro config changes.
 
 Types: `react-native-css-env.d.ts` in each app (not `nativewind-env.d.ts`).
@@ -52,4 +52,4 @@ Types: `react-native-css-env.d.ts` in each app (not `nativewind-env.d.ts`).
 ## Web + react-native-web
 
 - Shared screens transpile via `next.config.mjs` (`transpilePackages`, `react-native-web` alias).
-- Do not import `@app-template/ui` or `@app-template/app` in Server Components without a `'use client'` boundary.
+- Do not import `@counseliq/ui`, `@counseliq/admin`, or `@counseliq/client` in Server Components without a `'use client'` boundary.

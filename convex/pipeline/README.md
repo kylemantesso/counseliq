@@ -376,7 +376,7 @@ price sheet's tier rate and `verifiedAt` honest.
 ## Player architecture (M5)
 
 The gate-3 studio (`/admin/runs/[id]/gate-3`) embeds the course player from
-`@counseliq/app` driving `@counseliq/cards`:
+`@counseliq/admin` driving `@counseliq/cards`:
 
 - **Cards are pure functions of `(props, timing, theme)`** — the timing
   contract is `{ localMs, progress, beatsRevealed, reducedMotion }` and a

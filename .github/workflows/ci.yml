@@ -26,8 +26,14 @@ jobs:
       - name: Test
         run: npm test
 
-      - name: Build web
-        run: npm run build:web
+      - name: Build admin web
+        run: npm run build:admin:web
+        env:
+          NEXT_PUBLIC_CONVEX_URL: https://placeholder.convex.cloud
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_placeholder_for_ci_build
+
+      - name: Build client web
+        run: npm run build:client:web
         env:
           NEXT_PUBLIC_CONVEX_URL: https://placeholder.convex.cloud
           NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_placeholder_for_ci_build

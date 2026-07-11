@@ -1,6 +1,6 @@
 import { ConvexError } from "convex/values";
 
-/** Stable codes for expected failures — UI maps these to copy in packages/app. */
+/** Stable codes for expected failures — product packages map these to UI copy. */
 export const AppErrorCode = {
   UNAUTHORIZED: "UNAUTHORIZED",
   TASK_TITLE_REQUIRED: "TASK_TITLE_REQUIRED",

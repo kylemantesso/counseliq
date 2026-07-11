@@ -89,7 +89,7 @@ function rootEnvLocalValue(key) {
 function clerkIssuerFromWebEnv() {
   try {
     const envFile = readFileSync(
-      path.join(ROOT, "apps/web/.env.local"),
+      path.join(ROOT, "apps/admin-web/.env.local"),
       "utf8"
     );
     const match = envFile.match(
@@ -140,7 +140,7 @@ function setConvexEnvVars() {
     vars.CLERK_JWT_ISSUER_DOMAIN = issuer;
   } else {
     console.warn(
-      "! Could not derive CLERK_JWT_ISSUER_DOMAIN from apps/web/.env.local — set it manually if the push fails."
+      "! Could not derive CLERK_JWT_ISSUER_DOMAIN from apps/admin-web/.env.local — set it manually if the push fails."
     );
   }
   if (process.env.ADMIN_EMAILS) {
@@ -274,7 +274,7 @@ async function main() {
     ["convex", "dev", "--tail-logs", "always", "--env-file", LOCAL_ENV_FILE],
     { cwd: ROOT, env: convexEnv }
   );
-  const webDev = spawn("npm", ["run", "dev", "--workspace=web"], {
+  const webDev = spawn("npm", ["run", "dev", "--workspace=@counseliq/admin-web"], {
     cwd: ROOT,
     env: {
       ...process.env,

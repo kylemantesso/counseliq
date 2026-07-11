@@ -1,0 +1,32 @@
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/preflight.css" layer(base);
+@import "tailwindcss/utilities.css";
+@import "nativewind/theme";
+
+@theme {
+  --color-primary: #1f1e1b;
+  --color-primary-foreground: #ffffff;
+  --color-card: #ffffff;
+  --color-secondary: #efede5;
+  --color-secondary-foreground: #55544e;
+  --color-background: #f3f2ed;
+  --color-popover: #ffffff;
+  --color-popover-foreground: #1b1b18;
+  --color-muted: #f1f0ea;
+  --color-muted-foreground: #71706a;
+  --color-destructive: #b0392c;
+  --color-destructive-muted: #f7e7e4;
+  --color-destructive-muted-foreground: #b0392c;
+  --color-foreground: #1b1b18;
+  --color-border: #e5e3da;
+  --color-input: #e0ddd3;
+  --color-ring: #1f1e1b;
+  --color-accent: #fbf0dc;
+  --color-accent-foreground: #8a6412;
+  --color-success: #1e7a46;
+  --color-success-foreground: #ffffff;
+  --color-success-muted: #e5f1e8;
+  --color-success-muted-foreground: #1e7a46;
+  --font-sans: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-body: "Helvetica Neue", Helvetica, Arial, sans-serif;
+}

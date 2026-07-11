@@ -1,0 +1,133 @@
+name: Develop deploy
+
+# Manual only (or run `npm run workflow:develop` from apps/client-mobile): first VERIFY the
+# code builds, then per platform automatically choose the cheapest correct path:
+#   - fingerprint UNCHANGED (a build already exists) -> publish an instant OTA
+#     update to the `develop` channel. Testers get it on next launch.
+#   - fingerprint CHANGED (no matching build) -> run a fresh native build and
+#     submit it to TestFlight (iOS) / Play internal track (Android).
+#
+# Nothing deploys unless `verify` passes, so a broken commit never reaches
+# testers (who are on prod data). OTA covers JS/asset changes; native changes
+# change the fingerprint and force a rebuild. The fingerprint runtimeVersion
+# guarantees an OTA is never delivered to an incompatible binary.
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  cancel_in_progress: true
+  group: ${{ workflow.filename }}-${{ github.ref }}
+
+jobs:
+  verify:
+    name: Verify (typecheck + JS bundle)
+    environment: preview
+    steps:
+      - uses: eas/checkout
+      - uses: eas/install_node_modules
+      - name: Typecheck (shared packages)
+        run: |
+          cd "$(git rev-parse --show-toplevel)"
+          npm run typecheck
+      - name: Verify marketing version alignment
+        run: |
+          cd "$(git rev-parse --show-toplevel)"
+          APP_VERSION=$(node -p "require('./apps/client-mobile/app.json').expo.version")
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          if [ "$APP_VERSION" != "$PKG_VERSION" ]; then
+            echo "Version mismatch: app.json=$APP_VERSION package.json=$PKG_VERSION"
+            echo "Run: node scripts/bump-version.mjs <patch|minor|major>"
+            exit 1
+          fi
+      - name: Export mobile JS bundle
+        run: |
+          cd "$(git rev-parse --show-toplevel)/apps/client-mobile"
+          # Only bundle the native platforms this workflow ships (iOS + Android).
+          # Web is served by apps/client-web (Next.js); exporting the mobile static web
+          # target here adds no value and fails in the EAS sandbox because Metro
+          # cannot compute the SHA-1 of NativeWind's react-native-css-interop
+          # .cache/web.css file generated during static rendering.
+          npx expo export --platform ios --platform android
+
+  fingerprint:
+    name: Fingerprint native layer
+    needs: [verify]
+    type: fingerprint
+    environment: preview
+
+  get_ios_build:
+    name: Check for existing iOS build
+    needs: [fingerprint]
+    type: get-build
+    params:
+      platform: ios
+      profile: preview
+      fingerprint_hash: ${{ needs.fingerprint.outputs.ios_fingerprint_hash }}
+
+  get_android_build:
+    name: Check for existing Android build
+    needs: [fingerprint]
+    type: get-build
+    params:
+      platform: android
+      profile: preview
+      fingerprint_hash: ${{ needs.fingerprint.outputs.android_fingerprint_hash }}
+
+  build_ios:
+    name: Build iOS (native changed)
+    needs: [get_ios_build]
+    if: ${{ !needs.get_ios_build.outputs.build_id }}
+    type: build
+    environment: preview
+    params:
+      platform: ios
+      profile: preview
+
+  build_android:
+    name: Build Android (native changed)
+    needs: [get_android_build]
+    if: ${{ !needs.get_android_build.outputs.build_id }}
+    type: build
+    environment: preview
+    params:
+      platform: android
+      profile: preview
+
+  submit_ios:
+    name: Submit iOS to TestFlight
+    needs: [build_ios]
+    type: submit
+    params:
+      build_id: ${{ needs.build_ios.outputs.build_id }}
+      profile: preview
+
+  submit_android:
+    name: Submit Android to Play (internal)
+    needs: [build_android]
+    type: submit
+    params:
+      build_id: ${{ needs.build_android.outputs.build_id }}
+      profile: preview
+
+  publish_ios_update:
+    name: Publish iOS OTA to develop
+    needs: [get_ios_build]
+    if: ${{ needs.get_ios_build.outputs.build_id }}
+    type: update
+    environment: preview
+    params:
+      channel: develop
+      platform: ios
+      message: ${{ github.event.head_commit.message }}
+
+  publish_android_update:
+    name: Publish Android OTA to develop
+    needs: [get_android_build]
+    if: ${{ needs.get_android_build.outputs.build_id }}
+    type: update
+    environment: preview
+    params:
+      channel: develop
+      platform: android
+      message: ${{ github.event.head_commit.message }}

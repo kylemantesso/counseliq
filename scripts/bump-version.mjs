@@ -32,9 +32,11 @@ const next =
 
 const packageJsonPaths = [
   "package.json",
-  "apps/web/package.json",
-  "apps/mobile/package.json",
-  "packages/app/package.json",
+  "apps/admin-web/package.json",
+  "apps/client-web/package.json",
+  "apps/client-mobile/package.json",
+  "packages/admin/package.json",
+  "packages/client/package.json",
   "packages/ui/package.json",
 ];
 
@@ -48,7 +50,15 @@ for (const rel of packageJsonPaths) {
 const lockPath = path.join(rootDir, "package-lock.json");
 const lock = JSON.parse(fs.readFileSync(lockPath, "utf8"));
 lock.version = next;
-const lockWorkspaceKeys = ["", "apps/mobile", "apps/web", "packages/app", "packages/ui"];
+const lockWorkspaceKeys = [
+  "",
+  "apps/admin-web",
+  "apps/client-web",
+  "apps/client-mobile",
+  "packages/admin",
+  "packages/client",
+  "packages/ui",
+];
 for (const key of lockWorkspaceKeys) {
   if (lock.packages?.[key]) {
     lock.packages[key].version = next;
@@ -56,7 +66,7 @@ for (const key of lockWorkspaceKeys) {
 }
 fs.writeFileSync(lockPath, `${JSON.stringify(lock, null, 2)}\n`);
 
-const appJsonPath = path.join(rootDir, "apps/mobile/app.json");
+const appJsonPath = path.join(rootDir, "apps/client-mobile/app.json");
 const appJson = JSON.parse(fs.readFileSync(appJsonPath, "utf8"));
 if (appJson.expo) {
   appJson.expo.version = next;
