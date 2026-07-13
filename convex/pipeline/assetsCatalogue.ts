@@ -444,10 +444,10 @@ export const adminCreateInstitution = mutation({
     const institutionId = await ctx.db.insert("institutions", {
       name,
       brandTokens: {
-        placeholder: true,
         primaryColor: "#1a365d",
         secondaryColor: "#c53030",
-        fontFamily: "system-ui",
+        titleFontFamily: "system-ui",
+        bodyFontFamily: "system-ui",
       },
       pronunciationLexicon: { placeholder: true },
       market: args.market?.trim() || "AU",
@@ -508,6 +508,34 @@ export const adminUpdateInstitution = mutation({
     });
 
     return { institutionId: args.institutionId };
+  },
+});
+
+export const adminGenerateInstitutionLogoUploadUrl = mutation({
+  args: {
+    institutionId: v.id("institutions"),
+  },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+    const institution = await ctx.db.get(args.institutionId);
+    if (!institution) {
+      appError(AppErrorCode.INSTITUTION_NOT_FOUND);
+    }
+    return { uploadUrl: await ctx.storage.generateUploadUrl() };
+  },
+});
+
+export const adminResolveInstitutionLogoStorageUrl = mutation({
+  args: {
+    storageId: v.id("_storage"),
+  },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+    const logoUrl = await ctx.storage.getUrl(args.storageId);
+    if (!logoUrl) {
+      appError(AppErrorCode.INSTITUTION_LOGO_NOT_FOUND);
+    }
+    return { logoUrl, logoStorageId: args.storageId };
   },
 });
 

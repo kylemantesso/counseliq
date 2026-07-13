@@ -11,7 +11,6 @@ import {
   CAPTION_SAFE_HEIGHT,
   CardRenderer,
   MediaModeProvider,
-  STAGE_HEIGHT,
   STAGE_WIDTH,
   brandThemeFromTokens,
   cssVar,
@@ -86,17 +85,18 @@ function CaptionOverlay({ timing, clockMs }: { timing: UnitTiming; clockMs: numb
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        padding: "0 18px",
+        boxSizing: "border-box",
+        padding: "0 18px 8px",
       }}
     >
       <div
         style={{
           background: cssVar("scrim"),
           color: cssVar("photoInk"),
-          fontSize: 14.5,
-          lineHeight: 1.4,
+          fontSize: 14,
+          lineHeight: 1.36,
           textAlign: "center",
-          padding: "10px 16px",
+          padding: "8px 16px 11px",
           borderRadius: 8,
           maxWidth: "100%",
           fontFamily: cssVar("fontText"),
@@ -163,7 +163,8 @@ export function UnitContentComposition(props: UnitContentCompositionProps) {
   const active = deriveActiveCard(props.timing, clockMs, { reducedMotion: false });
   const card =
     active.cardIndex === null ? null : props.unit.content.cards[active.cardIndex] ?? null;
-  const stageScale = Math.min(video.width / STAGE_WIDTH, video.height / STAGE_HEIGHT);
+  const stageScale = video.width / STAGE_WIDTH;
+  const stageHeight = video.height / stageScale;
   const theme = brandThemeFromTokens(props.themeTokens);
   const visualAssetUrls = visualAssetUrlsForUnit({
     unit: props.unit,
@@ -183,24 +184,17 @@ export function UnitContentComposition(props: UnitContentCompositionProps) {
               fontFamilies={[theme.fontDisplay, theme.fontText, theme.fontMono]}
             />
             <RemotionVisualAssetPreloader urls={visualAssetUrls} />
-            <div
-              style={{
-                position: "absolute",
-                inset: 0,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
+            <div style={{ position: "absolute", inset: 0, overflow: "hidden" }}>
               <div
                 style={{
-                  position: "relative",
+                  position: "absolute",
+                  left: 0,
+                  top: 0,
                   width: STAGE_WIDTH,
-                  height: STAGE_HEIGHT,
+                  height: stageHeight,
                   transform: `scale(${stageScale})`,
-                  transformOrigin: "center center",
+                  transformOrigin: "top left",
                   overflow: "hidden",
-                  borderRadius: 24,
                   background: cssVar("bg"),
                 }}
               >

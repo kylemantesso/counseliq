@@ -15,6 +15,10 @@ import { AdminGuard } from "../components/admin-guard";
 import { AdminWorkspaceFrame } from "../components/admin-workspace-frame";
 import { CoursePlayer } from "../components/course-player/course-player";
 import { formatMs } from "../components/course-player/timeline-helpers";
+import {
+  VoiceStudioModal,
+  type CourseTtsVoice,
+} from "../components/voice-studio-modal";
 import type {
   PreviewCard,
   PreviewNarrationSentence,
@@ -25,6 +29,7 @@ import type {
 } from "../components/course-player/types";
 import { api } from "../db/api";
 import { getUserFacingErrorMessage } from "../errors/get-user-facing-message";
+import { formatUnitPositionLabel } from "../format/unit-labels";
 
 /**
  * Step 3 — the playable preview studio. The course player fills the main
@@ -113,6 +118,23 @@ function unitBlockedTerms(script: UnitScript | null | undefined): string[] {
   return [...terms];
 }
 
+function downloadFile(url: string, filename: string) {
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.style.display = "none";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+}
+
+function narrationFilename(courseTitle: string, unitKey: string, index: number) {
+  const stem = `${courseTitle}-${unitKey}-narration-${String(index).padStart(2, "0")}`
+    .replace(/[^a-z0-9._-]+/gi, "-")
+    .replace(/^-+|-+$/g, "");
+  return `${stem || "narration"}.mp3`;
+}
+
 // --- screen -----------------------------------------------------------------
 
 function AdminGateThreeReviewContent() {
@@ -132,12 +154,20 @@ function AdminGateThreeReviewContent() {
     api.pipeline.tts.edit.adminUpdateCardEnterAtWord
   );
   const retryUnit = useMutation(api.pipeline.tts.edit.adminRetryUnitTts);
+  const regenerateUnit = useMutation(api.pipeline.tts.edit.adminRegenerateUnitTts);
+  const regenerateRun = useMutation(api.pipeline.tts.edit.adminRegenerateRunTts);
   const presignBatch = useAction(api.pipeline.objectStore.adminPresignGetBatch);
+  const presignDownloadBatch = useAction(
+    api.pipeline.objectStore.adminPresignDownloadBatch
+  );
 
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [rejecting, setRejecting] = useState(false);
   const [rejectNotes, setRejectNotes] = useState("");
+  const [voiceStudioOpen, setVoiceStudioOpen] = useState(false);
+  const [regeneratingAll, setRegeneratingAll] = useState(false);
+  const [downloadingNarration, setDownloadingNarration] = useState(false);
   const [activeUnitId, setActiveUnitId] = useState<string | null>(null);
   const [focusTarget, setFocusTarget] = useState<{
     unitId: string;
@@ -174,7 +204,8 @@ function AdminGateThreeReviewContent() {
     [presignBatch]
   );
 
-  // unitId → generatedAt at edit time; cleared when a newer timing arrives.
+  // unitId → regeneration start time; cleared when newer timing arrives, the
+  // unit blocks, or a post-start failure comes back from synthesis.
   const [resynth, setResynth] = useState<Map<string, number>>(new Map());
   useEffect(() => {
     if (!preview || resynth.size === 0) return;
@@ -187,6 +218,7 @@ function AdminGateThreeReviewContent() {
         if (timing && timing.generatedAt > prev) done.push(String(unit._id));
         // An edit that blocked the unit never re-synthesises; stop waiting.
         if (unit.state === "blocked") done.push(String(unit._id));
+        if (unit.error && Date.now() - prev > 1500) done.push(String(unit._id));
       }
     }
     if (done.length > 0) {
@@ -207,6 +239,8 @@ function AdminGateThreeReviewContent() {
     () => (preview ? preview.modules.flatMap((m) => m.units) : []),
     [preview]
   );
+  const currentVoice =
+    (preview?.course.ttsVoice as CourseTtsVoice | null | undefined) ?? null;
 
   useEffect(() => {
     if (allUnits.length === 0) {
@@ -290,12 +324,72 @@ function AdminGateThreeReviewContent() {
 
   const onRetryUnit = async (unitId: Id<"microUnits">) => {
     if (!atGate) return;
+    const startedAt = Date.now() - 1;
     setError(null);
     try {
       await retryUnit({ runId, unitId });
-      setResynth((current) => new Map(current).set(String(unitId), 0));
+      setResynth((current) => new Map(current).set(String(unitId), startedAt));
     } catch (err) {
       setError(getUserFacingErrorMessage(err, "Retry failed. Try again."));
+    }
+  };
+
+  const onRegenerateUnit = async (unitId: Id<"microUnits">) => {
+    if (!atGate) return;
+    const startedAt = Date.now() - 1;
+    setError(null);
+    try {
+      await regenerateUnit({ runId, unitId });
+      setResynth((current) => new Map(current).set(String(unitId), startedAt));
+    } catch (err) {
+      setError(getUserFacingErrorMessage(err, "Regenerate failed. Try again."));
+    }
+  };
+
+  const onRegenerateAll = async () => {
+    if (!atGate) return;
+    const startedAt = Date.now() - 1;
+    setError(null);
+    setRegeneratingAll(true);
+    try {
+      const result = await regenerateRun({ runId });
+      setResynth((current) => {
+        const next = new Map(current);
+        for (const unitId of result.unitIds) next.set(String(unitId), startedAt);
+        return next;
+      });
+    } catch (err) {
+      setError(getUserFacingErrorMessage(err, "Regenerate all failed. Try again."));
+    } finally {
+      setRegeneratingAll(false);
+    }
+  };
+
+  const onDownloadNarration = async (unit: PreviewUnit) => {
+    const audioKeys = unit.timing?.sentences.map((sentence) => sentence.audioKey) ?? [];
+    if (audioKeys.length === 0) {
+      setError("No synthesized narration is available for this unit yet.");
+      return;
+    }
+
+    setError(null);
+    setDownloadingNarration(true);
+    try {
+      const downloads = await presignDownloadBatch({
+        items: audioKeys.map((key, index) => ({
+          key,
+          filename: narrationFilename(preview.course.title, unit.unitKey, index + 1),
+        })),
+      });
+      for (const download of downloads) {
+        downloadFile(download.url, download.filename);
+      }
+    } catch (err) {
+      setError(
+        getUserFacingErrorMessage(err, "Could not prepare narration downloads. Try again.")
+      );
+    } finally {
+      setDownloadingNarration(false);
     }
   };
 
@@ -308,6 +402,13 @@ function AdminGateThreeReviewContent() {
     focusTarget && activeUnit && focusTarget.unitId === String(activeUnit._id)
       ? focusTarget.narrationId
       : null;
+
+  const auditionText =
+    ((activeUnit?.narration ?? allUnits[0]?.narration ?? []) as PreviewNarrationSentence[])[0]
+      ?.text ?? "";
+  const voiceLabel = currentVoice?.name
+    ? `${currentVoice.name}${currentVoice.accent && currentVoice.accent !== "all" ? ` · ${currentVoice.accent}` : ""}`
+    : "No voice set";
 
   const rejectPanel = rejecting ? (
     <div
@@ -377,7 +478,7 @@ function AdminGateThreeReviewContent() {
         {blockedUnits.map((unit) => (
           <Box key={String(unit._id)} className="flex-row flex-wrap items-center gap-2">
             <Chip label="BLOCKED" tone="bad" />
-            <Text className="text-sm font-semibold" style={{ color: "#f2efe8" }}>{unit.unitKey}</Text>
+            <Text className="text-sm font-semibold" style={{ color: "#f2efe8" }}>{formatUnitPositionLabel(unit.unitKey)}</Text>
             <Text className="text-sm" style={{ color: "#8f98a4" }}>{unit.concept}</Text>
             <Text className="text-sm" style={{ color: "#ff8c8c" }}>
               Unconfirmed pronunciation: {unitBlockedTerms(unit.script as UnitScript | null).join(", ") || "(see lexicon)"}
@@ -387,7 +488,7 @@ function AdminGateThreeReviewContent() {
         {failedUnits.map((unit) => (
           <Box key={String(unit._id)} className="flex-row flex-wrap items-center gap-2">
             <Chip label="FAILED" tone="bad" />
-            <Text className="text-sm font-semibold" style={{ color: "#f2efe8" }}>{unit.unitKey}</Text>
+            <Text className="text-sm font-semibold" style={{ color: "#f2efe8" }}>{formatUnitPositionLabel(unit.unitKey)}</Text>
             <Text className="text-sm" style={{ color: "#ff8c8c" }}>
               {(unit.error?.cause ?? "synthesis failed").slice(0, 140)}
             </Text>
@@ -424,10 +525,12 @@ function AdminGateThreeReviewContent() {
           data={data}
           presignedUrls={urls}
           onRequestUrls={requestUrls}
+          onDownloadNarration={onDownloadNarration}
+          downloadingNarration={downloadingNarration}
           studioHeader={
             <GateThreeStudioHeader
               courseTitle={preview.course.title}
-              meta={`CDU · voice ${preview.institution?.voiceConfig?.voiceRef ?? "default"} · ${preview.summary.totalCharacters.toLocaleString()} chars`}
+              meta={`CDU · voice ${voiceLabel} · ${preview.summary.totalCharacters.toLocaleString()} chars`}
               stateLabel={runStepLabel(preview.run.state)}
               atGate={atGate}
               readyLabel={`${preview.summary.ready}/${preview.summary.total} ready`}
@@ -436,6 +539,10 @@ function AdminGateThreeReviewContent() {
               failedCount={preview.summary.failed}
               busy={busy}
               approveBlockedReason={approveBlockedReason}
+              voiceLabel={voiceLabel}
+              regeneratingAll={regeneratingAll}
+              onOpenVoice={() => setVoiceStudioOpen(true)}
+              onRegenerateAll={onRegenerateAll}
               onToggleReject={() => setRejecting((r) => !r)}
               onApprove={onApprove}
             >
@@ -471,10 +578,19 @@ function AdminGateThreeReviewContent() {
                 }
               }}
               onRetry={onRetryUnit}
+              onRegenerate={onRegenerateUnit}
               updateSentence={updateSentence}
               updateCardEnterAtWord={updateCardEnterAtWord}
             />
           }
+        />
+        <VoiceStudioModal
+          isOpen={voiceStudioOpen}
+          runId={runId}
+          auditionText={auditionText}
+          currentVoice={currentVoice}
+          onClose={() => setVoiceStudioOpen(false)}
+          onError={setError}
         />
       </Box>
     </AdminWorkspaceFrame>
@@ -494,6 +610,10 @@ function GateThreeStudioHeader({
   failedCount,
   busy,
   approveBlockedReason,
+  voiceLabel,
+  regeneratingAll,
+  onOpenVoice,
+  onRegenerateAll,
   onToggleReject,
   onApprove,
   children,
@@ -508,6 +628,10 @@ function GateThreeStudioHeader({
   failedCount: number;
   busy: boolean;
   approveBlockedReason: string | null;
+  voiceLabel: string;
+  regeneratingAll: boolean;
+  onOpenVoice: () => void;
+  onRegenerateAll: () => void;
   onToggleReject: () => void;
   onApprove: () => void;
   children?: ReactNode;
@@ -577,6 +701,26 @@ function GateThreeStudioHeader({
           {blockedCount > 0 ? <Chip label={`${blockedCount} blocked`} tone="bad" /> : null}
           {failedCount > 0 ? <Chip label={`${failedCount} failed`} tone="bad" /> : null}
           <Chip label={durationLabel} tone="muted" />
+          <Button
+            variant="outline"
+            size="sm"
+            onPress={onOpenVoice}
+            isDisabled={busy || !atGate}
+            className="border-[#303946] bg-[#111820]"
+          >
+            <ButtonText className="text-[#f4f1e8]">Voice: {voiceLabel}</ButtonText>
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onPress={onRegenerateAll}
+            isDisabled={busy || !atGate || regeneratingAll}
+            className="border-[#77611f] bg-[#17150d]"
+          >
+            <ButtonText className="text-[#d6ad2f]">
+              {regeneratingAll ? "Regenerating..." : "Regenerate all audio"}
+            </ButtonText>
+          </Button>
           <Button
             variant="outline"
             size="sm"
@@ -667,6 +811,7 @@ function PreviewEditorRail({
   editable,
   onSaved,
   onRetry,
+  onRegenerate,
   updateSentence,
   updateCardEnterAtWord,
 }: {
@@ -692,6 +837,7 @@ function PreviewEditorRail({
     status: "updated" | "blocked" | "resynthesizing"
   ) => void;
   onRetry: (unitId: Id<"microUnits">) => void;
+  onRegenerate: (unitId: Id<"microUnits">) => void;
   updateSentence: (args: {
     runId: Id<"runs">;
     unitId: Id<"microUnits">;
@@ -877,6 +1023,19 @@ function PreviewEditorRail({
             className="border-[#303946] bg-[#111820]"
           >
             <ButtonText className="text-[#f4f1e8]">Retry</ButtonText>
+          </Button>
+        ) : null}
+        {unit.state !== "blocked" ? (
+          <Button
+            variant="outline"
+            size="sm"
+            onPress={() => onRegenerate(unit._id)}
+            isDisabled={!editable || resynthesizing}
+            className="border-[#77611f] bg-[#17150d]"
+          >
+            <ButtonText className="text-[#d6ad2f]">
+              {resynthesizing ? "Regenerating" : "Regenerate audio"}
+            </ButtonText>
           </Button>
         ) : null}
       </div>

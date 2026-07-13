@@ -8,6 +8,7 @@ import { AdminGuard } from "../components/admin-guard";
 import { AdminWorkspaceFrame } from "../components/admin-workspace-frame";
 import { api } from "../db/api";
 import { getUserFacingErrorMessage } from "../errors/get-user-facing-message";
+import { formatModuleNumberLabel } from "../format/unit-labels";
 
 /**
  * Outline review - the editable course blueprint between extraction and
@@ -340,7 +341,7 @@ function OutlineReviewContent() {
                     }
                     className="h-9 rounded-full bg-[#24221f] px-5 text-[13px] font-black text-white shadow-sm transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-45"
                   >
-                    {dirty ? "Save before approve" : "Approve outline -> compile"}
+                    {dirty ? "Save before approve" : "Approve outline and compile"}
                   </button>
                 </>
               ) : null}
@@ -420,7 +421,11 @@ function formatRuntime(totalSeconds: number): string {
 }
 
 function moduleLabel(module: EditableModule, index: number): string {
-  return module.moduleId.match(/^m\d+/i)?.[0] ?? `m${index + 1}`;
+  return formatModuleNumberLabel(module.moduleId, index);
+}
+
+function outlineUnitLabel(moduleIndex: number, unitIndex: number): string {
+  return `${moduleIndex + 1}.${unitIndex + 1}`;
 }
 
 function StudioStatusPill({ label }: { label: string }) {
@@ -540,10 +545,10 @@ function OutlineMapPanel({
                 </div>
                 {active ? (
                   <div className="ml-3 mt-3 space-y-2 border-l border-[#dfdbd2] pl-4">
-                    {module.units.map((unit) => (
+                    {module.units.map((unit, unitIndex) => (
                       <div key={unit.unitId} className="flex min-w-0 items-center gap-2">
                         <span className="shrink-0 font-mono text-[10px] font-black text-[#b2aa9e]">
-                          {unit.unitId}
+                          {outlineUnitLabel(moduleIndex, unitIndex)}
                         </span>
                         <span className="truncate text-[11px] font-medium text-[#6f695f]">
                           {unit.title || "Untitled unit"}
@@ -845,17 +850,12 @@ function StudioUnitRow({
   return (
     <article className="rounded-2xl border border-[#e2ded5] bg-white px-4 py-3 shadow-sm">
       <div className="grid grid-cols-1 items-center gap-3 md:grid-cols-[82px_minmax(0,1fr)_auto]">
-        <input
-          value={unit.unitId}
-          disabled={!editable}
-          aria-label={`Unit ${unitIndex + 1} ID`}
-          onChange={(event) =>
-            onEdit((next) => {
-              next.modules[moduleIndex].units[unitIndex].unitId = slugify(event.target.value) || event.target.value;
-            })
-          }
-          className="h-7 rounded-md border border-[#e4dfd5] bg-[#f0ede5] px-2 text-center font-mono text-[11px] font-black text-[#8d867a] outline-none focus:border-[#c5bbaa] disabled:opacity-100"
-        />
+        <div
+          aria-label={`Unit ${outlineUnitLabel(moduleIndex, unitIndex)}`}
+          className="h-7 rounded-md border border-[#e4dfd5] bg-[#f0ede5] px-2 text-center font-mono text-[11px] font-black leading-7 text-[#8d867a]"
+        >
+          {outlineUnitLabel(moduleIndex, unitIndex)}
+        </div>
 
         <div className="min-w-0">
           <input
@@ -1003,9 +1003,9 @@ function StudioUnitRow({
             }
             className="h-7 w-7 rounded-lg border border-[#e2ded5] bg-white px-1 text-[11px] font-black text-[#8b8377] outline-none disabled:opacity-45"
           >
-            {outline.modules.map((entry) => (
+            {outline.modules.map((entry, entryIndex) => (
               <option key={entry.moduleId} value={entry.moduleId}>
-                Move to {entry.title || entry.moduleId}
+                Move to {entry.title || formatModuleNumberLabel(entry.moduleId, entryIndex, { includeWord: true })}
               </option>
             ))}
           </select>

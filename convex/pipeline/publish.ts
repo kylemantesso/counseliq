@@ -25,7 +25,7 @@ import {
   type ObjectStoreClient,
 } from "./objectStore";
 import { ttsProviderName } from "./tts/models";
-import { DEFAULT_RENDER_PROFILE } from "./render";
+import { DEFAULT_RENDER_PROFILE, DEFAULT_RENDER_VARIANTS } from "./render";
 
 /**
  * PUBLISHING (M5): assemble the canonical Course Definition export and the
@@ -40,6 +40,8 @@ import { DEFAULT_RENDER_PROFILE } from "./render";
 
 const sha256 = (input: string): string =>
   createHash("sha256").update(input).digest("hex");
+
+const RENDERER_SPEC_VERSION = "renderer@4-responsive";
 
 type PublishResult = {
   status: "ok" | "failed";
@@ -327,11 +329,13 @@ export const runPublish = internalAction({
           contentHash: unit.contentHash,
           renderSpecHash: sha256(
             JSON.stringify({
+              manifestKey,
               specHash,
               unitId: unit.unitId,
               contentHash: unit.contentHash,
               profile,
-              rendererVersion: "renderer@1",
+              variants: DEFAULT_RENDER_VARIANTS,
+              rendererVersion: RENDERER_SPEC_VERSION,
             })
           ),
         })),

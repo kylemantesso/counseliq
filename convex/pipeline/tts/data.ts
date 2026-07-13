@@ -17,6 +17,20 @@ export interface RunVoiceContext {
   /** From courses.definitionMeta.voice (assembled definition). */
   voiceRef: string | null;
   lexicon: Record<string, string>;
+  /** From courses.definitionMeta.ttsVoice (operator-selected for this course). */
+  courseVoiceConfig: {
+    provider: string;
+    voiceRef: string;
+    voiceId: string;
+    accent?: string;
+    settings?: {
+      stability?: number;
+      similarityBoost?: number;
+      style?: number;
+      speakerBoost?: boolean;
+      speed?: number;
+    };
+  } | null;
   /** From institutions.voiceConfig (operator-selected provider voice). */
   voiceConfig: { provider: string; voiceRef: string; voiceId: string } | null;
 }
@@ -34,13 +48,37 @@ async function loadRunVoiceContext(
   const meta = course.definitionMeta as
     | {
         voice?: { voiceRef?: string; pronunciationLexicon?: Record<string, string> };
+        ttsVoice?: {
+          provider?: string;
+          voiceRef?: string;
+          voiceId?: string;
+          accent?: string;
+          settings?: {
+            stability?: number;
+            similarityBoost?: number;
+            style?: number;
+            speakerBoost?: boolean;
+            speed?: number;
+          };
+        };
       }
     | undefined;
+  const ttsVoice = meta?.ttsVoice;
   return {
     courseId: course._id,
     voice: {
       voiceRef: meta?.voice?.voiceRef ?? null,
       lexicon: meta?.voice?.pronunciationLexicon ?? {},
+      courseVoiceConfig:
+        ttsVoice?.provider && ttsVoice.voiceRef && ttsVoice.voiceId
+          ? {
+              provider: ttsVoice.provider,
+              voiceRef: ttsVoice.voiceRef,
+              voiceId: ttsVoice.voiceId,
+              ...(ttsVoice.accent ? { accent: ttsVoice.accent } : {}),
+              ...(ttsVoice.settings ? { settings: ttsVoice.settings } : {}),
+            }
+          : null,
       voiceConfig: institution?.voiceConfig ?? null,
     },
   };

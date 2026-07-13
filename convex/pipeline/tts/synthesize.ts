@@ -64,8 +64,8 @@ function plannedModel(): string {
 }
 
 /**
- * Resolve the provider voice ID: dev env override > institution voiceConfig
- * > the account's own default narrator (free-tier accounts can only
+ * Resolve the provider voice ID: course selection > dev env override >
+ * institution voiceConfig > the account's own default narrator (free-tier accounts can only
  * synthesise voices in their list, so the platform default is discovered
  * via /v1/voices) > static premade fallback. An institution without a
  * configured voice still synthesises — the manifest records the
@@ -75,23 +75,43 @@ function plannedModel(): string {
 async function resolveVoice(voice: RunVoiceContext): Promise<{
   voiceId: string;
   voiceRef: string;
+  accent: string | null;
+  settings: {
+    stability?: number;
+    similarityBoost?: number;
+    style?: number;
+    speakerBoost?: boolean;
+    speed?: number;
+  } | null;
 }> {
-  const voiceRef = voice.voiceConfig?.voiceRef ?? voice.voiceRef ?? "unknown";
+  const voiceRef =
+    voice.courseVoiceConfig?.voiceRef ??
+    voice.voiceConfig?.voiceRef ??
+    voice.voiceRef ??
+    "unknown";
+  if (voice.courseVoiceConfig?.voiceId) {
+    return {
+      voiceId: voice.courseVoiceConfig.voiceId,
+      voiceRef,
+      accent: voice.courseVoiceConfig.accent ?? null,
+      settings: voice.courseVoiceConfig.settings ?? null,
+    };
+  }
   const envOverride = process.env.ELEVENLABS_VOICE_ID;
   if (envOverride && envOverride.trim() !== "") {
-    return { voiceId: envOverride.trim(), voiceRef };
+    return { voiceId: envOverride.trim(), voiceRef, accent: null, settings: null };
   }
   if (voice.voiceConfig?.voiceId) {
-    return { voiceId: voice.voiceConfig.voiceId, voiceRef };
+    return { voiceId: voice.voiceConfig.voiceId, voiceRef, accent: null, settings: null };
   }
   if (ttsProviderName() === "mock") {
-    return { voiceId: "mock-voice", voiceRef };
+    return { voiceId: "mock-voice", voiceRef, accent: null, settings: null };
   }
   const account = await fetchAccountDefaultVoice();
   if (account) {
-    return { voiceId: account.voiceId, voiceRef: "counseliq-default" };
+    return { voiceId: account.voiceId, voiceRef: "counseliq-default", accent: null, settings: null };
   }
-  return defaultVoice();
+  return { ...defaultVoice(), accent: null, settings: null };
 }
 
 type UnitSynthesisResult =
@@ -127,7 +147,8 @@ async function synthesizeUnitInner(
   ctx: ActionCtx,
   runId: Id<"runs">,
   unit: Doc<"microUnits">,
-  voice: RunVoiceContext
+  voice: RunVoiceContext,
+  regenerationKey: string | null = null
 ): Promise<UnitSynthesisResult> {
   if (unit.state === "blocked") return { status: "blocked" };
   const script = unit.script as UnitScript | undefined;
@@ -137,7 +158,7 @@ async function synthesizeUnitInner(
 
   const model = plannedModel();
   const providerName = ttsProviderName();
-  const { voiceId, voiceRef } = await resolveVoice(voice);
+  const { voiceId, voiceRef, accent, settings } = await resolveVoice(voice);
   const lexicon = voice.lexicon;
   const cards = (unit.cards ?? []) as Array<{
     template?: string;
@@ -151,11 +172,17 @@ async function synthesizeUnitInner(
     lexicon,
     cards: unit.cards ?? [],
     voiceId,
+    voiceAccent: accent,
+    voiceSettings: settings,
     model,
     outputFormat: OUTPUT_FORMAT,
     gapMs: INTER_SENTENCE_GAP_MS,
   });
-  if (unit.contentHash === contentHash && unit.timing !== undefined) {
+  if (
+    regenerationKey === null &&
+    unit.contentHash === contentHash &&
+    unit.timing !== undefined
+  ) {
     return { status: "cached" };
   }
 
@@ -172,6 +199,9 @@ async function synthesizeUnitInner(
     const hash = await sentenceHash({
       spokenText,
       voiceId,
+      voiceAccent: accent,
+      voiceSettings: settings,
+      regenerationKey,
       model,
       outputFormat: OUTPUT_FORMAT,
     });
@@ -190,6 +220,16 @@ async function synthesizeUnitInner(
       const result = await provider.synthesize({
         text: spokenText,
         voiceId,
+        ...(accent ? { accent } : {}),
+        ...(settings?.stability !== undefined ? { stability: settings.stability } : {}),
+        ...(settings?.similarityBoost !== undefined
+          ? { similarityBoost: settings.similarityBoost }
+          : {}),
+        ...(settings?.style !== undefined ? { style: settings.style } : {}),
+        ...(settings?.speakerBoost !== undefined
+          ? { speakerBoost: settings.speakerBoost }
+          : {}),
+        ...(settings?.speed !== undefined ? { speed: settings.speed } : {}),
         ...(i > 0 ? { previousText: substitutions[i - 1].spokenText } : {}),
         ...(i < script.sentences.length - 1
           ? { nextText: substitutions[i + 1].spokenText }
@@ -300,14 +340,24 @@ async function synthesizeUnitInner(
 
 /** Workpool entry point: synthesise one unit (idempotent via both caches). */
 export const synthesizeUnit = internalAction({
-  args: { runId: v.id("runs"), unitId: v.id("microUnits") },
+  args: {
+    runId: v.id("runs"),
+    unitId: v.id("microUnits"),
+    regenerationKey: v.optional(v.string()),
+  },
   handler: async (ctx, args): Promise<UnitSynthesisResult> => {
     const { unit, voice } = await ctx.runQuery(
       internal.pipeline.tts.data.getUnitTtsContext,
       { runId: args.runId, unitId: args.unitId }
     );
     try {
-      return await synthesizeUnitInner(ctx, args.runId, unit, voice);
+      return await synthesizeUnitInner(
+        ctx,
+        args.runId,
+        unit,
+        voice,
+        args.regenerationKey ?? null
+      );
     } catch (error) {
       const cause = error instanceof Error ? error.message : String(error);
       const retryable =
@@ -323,6 +373,38 @@ export const synthesizeUnit = internalAction({
       });
       return { status: "failed", cause };
     }
+  },
+});
+
+/** Gate-3 forced regeneration: enqueue units through the same TTS workpool. */
+export const regenerateUnits = internalAction({
+  args: {
+    runId: v.id("runs"),
+    unitIds: v.array(v.id("microUnits")),
+    regenerationBatchKey: v.string(),
+  },
+  handler: async (ctx, args): Promise<{ enqueued: number }> => {
+    const enqueueArgs = args.unitIds.map((unitId) => ({
+      runId: args.runId,
+      unitId,
+      regenerationKey: `${args.regenerationBatchKey}:${unitId}`,
+    }));
+    if (process.env.TTS_MODE === "sequential") {
+      for (const unitArgs of enqueueArgs) {
+        const _result: UnitSynthesisResult = await ctx.runAction(
+          internal.pipeline.tts.synthesize.synthesizeUnit,
+          unitArgs
+        );
+        void _result;
+      }
+      return { enqueued: enqueueArgs.length };
+    }
+    await ttsPool.enqueueActionBatch(
+      ctx,
+      internal.pipeline.tts.synthesize.synthesizeUnit,
+      enqueueArgs
+    );
+    return { enqueued: enqueueArgs.length };
   },
 });
 

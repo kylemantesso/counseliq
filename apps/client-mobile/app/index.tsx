@@ -1,5 +1,1 @@
-import { Redirect } from "expo-router";
-
-export default function Index() {
-  return <Redirect href="/login" />;
-}
+export { CourseCatalogScreen as default } from "@counseliq/client/screens/course-catalog";

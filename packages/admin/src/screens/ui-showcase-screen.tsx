@@ -119,7 +119,7 @@ export function UiShowcaseScreen() {
             </Text>
           </Box>
           <TextLink href="/">
-            <Text className="text-sm font-semibold text-primary">← Back home</Text>
+            <Text className="text-sm font-semibold text-primary">Back home</Text>
           </TextLink>
         </Box>
       </Box>

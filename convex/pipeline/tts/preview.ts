@@ -170,6 +170,7 @@ async function buildRunPreview(ctx: QueryCtx, runId: Id<"runs">) {
         brandRef?: string;
         language?: string;
         voice?: unknown;
+        ttsVoice?: unknown;
       }
     | undefined;
 
@@ -185,6 +186,7 @@ async function buildRunPreview(ctx: QueryCtx, runId: Id<"runs">) {
       brandRef: meta?.brandRef ?? null,
       language: meta?.language ?? null,
       voice: meta?.voice ?? null,
+      ttsVoice: meta?.ttsVoice ?? null,
     },
     institution: institution
       ? {

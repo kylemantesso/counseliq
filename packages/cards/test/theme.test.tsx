@@ -86,10 +86,25 @@ describe("brandThemeFromTokens", () => {
     expect(theme.accent).toBe("rgb(226, 35, 26)");
   });
 
-  test("fonts[0] heads the display and text stacks", () => {
-    const theme = brandThemeFromTokens({ fonts: ["Roboto Slab"] });
+  test("title and body font tokens head their respective stacks", () => {
+    const theme = brandThemeFromTokens({
+      titleFontFamily: "Roboto Slab",
+      bodyFontFamily: "Open Sans",
+    });
     expect(theme.fontDisplay.startsWith("'Roboto Slab'")).toBe(true);
-    expect(theme.fontText.startsWith("'Roboto Slab'")).toBe(true);
+    expect(theme.fontText.startsWith("'Open Sans'")).toBe(true);
+  });
+
+  test("legacy fontFamily maps to the title stack only", () => {
+    const theme = brandThemeFromTokens({ fontFamily: "Roboto Slab" });
+    expect(theme.fontDisplay.startsWith("'Roboto Slab'")).toBe(true);
+    expect(theme.fontText).toBe(counseliqTheme.fontText);
+  });
+
+  test("candidate-theme fonts map title first and body second", () => {
+    const theme = brandThemeFromTokens({ fonts: ["Roboto Slab", "Open Sans"] });
+    expect(theme.fontDisplay.startsWith("'Roboto Slab'")).toBe(true);
+    expect(theme.fontText.startsWith("'Open Sans'")).toBe(true);
   });
 
   test("brandRef chooses the matching built-in base theme", () => {

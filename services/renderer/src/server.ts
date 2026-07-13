@@ -30,7 +30,7 @@ async function deliverCallback(
   }
 }
 
-function parseSignedBody<T extends { callbackUrl: string }>(
+function parseSignedBody<T>(
   rawBody: unknown,
   signature: unknown,
   secret: string,
@@ -76,8 +76,34 @@ export function createServer(config: RendererConfig): FastifyInstance {
   );
 
   let queue: Promise<void> = Promise.resolve();
+  const cancelledJobIds = new Set<string>();
+  let activeJobId: string | null = null;
+  let queuedJobs = 0;
 
-  app.get("/health", async () => ({ ok: true }));
+  app.get("/health", async () => ({
+    ok: true,
+    rendererVersion: config.rendererVersion,
+    activeJobId,
+    queuedJobs,
+  }));
+
+  app.post("/cancel", async (request, reply: FastifyReply) => {
+    const parsed = parseSignedBody(
+      request.body,
+      request.headers[SIGNATURE_HEADER],
+      config.callbackSecret,
+      z.object({ jobId: z.string().min(1) }).strict()
+    );
+    if (!parsed.ok) {
+      return reply.status(parsed.status).send(parsed.body);
+    }
+
+    cancelledJobIds.add(parsed.value.jobId);
+    return reply.send({
+      cancelled: true,
+      active: activeJobId === parsed.value.jobId,
+    });
+  });
 
   app.post("/render", async (request, reply: FastifyReply) => {
     const parsed = parseSignedBody(
@@ -91,10 +117,17 @@ export function createServer(config: RendererConfig): FastifyInstance {
     }
 
     const job: RenderJobRequest = parsed.value;
+    queuedJobs += 1;
     queue = queue.then(async () => {
-      const startedAt = Date.now();
-      app.log.info({ jobId: job.jobId }, "render started");
       try {
+        if (cancelledJobIds.delete(job.jobId)) {
+          app.log.info({ jobId: job.jobId }, "render cancelled before start");
+          return;
+        }
+
+        const startedAt = Date.now();
+        activeJobId = job.jobId;
+        app.log.info({ jobId: job.jobId }, "render started");
         const output = await runRenderJob(job, store, config);
         const callback = renderCallbackSchema.parse({
           jobId: job.jobId,
@@ -125,6 +158,10 @@ export function createServer(config: RendererConfig): FastifyInstance {
           );
         }
         app.log.error({ jobId: job.jobId, err: error }, "render failed");
+      } finally {
+        activeJobId = null;
+        cancelledJobIds.delete(job.jobId);
+        queuedJobs -= 1;
       }
     });
 

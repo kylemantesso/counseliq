@@ -58,13 +58,13 @@ export function ttsProviderName(): string {
 }
 
 /**
- * Concurrent synthesis actions. ElevenLabs concurrency caps are plan-tier
- * dependent (as low as a handful of concurrent requests), so the default is
- * deliberately conservative.
+ * Concurrent synthesis actions. ElevenLabs caps are plan-tier dependent and
+ * local/dev accounts can 429 even at low concurrency, so default to serial
+ * synthesis unless TTS_PARALLELISM explicitly opts into faster fan-out.
  */
 export function ttsParallelism(): number {
   const parsed = Number(process.env.TTS_PARALLELISM);
-  return Number.isFinite(parsed) && parsed >= 1 ? Math.floor(parsed) : 2;
+  return Number.isFinite(parsed) && parsed >= 1 ? Math.floor(parsed) : 1;
 }
 
 /** Overall GENERATING_ASSETS deadline. */

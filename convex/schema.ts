@@ -87,7 +87,8 @@ export const renderJobStatusValidator = v.union(
   v.literal("dispatched"),
   v.literal("rendering"),
   v.literal("succeeded"),
-  v.literal("failed")
+  v.literal("failed"),
+  v.literal("cancelled")
 );
 
 export const courseStatusValidator = v.union(
@@ -333,7 +334,9 @@ export default defineSchema({
     definitionMeta: v.optional(v.any()),
     /** Course-level QA verdict (judge pass/fail, courseFlags, versions). */
     qa: v.optional(v.any()),
-  }).index("by_institution", ["institutionId"]),
+  })
+    .index("by_institution", ["institutionId"])
+    .index("by_status", ["status"]),
 
   microUnits: defineTable({
     courseId: v.id("courses"),
@@ -610,6 +613,20 @@ export default defineSchema({
         width: v.number(),
         height: v.number(),
         fps: v.number(),
+        variants: v.optional(
+          v.array(
+            v.object({
+              label: v.string(),
+              objectKey: v.string(),
+              sha256: v.string(),
+              sizeBytes: v.number(),
+              durationMs: v.number(),
+              width: v.number(),
+              height: v.number(),
+              fps: v.number(),
+            })
+          )
+        ),
       })
     ),
     error: v.optional(

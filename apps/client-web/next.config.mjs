@@ -11,6 +11,7 @@ const appVersion = JSON.parse(
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  distDir: process.env.NODE_ENV === 'development' ? '.next-dev' : '.next',
   outputFileTracingRoot: monorepoRoot,
   transpilePackages: [
     '@counseliq/client',
@@ -18,6 +19,9 @@ const nextConfig = {
     '@counseliq/ui',
     'react-native',
     'react-native-web',
+    'expo',
+    'expo-video',
+    'expo-modules-core',
     'solito',
     'nativewind',
     'react-native-css',
@@ -35,7 +39,7 @@ const nextConfig = {
       bodySizeLimit: '2mb',
     },
   },
-  webpack: (config, { webpack }) => {
+  webpack: (config, { webpack, dev, isServer }) => {
     config.plugins.push(
       new webpack.DefinePlugin({
         __DEV__: JSON.stringify(process.env.NODE_ENV !== 'production'),
@@ -44,6 +48,7 @@ const nextConfig = {
     config.resolve.alias = {
       ...(config.resolve.alias || {}),
       'react-native$': 'react-native-web',
+      convex: path.join(monorepoRoot, 'node_modules/convex'),
       'convex/browser': path.join(monorepoRoot, 'node_modules/convex/dist/esm/browser/index.js'),
     };
     config.resolve.extensions = [
@@ -53,6 +58,17 @@ const nextConfig = {
       '.web.tsx',
       ...config.resolve.extensions,
     ];
+    if (dev && isServer) {
+      // Next dev can leave dynamic route server bundles pointing at stale
+      // numeric chunks after HMR in this monorepo/transpiled-workspace setup.
+      // Keep production splitting intact, but make dev server pages self-contained
+      // so edits do not require deleting .next after every change.
+      config.cache = false;
+      config.optimization = {
+        ...config.optimization,
+        splitChunks: false,
+      };
+    }
     return config;
   },
 };

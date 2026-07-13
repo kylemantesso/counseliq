@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import {
   type RenderFailurePayload,
   type RenderProfile,
+  type RenderVariantProfile,
   renderJobRequestSchema,
 } from "@counseliq/course-schema";
 import { internalAction, internalMutation, internalQuery, mutation, query } from "../_generated/server";
@@ -19,6 +20,30 @@ export const DEFAULT_RENDER_PROFILE: RenderProfile = {
   videoCodec: "h264",
   audioCodec: "aac",
 };
+
+export const DEFAULT_RENDER_VARIANTS: RenderVariantProfile[] = [
+  { ...DEFAULT_RENDER_PROFILE, label: "legacy-16x9-1080x1920" },
+  { ...DEFAULT_RENDER_PROFILE, label: "tall-18x9-1080x2160", height: 2160 },
+  { ...DEFAULT_RENDER_PROFILE, label: "android-19_5x9-1080x2340", height: 2340 },
+  { ...DEFAULT_RENDER_PROFILE, label: "android-20x9-1080x2400", height: 2400 },
+  {
+    ...DEFAULT_RENDER_PROFILE,
+    label: "iphone-19_5x9-1290x2796",
+    width: 1290,
+    height: 2796,
+  },
+];
+
+const renderOutputVariantValidator = v.object({
+  label: v.string(),
+  objectKey: v.string(),
+  sha256: v.string(),
+  sizeBytes: v.number(),
+  durationMs: v.number(),
+  width: v.number(),
+  height: v.number(),
+  fps: v.number(),
+});
 
 const DEFAULT_MAX_ATTEMPTS = 3;
 
@@ -259,6 +284,7 @@ export const dispatchQueuedForRun = internalAction({
         contentHash: job.contentHash,
         renderSpecHash: job.renderSpecHash,
         profile: job.profile,
+        variants: DEFAULT_RENDER_VARIANTS,
         callbackUrl,
       });
 
@@ -312,6 +338,7 @@ export const applyRenderCallback = internalMutation({
         fps: v.number(),
         rendererVersion: v.string(),
         renderedAt: v.number(),
+        variants: v.optional(v.array(renderOutputVariantValidator)),
       })
     ),
     error: v.optional(
@@ -328,7 +355,9 @@ export const applyRenderCallback = internalMutation({
     const job = await ctx.db.get(jobId);
     if (!job) appError(AppErrorCode.RENDER_JOB_NOT_FOUND);
 
-    if (job.status === "succeeded") {
+    // A cancelled job may still complete in the external renderer. Its output
+    // must never resurrect a job the operator deliberately stopped.
+    if (job.status === "succeeded" || job.status === "cancelled") {
       return null;
     }
 
@@ -348,6 +377,9 @@ export const applyRenderCallback = internalMutation({
           width: args.output.width,
           height: args.output.height,
           fps: args.output.fps,
+          ...(args.output.variants !== undefined
+            ? { variants: args.output.variants }
+            : {}),
         },
         error: undefined,
       });
@@ -387,6 +419,7 @@ export const adminGetRunRenderStatus = query({
         rendering: sorted.filter((job) => job.status === "rendering").length,
         succeeded: sorted.filter((job) => job.status === "succeeded").length,
         failed: sorted.filter((job) => job.status === "failed").length,
+        cancelled: sorted.filter((job) => job.status === "cancelled").length,
       },
       jobs: sorted.map((job) => ({
         _id: job._id,
@@ -399,6 +432,7 @@ export const adminGetRunRenderStatus = query({
         output: job.output ?? null,
         error: job.error ?? null,
         profile: job.profile,
+        rendererVersion: job.rendererVersion ?? null,
         completedAt: job.completedAt ?? null,
       })),
     };
@@ -432,7 +466,10 @@ export const adminRerenderVideo = mutation({
     await requireAdmin(ctx);
     const job = await ctx.db.get(args.jobId);
     if (!job) appError(AppErrorCode.RENDER_JOB_NOT_FOUND);
-    if (job.status !== "succeeded" || !job.output) {
+    if (
+      (job.status !== "succeeded" || !job.output) &&
+      job.status !== "cancelled"
+    ) {
       appError(AppErrorCode.RENDER_JOB_NOT_RETRYABLE);
     }
     await ctx.db.patch(args.jobId, {
@@ -448,6 +485,88 @@ export const adminRerenderVideo = mutation({
     await ctx.scheduler.runAfter(0, internal.pipeline.render.dispatchQueuedForRun, {
       runId: job.runId,
     });
+    return null;
+  },
+});
+
+export const adminRestartDispatchedRenderJob = mutation({
+  args: { jobId: v.id("renderJobs") },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+    const job = await ctx.db.get(args.jobId);
+    if (!job) appError(AppErrorCode.RENDER_JOB_NOT_FOUND);
+    if (job.status !== "dispatched" && job.status !== "rendering") {
+      appError(AppErrorCode.RENDER_JOB_NOT_RETRYABLE);
+    }
+
+    await ctx.db.patch(args.jobId, {
+      status: "queued",
+      dispatchedAt: undefined,
+      startedAt: undefined,
+      completedAt: undefined,
+      error: undefined,
+    });
+    await ctx.scheduler.runAfter(0, internal.pipeline.render.dispatchQueuedForRun, {
+      runId: job.runId,
+    });
+    return null;
+  },
+});
+
+export const adminCancelRenderJob = mutation({
+  args: { jobId: v.id("renderJobs") },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+    const job = await ctx.db.get(args.jobId);
+    if (!job) appError(AppErrorCode.RENDER_JOB_NOT_FOUND);
+    if (
+      job.status !== "queued" &&
+      job.status !== "dispatched" &&
+      job.status !== "rendering"
+    ) {
+      appError(AppErrorCode.RENDER_JOB_NOT_RETRYABLE);
+    }
+
+    await ctx.db.patch(args.jobId, {
+      status: "cancelled",
+      completedAt: Date.now(),
+      error: {
+        code: "render_cancelled",
+        message: "Cancelled by an administrator.",
+        retryable: false,
+      },
+    });
+    await ctx.scheduler.runAfter(0, internal.pipeline.render.notifyRendererCancellation, {
+      jobId: String(args.jobId),
+    });
+    return null;
+  },
+});
+
+export const notifyRendererCancellation = internalAction({
+  args: { jobId: v.string() },
+  handler: async (_ctx, args) => {
+    const config = rendererDispatchConfig();
+    if (!config) return null;
+
+    const body = JSON.stringify({ jobId: args.jobId });
+    try {
+      const response = await fetch(`${config.rendererUrl}/cancel`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          [SIGNATURE_HEADER]: await hmacSha256Hex(body, config.callbackSecret),
+        },
+        body,
+      });
+      if (!response.ok) {
+        console.error(`[render] renderer cancellation failed: HTTP ${response.status}`);
+      }
+    } catch (error) {
+      // The database state is already cancelled. A late renderer callback is
+      // ignored, so a temporary renderer outage cannot resurrect the job.
+      console.error("[render] renderer cancellation request failed", error);
+    }
     return null;
   },
 });

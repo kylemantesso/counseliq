@@ -32,6 +32,7 @@ export const GOOGLE_BRAND_FONT_OPTIONS = [
   "Noto Serif",
   "Work Sans",
   "Rubik",
+  "Rethink Sans",
 ] as const;
 
 export function normalizeFontFamily(value: string | null | undefined): string | null {
@@ -59,6 +60,10 @@ export function fontFamilyFromBrandTokens(tokens: unknown): string | null {
     return null;
   }
   const record = tokens as Record<string, unknown>;
+  if (typeof record.titleFontFamily === "string") {
+    const titleFontFamily = normalizeFontFamily(record.titleFontFamily);
+    if (titleFontFamily !== null) return titleFontFamily;
+  }
   if (typeof record.fontFamily === "string") {
     return normalizeFontFamily(record.fontFamily);
   }

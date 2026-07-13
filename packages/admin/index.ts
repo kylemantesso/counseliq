@@ -14,7 +14,6 @@ export { AdminModelRoutingScreen } from "./src/screens/admin-model-routing-scree
 export { AdminSourceDocsScreen } from "./src/screens/admin-source-docs-screen";
 export { AdminSourceDocDetailScreen } from "./src/screens/admin-source-doc-detail-screen";
 export { AdminInstitutionsScreen } from "./src/screens/admin-institutions-screen";
-export { AdminInstitutionCardPreviewScreen } from "./src/screens/admin-institution-card-preview-screen";
 export { AdminRunDetailScreen } from "./src/screens/admin-run-detail-screen";
 export { AdminGateTwoReviewScreen } from "./src/screens/admin-gate-two-review-screen";
 export { AdminGateThreeReviewScreen } from "./src/screens/admin-gate-three-review-screen";

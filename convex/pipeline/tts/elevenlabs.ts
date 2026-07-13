@@ -136,6 +136,27 @@ export function createElevenLabsProvider(options?: {
       body: JSON.stringify({
         text: input.text,
         model_id: model,
+        ...(input.stability !== undefined ||
+        input.similarityBoost !== undefined ||
+        input.style !== undefined ||
+        input.speakerBoost !== undefined ||
+        input.speed !== undefined
+          ? {
+              voice_settings: {
+                ...(input.stability !== undefined
+                  ? { stability: input.stability }
+                  : {}),
+                ...(input.similarityBoost !== undefined
+                  ? { similarity_boost: input.similarityBoost }
+                  : {}),
+                ...(input.style !== undefined ? { style: input.style } : {}),
+                ...(input.speakerBoost !== undefined
+                  ? { use_speaker_boost: input.speakerBoost }
+                  : {}),
+                ...(input.speed !== undefined ? { speed: input.speed } : {}),
+              },
+            }
+          : {}),
         // The pipeline normaliser owns expansion; provider normalisation off
         // keeps `alignment` 1:1 with the request text.
         apply_text_normalization: "off",

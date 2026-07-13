@@ -19,12 +19,11 @@ import {
   phaseFraction,
   resolveAssetUrl,
 } from "./timeline-helpers";
-import type { PreviewQuestion, RunPreviewData, UnitPhase } from "./types";
+import type { PreviewQuestion, PreviewUnit, RunPreviewData, UnitPhase } from "./types";
 import { UnitFlow, useUnitFlow } from "./unit-flow.web";
 import { usePrefersReducedMotion } from "./use-prefers-reduced-motion.web";
 import { useUnitAudio } from "./use-unit-audio.web";
 import { GoogleBrandFontLoader } from "../theme/google-brand-font-loader.web";
-import { fontFamilyFromBrandTokens } from "../../theme/google-brand-fonts";
 import { logoUrlFromBrandTokens } from "../../theme/brand-tokens";
 
 /**
@@ -51,6 +50,9 @@ export interface CoursePlayerProps {
   studioHeader?: ReactNode;
   /** Announces active unit changes (selection, autoplay next, etc). */
   onActiveUnitChange?: (unitId: string) => void;
+  /** Downloads all synthesized narration MP3s for the active unit. */
+  onDownloadNarration?: (unit: PreviewUnit) => void;
+  downloadingNarration?: boolean;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -65,6 +67,8 @@ export function CoursePlayer({
   rightRail,
   studioHeader,
   onActiveUnitChange,
+  onDownloadNarration,
+  downloadingNarration = false,
 }: CoursePlayerProps) {
   const flatUnits = useMemo(() => flattenUnits(data.modules), [data.modules]);
   const [flatIndex, setFlatIndex] = useState(0);
@@ -74,11 +78,6 @@ export function CoursePlayer({
 
   const current = flatUnits[Math.min(flatIndex, flatUnits.length - 1)] ?? null;
   const unit = current?.unit ?? null;
-  const brandFontFamily = useMemo(
-    () => fontFamilyFromBrandTokens(data.institution.brandTokens),
-    [data.institution.brandTokens]
-  );
-
   const questionsById = useMemo(() => {
     const map = new Map<string, PreviewQuestion>();
     for (const q of data.questions) map.set(q.id, q);
@@ -165,7 +164,7 @@ export function CoursePlayer({
 
   return (
     <>
-      <GoogleBrandFontLoader fontFamily={brandFontFamily} />
+      <GoogleBrandFontLoader fontFamilies={[theme.fontDisplay, theme.fontText, theme.fontMono]} />
       <div
       data-ciq-course-player=""
       style={{
@@ -262,6 +261,12 @@ export function CoursePlayer({
                     ? () => selectUnit(current.flatIndex + 1)
                     : undefined
                 }
+                onDownloadNarration={
+                  unit.timing && onDownloadNarration
+                    ? () => onDownloadNarration(unit)
+                    : undefined
+                }
+                downloadingNarration={downloadingNarration}
               />
             </div>
           ) : null}

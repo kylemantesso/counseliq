@@ -2,6 +2,8 @@
 
 import { v } from "convex/values";
 import { action } from "../_generated/server";
+import type { ActionCtx } from "../_generated/server";
+import type { Id } from "../_generated/dataModel";
 import { internal } from "../_generated/api";
 import { AppErrorCode, appError } from "../errors";
 
@@ -9,6 +11,16 @@ type Rgba = { r: number; g: number; b: number; a: number };
 
 const MAX_CSS_FILES = 8;
 const FETCH_TIMEOUT_MS = 12_000;
+const MAX_LOGO_BYTES = 2 * 1024 * 1024;
+const ALLOWED_LOGO_CONTENT_TYPES = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/svg+xml",
+  "image/webp",
+  "image/gif",
+  "image/x-icon",
+  "image/vnd.microsoft.icon",
+]);
 
 function normalizeWebsiteUrl(rawUrl: string): string | null {
   const trimmed = rawUrl.trim();
@@ -52,9 +64,27 @@ export const adminExtractInstitutionThemeFromWebsite = action({
 
     try {
       const extracted = await extractThemeFromWebsite(normalizedWebsiteUrl);
+      let storedLogo: { logoUrl: string; logoStorageId: string } | null = null;
+      let logoWarning: string | undefined;
+      if (extracted.logoUrl) {
+        try {
+          storedLogo = await storeLogoFromUrl(ctx, args.institutionId, extracted.logoUrl);
+        } catch (logoError) {
+          console.warn(
+            `[pipeline] institution ${args.institutionId}: logo candidate could not be copied`,
+            logoError instanceof Error ? logoError.message : String(logoError)
+          );
+          logoWarning = "Logo candidate found, but it could not be copied. Upload a logo file or enter a direct image URL.";
+        }
+      }
       return {
         websiteUrl: normalizedWebsiteUrl,
         ...extracted,
+        logoUrl: storedLogo?.logoUrl ?? null,
+        ...(logoWarning && !extracted.warning ? { warning: logoWarning } : {}),
+        ...(storedLogo
+          ? { logoStorageId: storedLogo.logoStorageId }
+          : {}),
       };
     } catch (error) {
       console.error(
@@ -76,6 +106,69 @@ export const adminExtractInstitutionThemeFromWebsite = action({
     }
   },
 });
+
+export const adminCopyInstitutionLogoFromUrl = action({
+  args: {
+    institutionId: v.id("institutions"),
+    logoUrl: v.string(),
+  },
+  handler: async (ctx, args) => {
+    return await storeLogoFromUrl(ctx, args.institutionId, args.logoUrl);
+  },
+});
+
+async function storeLogoFromUrl(
+  ctx: ActionCtx,
+  institutionId: Id<"institutions">,
+  rawLogoUrl: string
+): Promise<{ logoUrl: string; logoStorageId: string }> {
+  await ctx.runQuery(internal.pipeline.assetsCatalogue.getInstitutionThemeExtractionContext, {
+    institutionId,
+  });
+
+  const logoUrl = normalizeWebsiteUrl(rawLogoUrl);
+  if (!logoUrl) {
+    appError(AppErrorCode.INSTITUTION_LOGO_URL_INVALID);
+  }
+
+  let response: Response;
+  try {
+    response = await fetchWithTimeout(logoUrl);
+  } catch {
+    appError(AppErrorCode.INSTITUTION_LOGO_FETCH_FAILED);
+  }
+
+  if (!response.ok) {
+    appError(AppErrorCode.INSTITUTION_LOGO_FETCH_FAILED);
+  }
+
+  const contentType = normalizeLogoContentType(response.headers.get("content-type"));
+  if (!contentType || !ALLOWED_LOGO_CONTENT_TYPES.has(contentType)) {
+    appError(AppErrorCode.INSTITUTION_LOGO_FILE_INVALID);
+  }
+
+  const contentLength = response.headers.get("content-length");
+  if (contentLength && Number(contentLength) > MAX_LOGO_BYTES) {
+    appError(AppErrorCode.INSTITUTION_LOGO_FILE_INVALID);
+  }
+
+  const bytes = await response.arrayBuffer();
+  if (bytes.byteLength === 0 || bytes.byteLength > MAX_LOGO_BYTES) {
+    appError(AppErrorCode.INSTITUTION_LOGO_FILE_INVALID);
+  }
+
+  const storageId = await ctx.storage.store(new Blob([bytes], { type: contentType }));
+  const storedUrl = await ctx.storage.getUrl(storageId);
+  if (!storedUrl) {
+    appError(AppErrorCode.INSTITUTION_LOGO_NOT_FOUND);
+  }
+  return { logoUrl: storedUrl, logoStorageId: storageId };
+}
+
+function normalizeLogoContentType(value: string | null): string | null {
+  const normalized = value?.split(";")[0]?.trim().toLowerCase();
+  return normalized || null;
+}
 
 async function extractThemeFromWebsite(websiteUrl: string): Promise<{
   primaryColor: string | null;
@@ -354,6 +447,25 @@ async function fetchText(
       throw new Error(`request failed: ${response.status} ${response.statusText}`);
     }
     return { text: await response.text(), status: response.status };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function fetchWithTimeout(url: string): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    return await fetch(url, {
+      redirect: "follow",
+      headers: {
+        "user-agent":
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+        accept: "image/avif,image/webp,image/png,image/svg+xml,image/*,*/*;q=0.8",
+        "accept-language": "en-AU,en;q=0.9",
+      },
+      signal: controller.signal,
+    });
   } finally {
     clearTimeout(timeout);
   }

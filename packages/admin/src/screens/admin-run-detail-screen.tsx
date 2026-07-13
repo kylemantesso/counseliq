@@ -26,6 +26,13 @@ import { AdminGuard } from "../components/admin-guard";
 import { AdminWorkspaceFrame } from "../components/admin-workspace-frame";
 import { api } from "../db/api";
 import { getUserFacingErrorMessage } from "../errors/get-user-facing-message";
+import {
+  formatModuleNumberLabel,
+  formatUnitPositionLabel,
+  humanizeGeneratedUnitKeyText,
+  parseGeneratedModuleNumber,
+  parseGeneratedUnitPosition,
+} from "../format/unit-labels";
 
 type CompileUnitProgressLog = {
   unitId: string;
@@ -57,6 +64,7 @@ type RunRenderStatus = {
     rendering: number;
     succeeded: number;
     failed: number;
+    cancelled: number;
   };
   jobs: Array<{
     _id: Id<"renderJobs">;
@@ -66,6 +74,7 @@ type RunRenderStatus = {
     status: string;
     attempts: number;
     maxAttempts: number;
+    rendererVersion: string | null;
     output: {
       objectKey: string;
       sizeBytes: number;
@@ -73,9 +82,20 @@ type RunRenderStatus = {
       width: number;
       height: number;
       fps: number;
+      variants?: RenderedVideoVariant[];
     } | null;
     error: { code: string; message: string; retryable: boolean } | null;
   }>;
+};
+
+type RenderedVideoVariant = {
+  label: string;
+  objectKey: string;
+  sizeBytes: number;
+  durationMs: number;
+  width: number;
+  height: number;
+  fps: number;
 };
 
 type RenderJob = RunRenderStatus["jobs"][number];
@@ -97,6 +117,56 @@ type PreviewVideo = {
   meta: RenderUnitMeta;
   output: NonNullable<RenderJob["output"]>;
 };
+
+function renderedVideoVariants(output: NonNullable<RenderJob["output"]>): RenderedVideoVariant[] {
+  return output.variants && output.variants.length > 0
+    ? output.variants
+    : [
+        {
+          label: "Primary",
+          objectKey: output.objectKey,
+          sizeBytes: output.sizeBytes,
+          durationMs: output.durationMs,
+          width: output.width,
+          height: output.height,
+          fps: output.fps,
+        },
+      ];
+}
+
+function selectedRenderedVideoVariant(video: PreviewVideo): RenderedVideoVariant {
+  return (
+    renderedVideoVariants(video.output).find(
+      (variant) => variant.objectKey === video.objectKey
+    ) ?? {
+      label: "Primary",
+      objectKey: video.objectKey,
+      sizeBytes: video.output.sizeBytes,
+      durationMs: video.output.durationMs,
+      width: video.output.width,
+      height: video.output.height,
+      fps: video.output.fps,
+    }
+  );
+}
+
+function downloadFile(url: string, filename: string) {
+  if (Platform.OS !== "web") return;
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.style.display = "none";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+}
+
+function videoFilename(title: string, width: number, height: number) {
+  const stem = `${title}-${width}x${height}`
+    .replace(/[^a-z0-9._-]+/gi, "-")
+    .replace(/^-+|-+$/g, "");
+  return `${stem || "rendered-video"}.mp4`;
+}
 
 type RunMediaSelection = {
   explicitSelection: boolean;
@@ -217,12 +287,19 @@ function AdminRunDetailContent() {
   const [restartError, setRestartError] = useState<string | null>(null);
   const [retryingRenderJobId, setRetryingRenderJobId] = useState<string | null>(null);
   const [rerenderingRenderJobId, setRerenderingRenderJobId] = useState<string | null>(null);
+  const [restartingRenderJobId, setRestartingRenderJobId] = useState<string | null>(null);
+  const [cancellingRenderJobId, setCancellingRenderJobId] = useState<string | null>(null);
   const [previewVideo, setPreviewVideo] = useState<PreviewVideo | null>(null);
   const [videoUrls, setVideoUrls] = useState<ReadonlyMap<string, string>>(new Map());
   const [presigningVideoKey, setPresigningVideoKey] = useState<string | null>(null);
   const [videoPreviewError, setVideoPreviewError] = useState<string | null>(null);
+  const [downloadingVideoKey, setDownloadingVideoKey] = useState<string | null>(null);
+  const [videoDownloadError, setVideoDownloadError] = useState<string | null>(null);
 
   const presignBatch = useAction(api.pipeline.objectStore.adminPresignGetBatch);
+  const presignDownloadBatch = useAction(
+    api.pipeline.objectStore.adminPresignDownloadBatch
+  );
   const resumeGeneration = useMutation(
     (api as any).pipeline.runs.adminResumeCourseGeneration
   );
@@ -231,6 +308,12 @@ function AdminRunDetailContent() {
   );
   const rerenderVideo = useMutation(
     (api as any).pipeline.render.adminRerenderVideo
+  );
+  const restartDispatchedRenderJob = useMutation(
+    (api as any).pipeline.render.adminRestartDispatchedRenderJob
+  );
+  const cancelRenderJob = useMutation(
+    (api as any).pipeline.render.adminCancelRenderJob
   );
   const cloneConvertedDoc = useMutation(api.pipeline.ingestion.adminCloneConvertedSourceDoc);
   const startRun = useMutation(api.pipeline.runs.adminStartRun);
@@ -422,6 +505,31 @@ function AdminRunDetailContent() {
     }
   };
 
+  const onDownloadRenderedVideo = async (video: PreviewVideo) => {
+    if (Platform.OS !== "web") return;
+    const variant = selectedRenderedVideoVariant(video);
+    setVideoDownloadError(null);
+    setDownloadingVideoKey(video.objectKey);
+    try {
+      const [download] = await presignDownloadBatch({
+        items: [
+          {
+            key: video.objectKey,
+            filename: videoFilename(video.title, variant.width, variant.height),
+          },
+        ],
+      });
+      if (!download) throw new Error("No download URL returned.");
+      downloadFile(download.url, download.filename);
+    } catch (error) {
+      setVideoDownloadError(
+        getUserFacingErrorMessage(error, "Could not prepare this video download. Try again.")
+      );
+    } finally {
+      setDownloadingVideoKey(null);
+    }
+  };
+
   const headerDescription = run
     ? `${run.state === "PUBLISHED" ? "Built" : "Building"} from ${docsForGeneration.length} source document${docsForGeneration.length === 1 ? "" : "s"} · started ${formatDateTime(run._creationTime)}`
     : "Live progress and outputs for this course generation.";
@@ -551,8 +659,13 @@ function AdminRunDetailContent() {
                         unitMeta={renderUnitMeta}
                         retryingId={retryingRenderJobId}
                         rerenderingId={rerenderingRenderJobId}
+                        restartingId={restartingRenderJobId}
+                        cancellingId={cancellingRenderJobId}
                         presigningKey={presigningVideoKey}
+                        downloadingKey={downloadingVideoKey}
+                        downloadError={videoDownloadError}
                         onPreview={(video) => void onOpenRenderedVideo(video)}
+                        onDownload={(video) => void onDownloadRenderedVideo(video)}
                         onRerender={async (jobId) => {
                           setRerenderingRenderJobId(String(jobId));
                           try {
@@ -567,6 +680,22 @@ function AdminRunDetailContent() {
                             await retryRenderJob({ jobId });
                           } finally {
                             setRetryingRenderJobId(null);
+                          }
+                        }}
+                        onCancel={async (jobId) => {
+                          setCancellingRenderJobId(String(jobId));
+                          try {
+                            await cancelRenderJob({ jobId });
+                          } finally {
+                            setCancellingRenderJobId(null);
+                          }
+                        }}
+                        onRestart={async (jobId) => {
+                          setRestartingRenderJobId(String(jobId));
+                          try {
+                            await restartDispatchedRenderJob({ jobId });
+                          } finally {
+                            setRestartingRenderJobId(null);
                           }
                         }}
                       />
@@ -606,6 +735,10 @@ function AdminRunDetailContent() {
         url={previewVideo ? videoUrls.get(previewVideo.objectKey) ?? null : null}
         loading={previewVideo ? presigningVideoKey === previewVideo.objectKey : false}
         error={videoPreviewError}
+        onSelectVariant={(objectKey) => {
+          if (!previewVideo || previewVideo.objectKey === objectKey) return;
+          void onOpenRenderedVideo({ ...previewVideo, objectKey });
+        }}
         onClose={() => {
           setPreviewVideo(null);
           setVideoPreviewError(null);
@@ -701,7 +834,7 @@ function ProgressHero({
           <Link href={actionHref}>
             <Box className="rounded-[9px] bg-primary px-6 py-3.5">
               <Text className="text-[13px] font-bold text-primary-foreground">
-                {primaryCtaForState(state)} {"->"}
+                {primaryCtaForState(state)}
               </Text>
             </Box>
           </Link>
@@ -822,7 +955,7 @@ function AboutRunCard({ run, events }: { run: Doc<"runs">; events: RunEvent[] })
         <CompactStatRow label="Run ID" value={shortRunId(run._id)} muted />
         <Box className="border-t border-border pt-3">
           <Link href="/admin/email-test">
-            <Text className="text-[12.5px] font-bold text-foreground">Open in Diagnostics →</Text>
+            <Text className="text-[12.5px] font-bold text-foreground">Open in Diagnostics</Text>
           </Link>
         </Box>
       </Box>
@@ -1087,7 +1220,7 @@ function PhaseViewButton({ href, label }: { href: string; label: string }) {
     <Link href={href}>
       <Box className="rounded-full border border-input bg-card px-3 py-1.5 data-[hover=true]:bg-secondary">
         <Text className="text-[11.5px] font-bold text-foreground">
-          {label} {"->"}
+          {label}
         </Text>
       </Box>
     </Link>
@@ -1299,7 +1432,7 @@ function ActivityCard({
                       numberOfLines={full ? undefined : compact ? 2 : 4}
                       selectable={full}
                     >
-                      {event.detail}
+                      {humanizeGeneratedUnitKeyText(event.detail)}
                     </Text>
                   ) : null}
                 </Box>
@@ -1327,7 +1460,7 @@ function CompileActivity({ progress }: { progress: RunCompileProgress | null | u
           {progress.recentUnits.slice(0, 5).map((unit, index) => (
             <Box key={`${unit.unitId}-${unit.createdAt}`} className={`py-2 ${index > 0 ? "border-t border-border" : ""}`}>
               <Text className={`text-xs font-semibold ${unit.status === "error" ? "text-destructive" : "text-foreground"}`}>
-                {unit.label} · {unit.status === "ok" ? "authored" : "error"}
+                {humanizeGeneratedUnitKeyText(unit.label)} · {unit.status === "ok" ? "authored" : "error"}
               </Text>
               <Text className="text-[11.5px] text-muted-foreground">
                 {formatEventTime(unit.createdAt)}
@@ -1511,19 +1644,33 @@ function RenderedOutputsCard({
   unitMeta,
   retryingId,
   rerenderingId,
+  restartingId,
+  cancellingId,
   presigningKey,
+  downloadingKey,
+  downloadError,
   onPreview,
+  onDownload,
   onRerender,
   onRetry,
+  onCancel,
+  onRestart,
 }: {
   status: RunRenderStatus;
   unitMeta: Map<string, RenderUnitMeta>;
   retryingId: string | null;
   rerenderingId: string | null;
+  restartingId: string | null;
+  cancellingId: string | null;
   presigningKey: string | null;
+  downloadingKey: string | null;
+  downloadError: string | null;
   onPreview: (video: PreviewVideo) => void;
+  onDownload: (video: PreviewVideo) => void;
   onRerender: (jobId: Id<"renderJobs">) => Promise<void>;
   onRetry: (jobId: Id<"renderJobs">) => Promise<void>;
+  onCancel: (jobId: Id<"renderJobs">) => Promise<void>;
+  onRestart: (jobId: Id<"renderJobs">) => Promise<void>;
 }) {
   return (
     <SurfaceCard
@@ -1541,7 +1688,9 @@ function RenderedOutputsCard({
         <RenderSummaryPill label={`${status.summary.dispatched} dispatched`} count={status.summary.dispatched} tone="warning" />
         <RenderSummaryPill label={`${status.summary.rendering} rendering`} count={status.summary.rendering} tone="accent" />
         <RenderSummaryPill label={`${status.summary.failed} failed`} count={status.summary.failed} tone="danger" />
+        <RenderSummaryPill label={`${status.summary.cancelled} cancelled`} count={status.summary.cancelled} tone="neutral" />
       </Box>
+      {downloadError ? <Text className="text-xs text-destructive">{downloadError}</Text> : null}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -1549,14 +1698,14 @@ function RenderedOutputsCard({
         contentContainerStyle={{ minWidth: "100%" } as never}
       >
         <Box
-          className="w-full min-w-[940px] overflow-hidden rounded-[12px] border border-border"
+          className="w-full min-w-[1010px] overflow-hidden rounded-[12px] border border-border"
           style={{ width: "100%" } as never}
         >
           <Box className="flex-row items-center gap-4 border-b border-border bg-background px-4 py-3">
             <TableHeader className="w-[245px]">Unit</TableHeader>
             <TableHeader className="w-[190px]">Module</TableHeader>
             <TableHeader className="w-[115px]">Status</TableHeader>
-            <TableHeader className="w-[150px]">Video</TableHeader>
+            <TableHeader className="w-[220px]">Video renditions</TableHeader>
             <TableHeader className="w-[86px]">Attempts</TableHeader>
             <TableHeader className="flex-1 text-right">Action</TableHeader>
           </Box>
@@ -1591,13 +1740,27 @@ function RenderedOutputsCard({
                 <Box className="w-[115px]">
                   <StatusBadge label={renderStatusLabel(job.status)} tone={renderStatusTone(job.status)} />
                 </Box>
-                <Box className="w-[150px] gap-0.5">
+                <Box className="w-[220px] gap-0.5">
                   <Text className="text-[12.5px] font-semibold text-foreground">
                     {output ? formatDurationLong(output.durationMs) : "Pending"}
                   </Text>
                   <Text className="text-[11px] text-muted-foreground">
-                    {output ? `${output.width}x${output.height} · ${output.fps}fps · ${formatBytes(output.sizeBytes)}` : "MP4 not available yet"}
+                    {output
+                      ? `${renderedVideoVariants(output).length} rendition${renderedVideoVariants(output).length === 1 ? "" : "s"} · ${output.fps}fps`
+                      : "MP4 not available yet"}
                   </Text>
+                  {output ? (
+                    <Text className="text-[10.5px] leading-4 text-muted-foreground" numberOfLines={2}>
+                      {renderedVideoVariants(output)
+                        .map((variant) => `${variant.width}x${variant.height}`)
+                        .join(" · ")}
+                    </Text>
+                  ) : null}
+                  {job.rendererVersion ? (
+                    <Text className="text-[10.5px] text-muted-foreground">
+                      {job.rendererVersion}
+                    </Text>
+                  ) : null}
                 </Box>
                 <Box className="w-[86px]">
                   <Text className="text-[12.5px] font-semibold text-secondary-foreground">
@@ -1626,6 +1789,47 @@ function RenderedOutputsCard({
                       </Text>
                     </Pressable>
                   ) : null}
+                  {ready && Platform.OS === "web" ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      isDisabled={downloadingKey === output.objectKey}
+                      onPress={() =>
+                        onDownload({
+                          jobId: job._id,
+                          objectKey: output.objectKey,
+                          title,
+                          subtitle,
+                          meta,
+                          output,
+                        })
+                      }
+                    >
+                      <ButtonText>
+                        {downloadingKey === output.objectKey ? "Preparing..." : "Download MP4"}
+                      </ButtonText>
+                    </Button>
+                  ) : null}
+                  {job.status === "queued" || job.status === "dispatched" || job.status === "rendering" ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      isDisabled={cancellingId === String(job._id)}
+                      onPress={() => void onCancel(job._id)}
+                    >
+                      <ButtonText>{cancellingId === String(job._id) ? "Cancelling..." : "Cancel render"}</ButtonText>
+                    </Button>
+                  ) : null}
+                  {job.status === "dispatched" || job.status === "rendering" ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      isDisabled={restartingId === String(job._id)}
+                      onPress={() => void onRestart(job._id)}
+                    >
+                      <ButtonText>{restartingId === String(job._id) ? "Restarting..." : "Restart render"}</ButtonText>
+                    </Button>
+                  ) : null}
                   {ready ? (
                     <Button
                       size="sm"
@@ -1634,6 +1838,16 @@ function RenderedOutputsCard({
                       onPress={() => void onRerender(job._id)}
                     >
                       <ButtonText>{rerenderingId === String(job._id) ? "Re-rendering..." : "Re-render video"}</ButtonText>
+                    </Button>
+                  ) : null}
+                  {job.status === "cancelled" ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      isDisabled={rerenderingId === String(job._id)}
+                      onPress={() => void onRerender(job._id)}
+                    >
+                      <ButtonText>{rerenderingId === String(job._id) ? "Starting..." : "Render video"}</ButtonText>
                     </Button>
                   ) : null}
                   {job.error?.retryable ? (
@@ -1670,7 +1884,7 @@ function RenderSummaryPill({
 }: {
   label: string;
   count: number;
-  tone: "warning" | "accent" | "danger";
+  tone: "neutral" | "warning" | "accent" | "danger";
 }) {
   return count > 0 ? <StatusBadge label={label} tone={tone} /> : null;
 }
@@ -1688,14 +1902,19 @@ function RenderedVideoModal({
   url,
   loading,
   error,
+  onSelectVariant,
   onClose,
 }: {
   video: PreviewVideo | null;
   url: string | null;
   loading: boolean;
   error: string | null;
+  onSelectVariant: (objectKey: string) => void;
   onClose: () => void;
 }) {
+  const variants = video ? renderedVideoVariants(video.output) : [];
+  const selectedVariant = video ? selectedRenderedVideoVariant(video) : null;
+
   if (Platform.OS === "web" && video !== null) {
     return React.createElement(
       "div",
@@ -1792,11 +2011,49 @@ function RenderedVideoModal({
             "Close"
           )
         ),
-        React.createElement(
-          "div",
-          { style: { padding: 20 } },
           React.createElement(
             "div",
+            { style: { padding: 20 } },
+            variants.length > 1
+              ? React.createElement(
+                  "div",
+                  {
+                    style: {
+                      display: "flex",
+                      gap: 8,
+                      flexWrap: "wrap",
+                      marginBottom: 16,
+                    },
+                  },
+                  variants.map((variant) =>
+                    React.createElement(
+                      "button",
+                      {
+                        key: variant.objectKey,
+                        type: "button",
+                        onClick: () => onSelectVariant(variant.objectKey),
+                        style: {
+                          border: 0,
+                          borderRadius: 999,
+                          background:
+                            variant.objectKey === video.objectKey
+                              ? "#FFFFFF"
+                              : "rgba(255, 255, 255, 0.1)",
+                          color:
+                            variant.objectKey === video.objectKey ? "#11100E" : "#FFFFFF",
+                          cursor: "pointer",
+                          fontSize: 12,
+                          fontWeight: 700,
+                          padding: "8px 11px",
+                        },
+                      },
+                      `${variant.width}x${variant.height}`
+                    )
+                  )
+                )
+              : null,
+            React.createElement(
+              "div",
             {
               style: {
                 overflow: "hidden",
@@ -1881,7 +2138,9 @@ function RenderedVideoModal({
               React.createElement(
                 "div",
                 { style: { color: "#fff", fontSize: 12, fontWeight: 700 } },
-                `${formatDurationLong(video.output.durationMs)} · ${video.output.width}x${video.output.height} · ${video.output.fps}fps`
+                selectedVariant
+                  ? `${formatDurationLong(selectedVariant.durationMs)} · ${selectedVariant.width}x${selectedVariant.height} · ${selectedVariant.fps}fps · ${formatBytes(selectedVariant.sizeBytes)}`
+                  : ""
               ),
               React.createElement(
                 "div",
@@ -1893,7 +2152,7 @@ function RenderedVideoModal({
                     wordBreak: "break-all",
                   },
                 },
-                video.objectKey
+                selectedVariant?.objectKey ?? ""
               )
             ),
             url
@@ -1941,6 +2200,23 @@ function RenderedVideoModal({
         </ModalHeader>
         <ModalBody className="m-0 p-5">
           <Box className="gap-4">
+            {variants.length > 1 ? (
+              <Box className="flex-row flex-wrap gap-2">
+                {variants.map((variant) => (
+                  <Pressable
+                    key={variant.objectKey}
+                    className={`rounded-full px-3 py-2 ${variant.objectKey === video?.objectKey ? "bg-white" : "bg-white/10"}`}
+                    onPress={() => onSelectVariant(variant.objectKey)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Preview ${variant.width} by ${variant.height} video rendition`}
+                  >
+                    <Text className={`text-[12px] font-bold ${variant.objectKey === video?.objectKey ? "text-[#11100E]" : "text-white"}`}>
+                      {variant.width}x{variant.height}
+                    </Text>
+                  </Pressable>
+                ))}
+              </Box>
+            ) : null}
             <Box className="overflow-hidden rounded-[14px] bg-black">
               {loading ? (
                 <Box className="min-h-[420px] items-center justify-center">
@@ -1977,10 +2253,12 @@ function RenderedVideoModal({
             <Box className="flex-row flex-wrap items-center justify-between gap-3">
               <Box className="gap-0.5">
                 <Text className="text-[12px] font-semibold text-white">
-                  {video ? `${formatDurationLong(video.output.durationMs)} · ${video.output.width}x${video.output.height} · ${video.output.fps}fps` : ""}
+                  {selectedVariant
+                    ? `${formatDurationLong(selectedVariant.durationMs)} · ${selectedVariant.width}x${selectedVariant.height} · ${selectedVariant.fps}fps · ${formatBytes(selectedVariant.sizeBytes)}`
+                    : ""}
                 </Text>
                 <Text className="text-[11px] text-[#A9A399]" selectable>
-                  {video?.objectKey ?? ""}
+                  {selectedVariant?.objectKey ?? ""}
                 </Text>
               </Box>
               {url && Platform.OS === "web"
@@ -2024,7 +2302,7 @@ function buildRenderUnitMeta(course: RunCourseRows | undefined): Map<string, Ren
     const moduleNumber = order ? order.module + 1 : moduleNumberByKey.get(unit.moduleKey) ?? null;
     const unitNumber = order ? order.unit + 1 : null;
     map.set(unit.unitKey, {
-      moduleLabel: unit.moduleTitle?.trim() || readableIdentifier(unit.moduleKey),
+      moduleLabel: unit.moduleTitle?.trim() || readableModuleLabel(unit.moduleKey),
       moduleKey: unit.moduleKey,
       moduleNumber,
       unitLabel: readableUnitLabel(unit),
@@ -2039,7 +2317,7 @@ function fallbackRenderUnitMeta(job: RenderJob): RenderUnitMeta {
   const parsed = parseUnitPosition(job.unitId);
   const moduleNumber = parsed?.moduleNumber ?? parseModuleNumber(job.moduleId);
   return {
-    moduleLabel: readableIdentifier(job.moduleId),
+    moduleLabel: readableModuleLabel(job.moduleId),
     moduleKey: job.moduleId,
     moduleNumber,
     unitLabel: `Unit ${parsed?.unitNumber ?? job.unitIndex + 1}`,
@@ -2062,19 +2340,11 @@ function modulePositionLabel(meta: RenderUnitMeta): string {
 }
 
 function parseUnitPosition(unitId: string): { moduleNumber: number; unitNumber: number } | null {
-  const compact = unitId.match(/(?:^|-)\D*(\d)(\d{2})$/);
-  if (!compact) return null;
-  const moduleNumber = Number(compact[1]);
-  const unitNumber = Number(compact[2]);
-  if (!Number.isFinite(moduleNumber) || !Number.isFinite(unitNumber)) return null;
-  return { moduleNumber, unitNumber };
+  return parseGeneratedUnitPosition(unitId);
 }
 
 function parseModuleNumber(moduleId: string): number | null {
-  const match = moduleId.match(/^m(\d+)/i);
-  if (!match) return null;
-  const value = Number(match[1]);
-  return Number.isFinite(value) ? value : null;
+  return parseGeneratedModuleNumber(moduleId);
 }
 
 function unitOrder(unit: Doc<"microUnits">): { module: number; unit: number } | null {
@@ -2092,7 +2362,15 @@ function readableUnitLabel(unit: Doc<"microUnits">): string {
     return meta.title.trim();
   }
   if (unit.concept.trim().length > 0) return readableIdentifier(unit.concept);
-  return readableIdentifier(unit.unitKey);
+  return `Unit ${formatUnitPositionLabel(unit.unitKey, readableIdentifier(unit.unitKey))}`;
+}
+
+function readableModuleLabel(moduleKey: string): string {
+  const readable = readableIdentifier(moduleKey);
+  if (/^m\d+$/i.test(readable)) {
+    return formatModuleNumberLabel(moduleKey, undefined, { includeWord: true });
+  }
+  return readable;
 }
 
 function readableIdentifier(value: string): string {
@@ -2110,6 +2388,7 @@ function renderStatusLabel(status: string): string {
   if (status === "dispatched") return "In renderer";
   if (status === "queued") return "Queued";
   if (status === "failed") return "Failed";
+  if (status === "cancelled") return "Cancelled";
   return readableIdentifier(status);
 }
 
@@ -2146,7 +2425,7 @@ function PrimaryGenerationAction({ runId, state }: { runId: Id<"runs">; state: s
   if (!href) return null;
   return (
     <Link href={href}>
-      <Text className="text-sm font-semibold text-[#7FD3A0]">{actionLabelForState(state)} {"->"}</Text>
+      <Text className="text-sm font-semibold text-[#7FD3A0]">{actionLabelForState(state)}</Text>
     </Link>
   );
 }

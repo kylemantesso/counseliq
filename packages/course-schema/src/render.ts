@@ -14,6 +14,23 @@ export const renderProfileSchema = z
   })
   .strict();
 
+export const renderVariantProfileSchema = renderProfileSchema
+  .extend({ label: z.string().min(1) })
+  .strict();
+
+export const renderOutputVariantSchema = z
+  .object({
+    label: z.string().min(1),
+    objectKey: contentAddressedKeySchema,
+    sha256: z.string().min(1),
+    sizeBytes: z.number().int().positive(),
+    durationMs: z.number().int().positive(),
+    width: z.number().int().positive(),
+    height: z.number().int().positive(),
+    fps: z.number().positive(),
+  })
+  .strict();
+
 export const renderJobRequestSchema = z
   .object({
     jobId: z.string().min(1),
@@ -28,6 +45,7 @@ export const renderJobRequestSchema = z
     contentHash: z.string().min(1),
     renderSpecHash: z.string().min(1),
     profile: renderProfileSchema,
+    variants: z.array(renderVariantProfileSchema).min(1).optional(),
     callbackUrl: z.string().url(),
   })
   .strict();
@@ -43,6 +61,7 @@ export const renderSuccessPayloadSchema = z
     fps: z.number().positive(),
     rendererVersion: z.string().min(1),
     renderedAt: z.number().int().positive(),
+    variants: z.array(renderOutputVariantSchema).min(1).optional(),
   })
   .strict();
 
@@ -80,6 +99,8 @@ export const renderCallbackSchema = z
   });
 
 export type RenderProfile = z.infer<typeof renderProfileSchema>;
+export type RenderVariantProfile = z.infer<typeof renderVariantProfileSchema>;
+export type RenderOutputVariant = z.infer<typeof renderOutputVariantSchema>;
 export type RenderJobRequest = z.infer<typeof renderJobRequestSchema>;
 export type RenderSuccessPayload = z.infer<typeof renderSuccessPayloadSchema>;
 export type RenderFailurePayload = z.infer<typeof renderFailurePayloadSchema>;

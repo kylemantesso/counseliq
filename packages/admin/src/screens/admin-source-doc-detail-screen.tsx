@@ -548,7 +548,7 @@ function AdminSourceDocDetailContent() {
                           </Text>
                         </Box>
                         <Pressable onPress={() => router.push(`/admin/source-docs/${upload._id}`)}>
-                          <Text className="text-sm font-semibold text-foreground">Open →</Text>
+                          <Text className="text-sm font-semibold text-foreground">Open</Text>
                         </Pressable>
                       </Box>
                     ))}

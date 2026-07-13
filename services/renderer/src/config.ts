@@ -34,7 +34,7 @@ export function loadConfig(): RendererConfig {
   return {
     port: Number(process.env.PORT ?? 8081),
     callbackSecret: required("RENDERER_CALLBACK_SECRET"),
-    rendererVersion: process.env.RENDERER_VERSION?.trim() || "renderer@1",
+    rendererVersion: process.env.RENDERER_VERSION?.trim() || "renderer@4-responsive",
     signedUrlTtlSeconds: positiveIntEnv("RENDERER_SIGNED_URL_TTL_SECONDS", 3600),
     store: {
       endpoint: required("OBJECT_STORE_ENDPOINT"),

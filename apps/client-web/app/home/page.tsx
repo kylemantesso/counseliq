@@ -1,3 +1,3 @@
 'use client';
 
-export { ClientHomeScreen as default } from '@counseliq/client';
+export { ClientHomeScreen as default } from '@counseliq/client/screens/home';

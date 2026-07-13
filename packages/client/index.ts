@@ -1,6 +1,8 @@
 export { LoginScreen } from "./src/screens/login-screen";
 export { SignupScreen } from "./src/screens/signup-screen";
 export { ClientHomeScreen } from "./src/screens/client-home-screen";
+export { CourseCatalogScreen } from "./src/screens/course-catalog-screen";
+export { CoursePlayerScreen } from "./src/screens/course-player-screen";
 export { ForceUpgradeScreen } from "./src/screens/force-upgrade-screen";
 
 export { CoursePlayer } from "./src/components/course-player/course-player";

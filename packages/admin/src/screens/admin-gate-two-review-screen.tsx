@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { useParams } from "solito/navigation";
 import {
@@ -10,6 +10,12 @@ import {
   Heading,
   Input,
   InputField,
+  Modal,
+  ModalBackdrop,
+  ModalBody,
+  ModalCloseButton,
+  ModalContent,
+  ModalHeader,
   Pressable,
   ScrollView,
   Text,
@@ -82,6 +88,13 @@ interface UnitQa {
   judgeModel?: string;
 }
 
+interface NarrationParagraphChunk {
+  sentence: NarrationSentence;
+  text: string;
+}
+
+type NarrationParagraph = NarrationParagraphChunk[];
+
 interface CourseQa {
   pass: boolean;
   courseFlags: JudgeFlag[];
@@ -129,6 +142,38 @@ interface PreviewAsset {
   durationMs?: number;
 }
 
+interface VoiceSettings {
+  stability?: number;
+  speed?: number;
+}
+
+interface ElevenLabsVoice {
+  voiceId: string;
+  name: string;
+  category: string | null;
+  description: string | null;
+  previewUrl: string | null;
+  labels: Record<string, string>;
+}
+
+interface CourseTtsVoice {
+  provider: string;
+  voiceRef: string;
+  voiceId: string;
+  name?: string;
+  accent?: EnglishAccentFilter;
+  settings?: VoiceSettings;
+}
+
+type EnglishAccentFilter = "all" | "australian" | "american" | "english";
+
+const ENGLISH_ACCENTS: Array<{ value: EnglishAccentFilter; label: string }> = [
+  { value: "all", label: "All English" },
+  { value: "australian", label: "Australian" },
+  { value: "american", label: "American" },
+  { value: "english", label: "English" },
+];
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -144,6 +189,7 @@ function AdminGateTwoReviewContent() {
   const [sendBackIds, setSendBackIds] = useState<Set<Id<"microUnits">>>(
     new Set()
   );
+  const [voiceStudioOpen, setVoiceStudioOpen] = useState(false);
 
   const runResult = useQuery(
     api.pipeline.queries.getRun,
@@ -194,6 +240,11 @@ function AdminGateTwoReviewContent() {
 
   const selectedUnit =
     units.find((unit) => unit._id === selectedUnitId) ?? units[0] ?? null;
+  const auditionText = useMemo(() => {
+    const narration = (selectedUnit?.narration ?? units[0]?.narration ?? []) as NarrationSentence[];
+    return narration[0]?.text ?? "";
+  }, [selectedUnit?.narration, units]);
+  const currentVoice = (preview?.course?.ttsVoice as CourseTtsVoice | null | undefined) ?? null;
   const courseQa = courseData?.course.qa as CourseQa | undefined;
   const assetsByRef = useMemo(
     () => (preview?.assets ?? {}) as Record<string, PreviewAsset>,
@@ -361,6 +412,17 @@ function AdminGateTwoReviewContent() {
                 <Button
                   size="sm"
                   variant="outline"
+                  onPress={() => setVoiceStudioOpen(true)}
+                  disabled={!atGate || !runId}
+                  className="rounded-full"
+                >
+                  <ButtonText>
+                    {currentVoice?.name ? `Voice: ${currentVoice.name}` : "Choose narration voice"}
+                  </ButtonText>
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
                   onPress={onSendBack}
                   disabled={!atGate || busy || sendBackIds.size === 0}
                   className="rounded-full"
@@ -374,10 +436,10 @@ function AdminGateTwoReviewContent() {
                 <Button
                   size="sm"
                   onPress={onApprove}
-                  disabled={!atGate || busy}
+                  disabled={!atGate || busy || !currentVoice}
                   className="rounded-full bg-[#1f1d1a]"
                 >
-                  <ButtonText>Approve course review →</ButtonText>
+                  <ButtonText>Approve course review</ButtonText>
                 </Button>
               </Box>
             </Box>
@@ -398,8 +460,23 @@ function AdminGateTwoReviewContent() {
               <Text className="mt-2 text-xs text-muted-foreground">
                 This run is currently {runStepLabel(run.state)}; review actions are disabled.
               </Text>
+            ) : !currentVoice ? (
+              <Text className="mt-2 text-xs text-muted-foreground">
+                Choose and save a narration voice before approving. TTS uses the saved course voice.
+              </Text>
             ) : null}
           </Box>
+
+          {runId ? (
+            <VoiceStudioModal
+              isOpen={voiceStudioOpen}
+              runId={runId}
+              auditionText={auditionText}
+              currentVoice={currentVoice}
+              onClose={() => setVoiceStudioOpen(false)}
+              onError={setError}
+            />
+          ) : null}
 
           <Box className="flex-1 min-h-0 flex-col lg:flex-row">
             <UnitQueuePanel
@@ -451,6 +528,398 @@ function ReviewEmptyState({ title }: { title: string }) {
     <Box className="flex-1 items-center justify-center p-6">
       <Text className="text-sm text-muted-foreground">{title}</Text>
     </Box>
+  );
+}
+
+function voiceInitial(name: string): string {
+  return name.trim().charAt(0).toUpperCase() || "V";
+}
+
+function voiceDetail(voice: ElevenLabsVoice): string {
+  const labelValues = Object.values(voice.labels).filter(Boolean);
+  if (labelValues.length > 0) return labelValues.slice(0, 4).join(" · ");
+  if (voice.description) return voice.description;
+  return voice.category ?? "ElevenLabs voice";
+}
+
+function formatVoiceSetting(value: number | undefined, fallback: number): string {
+  return String(value ?? fallback);
+}
+
+function voiceSearchText(voice: ElevenLabsVoice): string {
+  return [
+    voice.name,
+    voice.category ?? "",
+    voice.description ?? "",
+    ...Object.entries(voice.labels).flatMap(([key, value]) => [key, value]),
+  ]
+    .join(" ")
+    .toLowerCase();
+}
+
+function voiceMatchesAccent(voice: ElevenLabsVoice, accent: EnglishAccentFilter): boolean {
+  if (accent === "all") return true;
+  const text = voiceSearchText(voice);
+  if (accent === "australian") return /\baustralian\b|\bau\b|\baussie\b/.test(text);
+  if (accent === "american") {
+    return /\bamerican\b|\bunited states\b|\bus\b|\busa\b/.test(text);
+  }
+  return /\benglish\b|\bbritish\b|\buk\b|\bengland\b|received pronunciation|\brp\b/.test(text);
+}
+
+function normalizedAccentFilter(value: string | undefined): EnglishAccentFilter {
+  return value === "australian" || value === "american" || value === "english"
+    ? value
+    : "all";
+}
+
+function VoiceStudioModal({
+  isOpen,
+  runId,
+  auditionText,
+  currentVoice,
+  onClose,
+  onError,
+}: {
+  isOpen: boolean;
+  runId: Id<"runs">;
+  auditionText: string;
+  currentVoice: CourseTtsVoice | null;
+  onClose: () => void;
+  onError: (message: string | null) => void;
+}) {
+  const listVoices = useAction(api.pipeline.tts.voice.adminListVoices);
+  const auditionVoice = useAction(api.pipeline.tts.voice.adminAuditionVoice);
+  const setCourseVoice = useMutation(api.pipeline.tts.voice.adminSetCourseVoice);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [voices, setVoices] = useState<ElevenLabsVoice[]>([]);
+  const [loadingVoices, setLoadingVoices] = useState(false);
+  const [selectedVoiceId, setSelectedVoiceId] = useState<string | null>(null);
+  const [accentFilter, setAccentFilter] = useState<EnglishAccentFilter>("all");
+  const [accentMenuOpen, setAccentMenuOpen] = useState(false);
+  const [settings, setSettings] = useState<VoiceSettings>({ speed: 1, stability: 0.55 });
+  const [auditioningVoiceId, setAuditioningVoiceId] = useState<string | null>(null);
+  const [playingVoiceId, setPlayingVoiceId] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [localError, setLocalError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) {
+      audioRef.current?.pause();
+      audioRef.current = null;
+      setPlayingVoiceId(null);
+      setAuditioningVoiceId(null);
+      return;
+    }
+    setSelectedVoiceId(currentVoice?.voiceId ?? null);
+    setAccentFilter(normalizedAccentFilter(currentVoice?.accent));
+    setAccentMenuOpen(false);
+    setSettings({
+      speed: currentVoice?.settings?.speed ?? 1,
+      stability: currentVoice?.settings?.stability ?? 0.55,
+    });
+    setLocalError(null);
+
+    let cancelled = false;
+    setLoadingVoices(true);
+    listVoices({})
+      .then((result) => {
+        if (cancelled) return;
+        const loaded = result as ElevenLabsVoice[];
+        setVoices(loaded);
+        if (!currentVoice?.voiceId && loaded.length > 0) {
+          setSelectedVoiceId(loaded[0].voiceId);
+        }
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setLocalError(getUserFacingErrorMessage(err, "Could not load ElevenLabs voices."));
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingVoices(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [currentVoice?.accent, currentVoice?.settings?.speed, currentVoice?.settings?.stability, currentVoice?.voiceId, isOpen, listVoices]);
+
+  const filteredVoices = useMemo(
+    () => voices.filter((voice) => voiceMatchesAccent(voice, accentFilter)),
+    [accentFilter, voices]
+  );
+
+  useEffect(() => {
+    if (!isOpen || loadingVoices || voices.length === 0) return;
+    if (selectedVoiceId && filteredVoices.some((voice) => voice.voiceId === selectedVoiceId)) {
+      return;
+    }
+    setSelectedVoiceId(filteredVoices[0]?.voiceId ?? null);
+  }, [filteredVoices, isOpen, loadingVoices, selectedVoiceId, voices.length]);
+
+  const selectedVoice = voices.find((voice) => voice.voiceId === selectedVoiceId) ?? null;
+  const selectedAccentLabel = ENGLISH_ACCENTS.find((accent) => accent.value === accentFilter)?.label ?? "All English";
+  const auditionLine = auditionText.trim();
+
+  async function playVoice(voice: ElevenLabsVoice) {
+    if (!auditionLine || auditioningVoiceId) return;
+    setLocalError(null);
+    setAuditioningVoiceId(voice.voiceId);
+    try {
+      const result = await auditionVoice({
+        runId,
+        voiceId: voice.voiceId,
+        text: auditionLine,
+        accent: accentFilter,
+        settings,
+      });
+      audioRef.current?.pause();
+      const audio = new Audio(`data:${result.contentType};base64,${result.audioBase64}`);
+      audioRef.current = audio;
+      audio.onended = () => setPlayingVoiceId(null);
+      audio.onerror = () => setPlayingVoiceId(null);
+      setPlayingVoiceId(voice.voiceId);
+      await audio.play();
+    } catch (err) {
+      setPlayingVoiceId(null);
+      setLocalError(getUserFacingErrorMessage(err, "Could not audition that voice."));
+    } finally {
+      setAuditioningVoiceId(null);
+    }
+  }
+
+  async function saveVoice() {
+    if (!selectedVoice) return;
+    onError(null);
+    setLocalError(null);
+    setSaving(true);
+    try {
+      await setCourseVoice({
+        runId,
+        voiceId: selectedVoice.voiceId,
+        name: selectedVoice.name,
+        accent: accentFilter,
+        settings,
+      });
+      onClose();
+    } catch (err) {
+      setLocalError(getUserFacingErrorMessage(err, "Could not set the course voice."));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} size="full">
+      <ModalBackdrop />
+      <ModalContent className="max-h-[86vh] max-w-[860px] rounded-[18px] bg-[#fbfaf6] p-0">
+        <ModalHeader className="border-b border-[#dedbd2] px-5 py-4">
+          <Box className="min-w-0 flex-1 gap-1">
+            <Text className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
+              Narration · ElevenLabs
+            </Text>
+            <Heading size="md" className="text-[22px] leading-7 tracking-[-0.03em]">
+              Choose the course voice
+            </Heading>
+            <Text className="text-[12px] text-muted-foreground">
+              Audition voices on a real course line, then set one voice for the whole course.
+            </Text>
+          </Box>
+          <ModalCloseButton onPress={onClose} className="rounded-full border border-[#dedbd2] bg-white px-3 py-2">
+            <Text className="text-[12px] font-bold text-[#514d46]">×</Text>
+          </ModalCloseButton>
+        </ModalHeader>
+
+        <ModalBody className="m-0 p-0">
+          <Box className="border-b border-[#dedbd2] bg-[#0f1b2a] px-5 py-4">
+            <Box className="flex-row flex-wrap items-center gap-2">
+              <Pill tone="warning" label="Audition line" />
+              <Pill tone="neutral" label="Intro line" />
+              {selectedVoice ? <Pill tone="neutral" label={selectedVoice.name} /> : null}
+            </Box>
+            <Text className="mt-3 text-[16px] font-semibold leading-6 text-white">
+              {auditionLine || "No narration line is available for audition."}
+            </Text>
+            <Box className="mt-4 flex-row flex-wrap items-center gap-3">
+              <Button
+                variant="outline"
+                onPress={() => selectedVoice ? void playVoice(selectedVoice) : undefined}
+                disabled={!selectedVoice || !auditionLine || auditioningVoiceId !== null}
+                className="h-11 rounded-full border-white/30 bg-white/10 px-4"
+              >
+                <ButtonText className="text-white">
+                  {selectedVoice && auditioningVoiceId === selectedVoice.voiceId
+                    ? "Generating sample"
+                    : selectedVoice && playingVoiceId === selectedVoice.voiceId
+                      ? "Playing sample"
+                      : "Play selected voice"}
+                </ButtonText>
+              </Button>
+              <Text className="text-[12px] text-white/65">
+                {auditionLine.length > 360 ? "Sample capped to 360 characters." : "Real course text, no full TTS run yet."}
+              </Text>
+            </Box>
+          </Box>
+
+          <ScrollView className="max-h-[420px]">
+            <Box className="gap-2 p-5">
+              <Box className="z-10 mb-2 max-w-[280px] gap-1">
+                <Text className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+                  English accent
+                </Text>
+                <Pressable
+                  onPress={() => setAccentMenuOpen((value) => !value)}
+                  className="flex-row items-center justify-between rounded-xl border border-[#dedbd2] bg-white px-3 py-2.5"
+                >
+                  <Text className="text-[13px] font-bold text-[#1f1d1a]">{selectedAccentLabel}</Text>
+                  <Text className="text-[12px] font-bold text-muted-foreground">⌄</Text>
+                </Pressable>
+                {accentMenuOpen ? (
+                  <Box className="overflow-hidden rounded-xl border border-[#dedbd2] bg-white">
+                    {ENGLISH_ACCENTS.map((accent) => {
+                      const active = accent.value === accentFilter;
+                      return (
+                        <Pressable
+                          key={accent.value}
+                          onPress={() => {
+                            setAccentFilter(accent.value);
+                            setAccentMenuOpen(false);
+                          }}
+                          className={`flex-row items-center justify-between border-b border-[#ebe8df] px-3 py-2.5 last:border-b-0 ${active ? "bg-[#f0eee8]" : "bg-white"}`}
+                        >
+                          <Text className="text-[13px] font-semibold text-[#1f1d1a]">{accent.label}</Text>
+                          {active ? <Text className="text-[12px] font-bold text-[#1f1d1a]">✓</Text> : null}
+                        </Pressable>
+                      );
+                    })}
+                  </Box>
+                ) : null}
+              </Box>
+              {loadingVoices ? (
+                <Box className="rounded-xl border border-[#dedbd2] bg-white p-4">
+                  <Text className="text-[13px] text-muted-foreground">Loading ElevenLabs voices...</Text>
+                </Box>
+              ) : voices.length === 0 ? (
+                <Box className="rounded-xl border border-[#dedbd2] bg-white p-4">
+                  <Text className="text-[13px] text-muted-foreground">No voices returned from ElevenLabs.</Text>
+                </Box>
+              ) : filteredVoices.length === 0 ? (
+                <Box className="rounded-xl border border-[#dedbd2] bg-white p-4">
+                  <Text className="text-[13px] text-muted-foreground">
+                    No voices matched {selectedAccentLabel}. Try All English or add a matching ElevenLabs voice to the account.
+                  </Text>
+                </Box>
+              ) : (
+                filteredVoices.map((voice) => {
+                  const selected = voice.voiceId === selectedVoiceId;
+                  const courseVoice = currentVoice?.voiceId === voice.voiceId;
+                  return (
+                    <Pressable
+                      key={voice.voiceId}
+                      onPress={() => setSelectedVoiceId(voice.voiceId)}
+                      className={`flex-row items-center gap-3 rounded-xl border bg-white px-3 py-3 ${
+                        selected ? "border-[#1f1d1a]" : "border-[#dedbd2] data-[hover=true]:border-[#bdb8ad]"
+                      }`}
+                    >
+                      <Box className={`h-5 w-5 items-center justify-center rounded-full border ${selected ? "border-[#1f1d1a] bg-[#1f1d1a]" : "border-[#c8c2b6] bg-white"}`}>
+                        {selected ? <Text className="text-[11px] font-bold text-white">✓</Text> : null}
+                      </Box>
+                      <Box className="h-9 w-9 items-center justify-center rounded-full bg-[#182739]">
+                        <Text className="text-[15px] font-bold text-white">{voiceInitial(voice.name)}</Text>
+                      </Box>
+                      <Box className="min-w-0 flex-1 gap-0.5">
+                        <Box className="flex-row flex-wrap items-center gap-2">
+                          <Text className="text-[14px] font-bold text-[#1f1d1a]">{voice.name}</Text>
+                          {courseVoice ? <Pill tone="warning" label="Course voice" /> : null}
+                        </Box>
+                        <Text className="text-[12px] text-muted-foreground" numberOfLines={1}>
+                          {voiceDetail(voice)}
+                        </Text>
+                      </Box>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={!auditionLine || auditioningVoiceId !== null}
+                        onPress={() => void playVoice(voice)}
+                        className="h-9 rounded-full px-3"
+                      >
+                        <ButtonText className="text-[12px]">
+                          {auditioningVoiceId === voice.voiceId
+                            ? "..."
+                            : playingVoiceId === voice.voiceId
+                              ? "Playing"
+                              : "Play"}
+                        </ButtonText>
+                      </Button>
+                    </Pressable>
+                  );
+                })
+              )}
+            </Box>
+          </ScrollView>
+
+          <Box className="gap-3 border-t border-[#dedbd2] bg-[#f0eee8] px-5 py-4">
+            <Box className="flex-row flex-wrap items-center gap-3">
+              <Text className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+                Speed
+              </Text>
+              {[0.9, 1, 1.1].map((speed) => (
+                <Pressable
+                  key={`speed-${speed}`}
+                  onPress={() => setSettings((current) => ({ ...current, speed }))}
+                  className={`rounded-full border px-3 py-1.5 ${settings.speed === speed ? "border-[#1f1d1a] bg-[#1f1d1a]" : "border-[#dedbd2] bg-white"}`}
+                >
+                  <Text className={`text-[12px] font-bold ${settings.speed === speed ? "text-white" : "text-[#514d46]"}`}>
+                    {speed.toFixed(1)}x
+                  </Text>
+                </Pressable>
+              ))}
+              <Text className="ml-2 text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+                Stability
+              </Text>
+              {[0.35, 0.55, 0.75].map((stability) => (
+                <Pressable
+                  key={`stability-${stability}`}
+                  onPress={() => setSettings((current) => ({ ...current, stability }))}
+                  className={`rounded-full border px-3 py-1.5 ${settings.stability === stability ? "border-[#1f1d1a] bg-[#1f1d1a]" : "border-[#dedbd2] bg-white"}`}
+                >
+                  <Text className={`text-[12px] font-bold ${settings.stability === stability ? "text-white" : "text-[#514d46]"}`}>
+                    {Math.round(stability * 100)}
+                  </Text>
+                </Pressable>
+              ))}
+              <Text className="ml-auto text-[12px] text-muted-foreground">
+                Applies to all units · speed {formatVoiceSetting(settings.speed, 1)}x · stability {Math.round((settings.stability ?? 0.55) * 100)}
+              </Text>
+            </Box>
+
+            {localError ? (
+              <Box className="rounded-xl border border-destructive bg-destructive/10 px-3 py-2">
+                <Text className="text-sm text-destructive">{localError}</Text>
+              </Box>
+            ) : null}
+
+            <Box className="flex-row flex-wrap items-center justify-between gap-2">
+              <Button variant="outline" onPress={onClose} disabled={saving} className="rounded-full">
+                <ButtonText>Cancel</ButtonText>
+              </Button>
+              <Button
+                onPress={() => void saveVoice()}
+                disabled={!selectedVoice || saving || auditioningVoiceId !== null}
+                className="rounded-full bg-[#1f1d1a]"
+              >
+                <ButtonText>
+                  {saving
+                    ? "Saving voice"
+                    : selectedVoice
+                      ? `Use ${selectedVoice.name} for this course`
+                      : "Choose a voice"}
+                </ButtonText>
+              </Button>
+            </Box>
+          </Box>
+        </ModalBody>
+      </ModalContent>
+    </Modal>
   );
 }
 
@@ -688,6 +1157,78 @@ function unitOrderLabel(unit: Doc<"microUnits">): string {
 function sentenceLabel(id: string): string {
   const match = id.match(/^n(\d+)$/i);
   return match ? `Sentence ${Number(match[1])}` : "Sentence";
+}
+
+function narrationParagraphs(
+  narration: NarrationSentence[],
+  cards: UnitCard[]
+): NarrationParagraph[] {
+  const sentenceIndexById = new Map(
+    narration.map((sentence, index) => [sentence.id, index])
+  );
+  const breakPoints = new Set<string>(["0:0"]);
+
+  for (const card of cards) {
+    const sentenceIndex = sentenceIndexById.get(card.enterAt.narration);
+    if (sentenceIndex === undefined) continue;
+    const sentence = narration[sentenceIndex];
+    const wordIndex = sentence.text
+      .toLocaleLowerCase()
+      .indexOf(card.enterAt.word.toLocaleLowerCase());
+    if (wordIndex > 0) breakPoints.add(`${sentenceIndex}:${wordIndex}`);
+    if (wordIndex === 0 && sentenceIndex > 0) breakPoints.add(`${sentenceIndex}:0`);
+  }
+
+  const paragraphs: NarrationParagraph[] = [[]];
+  for (const [sentenceIndex, sentence] of narration.entries()) {
+    const points = [...breakPoints]
+      .map((value) => value.split(":").map(Number))
+      .filter(([index]) => index === sentenceIndex)
+      .map(([, offset]) => offset)
+      .filter((offset) => offset > 0 && offset < sentence.text.length)
+      .sort((a, b) => a - b);
+    const segments = [0, ...points, sentence.text.length];
+
+    for (let index = 0; index < segments.length - 1; index += 1) {
+      const start = segments[index];
+      if (breakPoints.has(`${sentenceIndex}:${start}`) && paragraphs.at(-1)?.length) {
+        paragraphs.push([]);
+      }
+      const text = sentence.text.slice(start, segments[index + 1]);
+      if (text) paragraphs.at(-1)?.push({ sentence, text });
+    }
+
+    if (sentenceIndex < narration.length - 1) {
+      paragraphs.at(-1)?.push({ sentence, text: " " });
+    }
+  }
+
+  return paragraphs.filter((paragraph) => paragraph.some((chunk) => chunk.text.trim()));
+}
+
+function cardIndexForFlag(flag: JudgeFlag, cardCount: number): number | null {
+  const zeroBased = flag.message.match(/\bcard\s+index\s+(\d+)\b/i);
+  if (zeroBased) {
+    const index = Number(zeroBased[1]);
+    return index >= 0 && index < cardCount ? index : null;
+  }
+
+  const oneBased = flag.message.match(/\bcard\s+(\d+)\b/i);
+  if (oneBased) {
+    const index = Number(oneBased[1]) - 1;
+    return index >= 0 && index < cardCount ? index : null;
+  }
+  return null;
+}
+
+function flagsByCardIndex(cards: UnitCard[], flags: JudgeFlag[]): Map<number, JudgeFlag[]> {
+  const result = new Map<number, JudgeFlag[]>();
+  for (const flag of flags) {
+    const index = cardIndexForFlag(flag, cards.length);
+    if (index === null) continue;
+    result.set(index, [...(result.get(index) ?? []), flag]);
+  }
+  return result;
 }
 
 function displayIdentifier(value: string): string {
@@ -988,86 +1529,52 @@ function FlagRow({ flag }: { flag: JudgeFlag }) {
   );
 }
 
-function ReviewClaimCard({
-  flag,
-  index,
-  meta,
-  questionsById,
+const SCRIPT_CLASSIFICATION_STYLES: Record<
+  SentenceClassification["classification"],
+  { legend: string; highlight: string }
+> = {
+  traced: { legend: "bg-[#9acbae]", highlight: "rounded-[3px] bg-[#e7f3eb] px-0.5" },
+  unsupported: { legend: "bg-[#d5b33b]", highlight: "rounded-[3px] bg-[#fff1bd] px-0.5" },
+  derived: { legend: "bg-[#d4d3cc]", highlight: "rounded-[3px] bg-[#efeee9] px-0.5" },
+};
+
+function ScriptLegend({
+  label,
+  classification,
 }: {
-  flag: JudgeFlag;
-  index: number;
-  meta: UnitMeta;
-  questionsById: Map<string, Doc<"questions">>;
+  label: string;
+  classification: SentenceClassification["classification"];
 }) {
-  const dangerous = flag.severity === "error";
+  const style = SCRIPT_CLASSIFICATION_STYLES[classification];
   return (
-    <Box
-      className={`rounded-xl border p-4 ${
-        dangerous
-          ? "border-[#efc6be] bg-[#fff0ed]"
-          : "border-[#ead39c] bg-[#fff8e8]"
-      }`}
-    >
-      <Box className="flex-row items-start gap-3">
-        <Box
-          className={`mt-0.5 h-5 w-5 items-center justify-center rounded-full ${
-            dangerous ? "bg-[#c74332]" : "bg-[#c9952d]"
-          }`}
-        >
-          <Text className="text-[11px] font-bold text-white">!</Text>
-        </Box>
-        <Box className="min-w-0 flex-1 gap-1">
-          <Text
-            className={`text-[13px] font-bold ${
-              dangerous ? "text-[#9f2f23]" : "text-[#8b5a08]"
-            }`}
-          >
-            {reviewFlagTitle(flag, index)}
-          </Text>
-          <Text className="text-[13px] leading-5 text-[#5f5140]">
-            {humanizeGeneratedIds(flag.message, meta, questionsById)}
-          </Text>
-        </Box>
-        <Box className="rounded-full border border-[#dedbd2] bg-white px-3 py-1.5">
-          <Text className="text-[12px] font-semibold text-[#514d46]">
-            {dangerous ? "Review claim" : "Jump to text"}
-          </Text>
-        </Box>
-      </Box>
+    <Box className="flex-row items-center gap-1.5">
+      <Box className={`h-2.5 w-2.5 rounded-sm ${style.legend}`} />
+      <Text className="text-[11px] text-[#716d65]">{label}</Text>
     </Box>
   );
 }
 
-function reviewFlagTitle(flag: JudgeFlag, index: number): string {
-  const label = humanizeTechnicalIds(flag.code)
-    .replace(/[_-]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .toLowerCase();
-  const title = label.length > 0 ? label : `claim ${index + 1}`;
-  return `${flag.severity === "error" ? "Blocking" : "Advisory"} claim · ${title}`;
+function NarrationReviewCallout({
+  title,
+  message,
+}: {
+  title: string;
+  message: string;
+}) {
+  return (
+    <Box className="rounded-xl border border-[#ead39c] bg-[#fffaf0] px-3 py-2.5">
+      <Box className="flex-row items-start gap-2">
+        <Box className="mt-0.5 h-4 w-4 items-center justify-center rounded-full bg-[#b97708]">
+          <Text className="text-[10px] font-bold text-white">!</Text>
+        </Box>
+        <Text className="min-w-0 flex-1 text-[12px] leading-5 text-[#735b2c]">
+          <Text className="font-bold">{title} - </Text>
+          {message}
+        </Text>
+      </Box>
+    </Box>
+  );
 }
-
-const CLASSIFICATION_STYLES: Record<
-  SentenceClassification["classification"],
-  { label: string; labelClass: string; highlightClass: string }
-> = {
-  traced: {
-    label: "traced",
-    labelClass: "text-[#2c8a4b]",
-    highlightClass: "bg-[#eaf5ee] text-[#1f1d1a]",
-  },
-  derived: {
-    label: "derived",
-    labelClass: "text-muted-foreground",
-    highlightClass: "bg-[#ece9e1] text-[#1f1d1a]",
-  },
-  unsupported: {
-    label: "UNSUPPORTED",
-    labelClass: "text-[#9f2f23]",
-    highlightClass: "bg-[#fff0ed] text-[#1f1d1a]",
-  },
-};
 
 function UnitDetail({
   unit,
@@ -1094,22 +1601,30 @@ function UnitDetail({
   const [editingNarrationId, setEditingNarrationId] = useState<string | null>(null);
   const [narrationDraft, setNarrationDraft] = useState("");
   const [savingNarration, setSavingNarration] = useState(false);
+  const [scriptCopied, setScriptCopied] = useState(false);
   const classificationById = new Map(
     (qa?.sentenceClassifications ?? []).map((entry) => [
       entry.narrationId,
       entry,
     ])
   );
+  const narrationScript = narration
+    .map((sentence) => sentence.text.trim())
+    .filter(Boolean)
+    .join("\n\n");
+  const paragraphs = narrationParagraphs(narration, cards);
+  const narrationIssues = (qa?.sentenceClassifications ?? []).filter(
+    (classification) => classification.classification === "unsupported"
+  );
+  const narrationReviewCount = narrationIssues.length;
   const hookRow = questionsById.get(meta.hook.questionRef);
   const retrieveRows = meta.retrieve
     .map((ref) => questionsById.get(ref))
     .filter((row): row is Doc<"questions"> => row !== undefined);
-  const reviewCount =
-    (qa?.flags.length ?? 0) + (meta.complianceWarnings ?? []).length;
-
   useEffect(() => {
     setEditingNarrationId(null);
     setNarrationDraft("");
+    setScriptCopied(false);
   }, [unit._id]);
 
   useEffect(() => {
@@ -1146,6 +1661,23 @@ function UnitDetail({
     }
   }
 
+  async function copyNarrationScript() {
+    if (!narrationScript) return;
+    onError(null);
+    try {
+      const nav = (globalThis as { navigator?: Navigator }).navigator;
+      if (!nav?.clipboard) {
+        onError("Copy is only available in a supported browser.");
+        return;
+      }
+      await nav.clipboard.writeText(narrationScript);
+      setScriptCopied(true);
+    } catch {
+      setScriptCopied(false);
+      onError("Could not copy narration script.");
+    }
+  }
+
   return (
     <Box className="mx-auto w-full max-w-[760px] gap-4 p-4 md:p-6">
       <Box className="flex-row flex-wrap items-start justify-between gap-3">
@@ -1168,144 +1700,132 @@ function UnitDetail({
         </Button>
       </Box>
 
-      <Box className="gap-2">
-        <Text className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
-          Needs your judgment · {reviewCount} items
-        </Text>
-        {qa && qa.flags.length > 0 ? (
-          qa.flags.map((flag, index) => (
-            <ReviewClaimCard
-              key={`unit-flag-${index}`}
-              flag={flag}
-              index={index}
-              meta={meta}
-              questionsById={questionsById}
-            />
-          ))
-        ) : null}
-        {(meta.complianceWarnings ?? []).map((warning, index) => (
-          <Box
-            key={`cw-${index}`}
-            className="rounded-xl border border-[#ead39c] bg-[#fff8e8] p-4"
-          >
-            <Box className="flex-row items-start gap-3">
-              <Box className="mt-0.5 h-5 w-5 items-center justify-center rounded-full bg-[#c9952d]">
-                <Text className="text-[11px] font-bold text-white">!</Text>
-              </Box>
-              <Box className="min-w-0 flex-1 gap-1">
-                <Text className="text-[13px] font-bold text-[#8b5a08]">
-                  Fail-open compliance warning
-                </Text>
-                <Text className="text-[13px] leading-5 text-[#5f5140]">{warning}</Text>
-              </Box>
-            </Box>
-          </Box>
-        ))}
-        {reviewCount === 0 ? (
-          <Box className="rounded-xl border border-[#cde6d5] bg-[#effaf2] p-4">
-            <Text className="text-[13px] font-semibold text-[#136b35]">
-              No judgment items for this unit.
-            </Text>
-          </Box>
-        ) : null}
-      </Box>
-
       <Box className="overflow-hidden rounded-2xl border border-[#dedbd2] bg-white">
         <Box className="flex-row flex-wrap items-center justify-between gap-2 border-b border-[#ebe8df] px-4 py-3">
           <Box className="flex-row flex-wrap items-baseline gap-2">
             <Text className="text-[15px] font-bold text-[#1f1d1a]">Narration</Text>
-            <Text className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-              judge classification · {narration.length} sentences
+            <Text className="font-mono text-[11px] text-[#716d65]">
+              script · {narration.length} sentence{narration.length === 1 ? "" : "s"}
             </Text>
           </Box>
-          <Pill
-            tone={reviewCount > 0 ? "warning" : "success"}
-            label={reviewCount > 0 ? `${reviewCount} needs review` : "clean"}
-          />
+          {narrationReviewCount > 0 ? (
+            <Box className="flex-row items-center gap-2 rounded-full bg-[#faf0cf] px-2.5 py-1">
+              <Text className="text-[11px] font-bold text-[#8b5a08]">
+                {narrationReviewCount} needs review
+              </Text>
+              <Text className="text-[10px] font-bold text-[#8b5a08]">⌄</Text>
+            </Box>
+          ) : (
+            <Box className="rounded-full bg-[#e8f4eb] px-2.5 py-1">
+              <Text className="text-[11px] font-bold text-[#2c7a43]">Reviewed</Text>
+            </Box>
+          )}
         </Box>
-        <Box className="gap-3 p-4">
-          <Box className="flex-row flex-wrap gap-3 border-b border-[#ebe8df] pb-3">
-            <LegendChip className="bg-[#eaf5ee]" label="Traced to source" />
-            <LegendChip className="bg-[#fff2cf]" label="Flagged" />
-            <LegendChip className="bg-[#ece9e1]" label="Derived" />
+        <Box className="flex-row flex-wrap items-center justify-between gap-3 border-b border-[#ebe8df] bg-[#fcfbf8] px-4 py-3">
+          <Box className="flex-row flex-wrap items-center gap-4">
+            <ScriptLegend label="Traced" classification="traced" />
+            <ScriptLegend label="Flagged" classification="unsupported" />
+            <ScriptLegend label="Derived" classification="derived" />
           </Box>
-          {narration.map((sentence) => {
-            const classification = classificationById.get(sentence.id);
-            const style = classification
-              ? CLASSIFICATION_STYLES[classification.classification]
-              : CLASSIFICATION_STYLES.derived;
-            const isEditing = editingNarrationId === sentence.id;
-            const brokenAnchors = isEditing
-              ? cards
-                  .map((card, index) => ({ card, index }))
-                  .filter(
-                    ({ card }) =>
-                      card.enterAt.narration === sentence.id &&
-                      !narrationDraft.includes(card.enterAt.word)
-                  )
-              : [];
-            return (
-              <Box key={sentence.id} className="gap-1 border-b border-[#ebe8df] pb-3 last:border-b-0 last:pb-0">
-                <Box className="flex-row gap-3">
-                  <Text className={`w-20 text-[11px] font-bold ${style.labelClass}`}>
-                    {sentenceLabel(sentence.id)}
-                  </Text>
-                  <Box className="min-w-0 flex-1 gap-1">
-                    {isEditing ? (
-                      <Box className="gap-2">
-                        <Textarea className="bg-white">
-                          <TextareaInput
-                            value={narrationDraft}
-                            onChangeText={setNarrationDraft}
-                            multiline
-                            numberOfLines={4}
-                            placeholder="Narration sentence"
-                          />
-                        </Textarea>
-                        {brokenAnchors.length > 0 ? (
-                          <Text className="text-xs text-destructive">
-                            Keep card anchor word{brokenAnchors.length > 1 ? "s" : ""} {brokenAnchors.map(({ card, index }) => `#${index + 1} "${card.enterAt.word}"`).join(", ")} or update the card beat in preview.
-                          </Text>
-                        ) : null}
-                        <Box className="flex-row gap-2">
-                          <Button
-                            size="sm"
-                            onPress={() => void saveNarrationEdit()}
-                            disabled={!editable || savingNarration || narrationDraft.trim().length === 0 || brokenAnchors.length > 0}
-                          >
-                            <ButtonText>{savingNarration ? "Saving" : "Save narration"}</ButtonText>
-                          </Button>
-                          <Button size="sm" variant="outline" disabled={savingNarration} onPress={() => setEditingNarrationId(null)}>
-                            <ButtonText>Cancel</ButtonText>
-                          </Button>
-                        </Box>
-                      </Box>
-                    ) : (
-                      <Box className="gap-2">
-                        <Text className="text-[14px] leading-6 text-[#1f1d1a]">
-                          <Text className={style.highlightClass}>{sentence.text}</Text>
-                        </Text>
-                        {editable ? (
-                          <Box className="flex-row">
-                            <Button size="sm" variant="outline" className="h-7 rounded-full px-2" onPress={() => startNarrationEdit(sentence)}>
-                              <ButtonText className="text-[11px]">Edit narration</ButtonText>
-                            </Button>
-                          </Box>
-                        ) : null}
-                      </Box>
-                    )}
-                    <Text className="text-[11px] text-muted-foreground">
-                      {style.label}
-                      {classification && classification.refs.length > 0
-                        ? ` · ${classification.refs.join("; ")}`
-                        : ""}
-                      {classification?.note ? ` · ${classification.note}` : ""}
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 rounded-full px-3"
+            disabled={!narrationScript}
+            onPress={() => void copyNarrationScript()}
+          >
+            <ButtonText className="text-[11px]">
+              {scriptCopied ? "Copied" : "Copy script"}
+            </ButtonText>
+          </Button>
+        </Box>
+        <Box className="gap-4 p-4">
+          {editingNarrationId ? (
+            narration.map((sentence) => {
+              const isEditing = editingNarrationId === sentence.id;
+              const brokenAnchors = isEditing
+                ? cards
+                    .map((card, index) => ({ card, index }))
+                    .filter(
+                      ({ card }) =>
+                        card.enterAt.narration === sentence.id &&
+                        !narrationDraft.includes(card.enterAt.word)
+                    )
+                : [];
+              const classification = classificationById.get(sentence.id);
+              const style = SCRIPT_CLASSIFICATION_STYLES[
+                classification?.classification ?? "derived"
+              ];
+              return isEditing ? (
+                <Box key={sentence.id} className="gap-2">
+                  <Textarea className="bg-white">
+                    <TextareaInput
+                      value={narrationDraft}
+                      onChangeText={setNarrationDraft}
+                      multiline
+                      numberOfLines={4}
+                      placeholder="Narration sentence"
+                    />
+                  </Textarea>
+                  {brokenAnchors.length > 0 ? (
+                    <Text className="text-xs text-destructive">
+                      Keep card anchor word{brokenAnchors.length > 1 ? "s" : ""} {brokenAnchors.map(({ card, index }) => `#${index + 1} "${card.enterAt.word}"`).join(", ")} or update the card beat in preview.
                     </Text>
+                  ) : null}
+                  <Box className="flex-row gap-2">
+                    <Button
+                      size="sm"
+                      onPress={() => void saveNarrationEdit()}
+                      disabled={!editable || savingNarration || narrationDraft.trim().length === 0 || brokenAnchors.length > 0}
+                    >
+                      <ButtonText>{savingNarration ? "Saving" : "Save"}</ButtonText>
+                    </Button>
+                    <Button size="sm" variant="outline" disabled={savingNarration} onPress={() => setEditingNarrationId(null)}>
+                      <ButtonText>Cancel</ButtonText>
+                    </Button>
                   </Box>
                 </Box>
-              </Box>
-            );
-          })}
+              ) : (
+                <Text key={sentence.id} className={`text-[15px] leading-7 text-[#24231f] ${style.highlight}`}>
+                  {sentence.text}
+                </Text>
+              );
+            })
+          ) : (
+            paragraphs.map((paragraph, paragraphIndex) => (
+              <Text
+                key={`paragraph-${paragraphIndex}`}
+                className="text-[15px] leading-7 text-[#24231f]"
+              >
+                {paragraph.map((chunk, chunkIndex) => {
+                  const classification = classificationById.get(chunk.sentence.id);
+                  const style = SCRIPT_CLASSIFICATION_STYLES[
+                    classification?.classification ?? "derived"
+                  ];
+                  if (!chunk.text.trim()) return chunk.text;
+                  return (
+                    <Text
+                      key={`${chunk.sentence.id}-${chunkIndex}`}
+                      className={style.highlight}
+                      onPress={editable ? () => startNarrationEdit(chunk.sentence) : undefined}
+                    >
+                      {chunk.text}
+                    </Text>
+                  );
+                })}
+              </Text>
+            ))
+          )}
+          {narrationIssues.map((classification) => (
+            <NarrationReviewCallout
+              key={`narration-${classification.narrationId}`}
+              title="Flagged narration"
+              message={
+                classification.note ??
+                "This narration sentence includes a claim that needs verification."
+              }
+            />
+          ))}
         </Box>
       </Box>
 
@@ -1345,15 +1865,6 @@ function UnitDetail({
   );
 }
 
-function LegendChip({ className, label }: { className: string; label: string }) {
-  return (
-    <Box className="flex-row items-center gap-1.5">
-      <Box className={`h-3 w-3 rounded-[3px] border border-[#dedbd2] ${className}`} />
-      <Text className="text-[11px] text-muted-foreground">{label}</Text>
-    </Box>
-  );
-}
-
 function CardDeckPanel({
   unit,
   runId,
@@ -1371,6 +1882,8 @@ function CardDeckPanel({
 }) {
   const meta = unit.meta as UnitMeta;
   const cards = (unit.cards ?? []) as UnitCard[];
+  const qa = unit.qa as UnitQa | undefined;
+  const flaggedCards = flagsByCardIndex(cards, qa?.flags ?? []);
   const [editingAnchor, setEditingAnchor] = useState(false);
   useEffect(() => {
     if (!editable) setEditingAnchor(false);
@@ -1387,6 +1900,34 @@ function CardDeckPanel({
       </Box>
       <ScrollView className="max-h-[520px] lg:max-h-none">
         <Box className="gap-3 p-4">
+          {flaggedCards.size > 0 ? (
+            <Box className="gap-2 rounded-xl border border-[#ead39c] bg-[#fffaf0] p-3">
+              <Box className="flex-row items-center justify-between gap-2">
+                <Text className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#8b5a08]">
+                  Flagged cards
+                </Text>
+                <Box className="rounded-full bg-[#fff0c7] px-2 py-0.5">
+                  <Text className="text-[10px] font-bold text-[#8b5a08]">
+                    {flaggedCards.size}
+                  </Text>
+                </Box>
+              </Box>
+              {[...flaggedCards.entries()].map(([index, flags]) => (
+                <FlaggedCardRow
+                  key={`flagged-card-${index}`}
+                  card={cards[index]}
+                  index={index}
+                  flags={flags}
+                  resolveAssetRef={resolveAssetRef}
+                  brandTokens={brandTokens}
+                />
+              ))}
+            </Box>
+          ) : null}
+
+          <Text className="mt-1 text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+            All cards
+          </Text>
           {cards.map((card, index) => (
             <CardDeckRow
               key={`card-${index}`}
@@ -1396,6 +1937,7 @@ function CardDeckPanel({
               unitId={unit._id}
               resolveAssetRef={resolveAssetRef}
               brandTokens={brandTokens}
+              flagged={flaggedCards.has(index)}
               editable={editable}
               onError={onError}
             />
@@ -1458,6 +2000,49 @@ function CardDeckPanel({
   );
 }
 
+function FlaggedCardRow({
+  card,
+  index,
+  flags,
+  resolveAssetRef,
+  brandTokens,
+}: {
+  card: UnitCard;
+  index: number;
+  flags: JudgeFlag[];
+  resolveAssetRef: (ref: string) => string | null;
+  brandTokens?: unknown;
+}) {
+  return (
+    <Box className="gap-2 rounded-lg border border-[#ead39c] bg-white p-2.5">
+      <Box className="flex-row gap-2.5">
+        <Box
+          className="shrink-0 overflow-hidden rounded-md border border-[#ebe8df]"
+          style={{ width: 62, height: 110 } as never}
+        >
+          <CardStaticPreview
+            template={card.template}
+            props={card.props}
+            brandTokens={brandTokens}
+            resolveAssetRef={resolveAssetRef}
+            showControls={false}
+          />
+        </Box>
+        <Box className="min-w-0 flex-1 gap-1">
+          <Text className="text-[12px] font-bold text-[#1f1d1a]" numberOfLines={1}>
+            Card {index + 1} · {cardTemplateLabel(card.template)}
+          </Text>
+          {flags.map((flag, flagIndex) => (
+            <Text key={`flag-${flagIndex}`} className="text-[11px] leading-4 text-[#735b2c]">
+              {humanizeTechnicalIds(flag.message)}
+            </Text>
+          ))}
+        </Box>
+      </Box>
+    </Box>
+  );
+}
+
 function CardDeckRow({
   card,
   index,
@@ -1465,6 +2050,7 @@ function CardDeckRow({
   unitId,
   resolveAssetRef,
   brandTokens,
+  flagged,
   editable,
   onError,
 }: {
@@ -1474,6 +2060,7 @@ function CardDeckRow({
   unitId: Id<"microUnits">;
   resolveAssetRef: (ref: string) => string | null;
   brandTokens?: unknown;
+  flagged: boolean;
   editable: boolean;
   onError: (message: string | null) => void;
 }) {
@@ -1485,7 +2072,7 @@ function CardDeckRow({
   return (
     <Box
       className={`gap-2 rounded-xl border bg-white p-3 ${
-        index === 2 ? "border-[#ead39c]" : "border-[#dedbd2]"
+        flagged ? "border-[#ead39c]" : "border-[#dedbd2]"
       }`}
     >
       <Box className="flex-row gap-3">
@@ -1510,6 +2097,13 @@ function CardDeckRow({
               <Box className="rounded-full bg-[#fff2cf] px-1.5 py-0.5">
                 <Text className="text-[9px] font-bold uppercase text-[#8b5a08]">
                   media
+                </Text>
+              </Box>
+            ) : null}
+            {flagged ? (
+              <Box className="rounded-full bg-[#fff2cf] px-1.5 py-0.5">
+                <Text className="text-[9px] font-bold uppercase text-[#8b5a08]">
+                  flagged
                 </Text>
               </Box>
             ) : null}

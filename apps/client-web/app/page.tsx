@@ -1,5 +1,3 @@
-import { redirect } from 'next/navigation';
+'use client';
 
-export default function RootPage() {
-  redirect('/login');
-}
+export { CourseCatalogScreen as default } from '@counseliq/client/screens/course-catalog';

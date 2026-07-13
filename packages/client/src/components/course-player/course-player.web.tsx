@@ -24,7 +24,6 @@ import { UnitFlow, useUnitFlow } from "./unit-flow.web";
 import { usePrefersReducedMotion } from "./use-prefers-reduced-motion.web";
 import { useUnitAudio } from "./use-unit-audio.web";
 import { GoogleBrandFontLoader } from "../theme/google-brand-font-loader.web";
-import { fontFamilyFromBrandTokens } from "../../theme/google-brand-fonts";
 import { logoUrlFromBrandTokens } from "../../theme/brand-tokens";
 
 /**
@@ -74,11 +73,6 @@ export function CoursePlayer({
 
   const current = flatUnits[Math.min(flatIndex, flatUnits.length - 1)] ?? null;
   const unit = current?.unit ?? null;
-  const brandFontFamily = useMemo(
-    () => fontFamilyFromBrandTokens(data.institution.brandTokens),
-    [data.institution.brandTokens]
-  );
-
   const questionsById = useMemo(() => {
     const map = new Map<string, PreviewQuestion>();
     for (const q of data.questions) map.set(q.id, q);
@@ -165,7 +159,7 @@ export function CoursePlayer({
 
   return (
     <>
-      <GoogleBrandFontLoader fontFamily={brandFontFamily} />
+      <GoogleBrandFontLoader fontFamilies={[theme.fontDisplay, theme.fontText, theme.fontMono]} />
       <div
       data-ciq-course-player=""
       style={{

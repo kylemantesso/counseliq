@@ -192,14 +192,18 @@ export {
   renderCallbackSchema,
   renderFailurePayloadSchema,
   renderJobRequestSchema,
+  renderOutputVariantSchema,
   renderProfileSchema,
   renderSuccessPayloadSchema,
+  renderVariantProfileSchema,
 } from "./src/render";
 
 export type {
   RenderCallback,
   RenderFailurePayload,
   RenderJobRequest,
+  RenderOutputVariant,
   RenderProfile,
   RenderSuccessPayload,
+  RenderVariantProfile,
 } from "./src/render";

@@ -13,7 +13,6 @@ import {
 } from "@counseliq/cards";
 import { validateCardProps } from "@counseliq/course-schema";
 import { GoogleBrandFontLoader } from "./theme/google-brand-font-loader.web";
-import { fontFamilyFromBrandTokens } from "../theme/google-brand-fonts";
 import {
   logoUrlFromBrandTokens,
   withInstitutionLogoOnTitleCard,
@@ -55,10 +54,6 @@ export function CardStaticPreview({
     () => validateCardProps(template, props),
     [template, props]
   );
-  const brandFontFamily = useMemo(
-    () => fontFamilyFromBrandTokens(brandTokens),
-    [brandTokens]
-  );
   const resolver = useMemo(
     () => ({ resolve: (ref: string) => resolveAssetRef?.(ref) ?? null }),
     [resolveAssetRef]
@@ -75,7 +70,7 @@ export function CardStaticPreview({
   if (!showControls) {
     return (
       <div style={{ width: "100%", height: "100%" }}>
-        <GoogleBrandFontLoader fontFamily={brandFontFamily} />
+        <GoogleBrandFontLoader fontFamilies={[theme.fontDisplay, theme.fontText, theme.fontMono]} />
         <AssetResolverContext.Provider value={resolver}>
           <BrandThemeProvider theme={theme}>
             <CardStage style={{ borderRadius: 10, boxShadow: "none" }}>
@@ -93,7 +88,7 @@ export function CardStaticPreview({
 
   return (
     <Box className="gap-1 w-full">
-      <GoogleBrandFontLoader fontFamily={brandFontFamily} />
+      <GoogleBrandFontLoader fontFamilies={[theme.fontDisplay, theme.fontText, theme.fontMono]} />
       {showProps ? (
         <Box
           className="bg-card border border-border rounded-xl p-3 gap-1"

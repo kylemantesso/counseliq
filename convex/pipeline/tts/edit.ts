@@ -515,6 +515,51 @@ async function retryUnitTtsHelper(
   return { status: "scheduled" };
 }
 
+async function regenerateUnitTtsHelper(
+  ctx: MutationCtx,
+  args: { runId: Id<"runs">; unitId: Id<"microUnits"> }
+): Promise<{ status: "scheduled"; unitIds: Id<"microUnits">[] }> {
+  const { unit } = await loadEditableRunUnit(ctx, args.runId, args.unitId, [
+    "GATE_3_PREVIEW",
+  ]);
+  if (unit.state === "blocked") appError(AppErrorCode.UNITS_BLOCKED);
+  await ctx.scheduler.runAfter(0, internal.pipeline.tts.synthesize.synthesizeUnit, {
+    runId: args.runId,
+    unitId: args.unitId,
+    regenerationKey: `${Date.now()}:${args.unitId}`,
+  });
+  return { status: "scheduled", unitIds: [args.unitId] };
+}
+
+async function regenerateRunTtsHelper(
+  ctx: MutationCtx,
+  runId: Id<"runs">
+): Promise<{ status: "scheduled"; unitIds: Id<"microUnits">[] }> {
+  const run = await ctx.db.get(runId);
+  if (!run) appError(AppErrorCode.RUN_NOT_FOUND);
+  if (run.state !== "GATE_3_PREVIEW") appError(AppErrorCode.RUN_NOT_EDITABLE);
+  if (!run.courseId) appError(AppErrorCode.COURSE_NOT_FOUND);
+  const course = await ctx.db.get(run.courseId);
+  if (!course) appError(AppErrorCode.COURSE_NOT_FOUND);
+  await assertCourseMutable(ctx, course._id);
+
+  const units = await ctx.db
+    .query("microUnits")
+    .withIndex("by_course", (q) => q.eq("courseId", course._id))
+    .take(1000);
+  const eligible = units.filter((unit) => unit.state !== "blocked");
+  const now = Date.now();
+  await ctx.scheduler.runAfter(0, internal.pipeline.tts.synthesize.regenerateUnits, {
+    runId,
+    unitIds: eligible.map((unit) => unit._id),
+    regenerationBatchKey: String(now),
+  });
+  return {
+    status: "scheduled",
+    unitIds: eligible.map((unit) => unit._id),
+  };
+}
+
 const TTS_RETRY_ACTIVE_STATES = new Set<Doc<"runs">["state"]>([
   "GENERATING_ASSETS",
   "GATE_3_PREVIEW",
@@ -671,5 +716,23 @@ export const adminRetryUnitTts = mutation({
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
     return await retryUnitTtsHelper(ctx, args, ["GATE_3_PREVIEW"]);
+  },
+});
+
+/** Admin: force a fresh TTS render for one unit from the gate-3 studio. */
+export const adminRegenerateUnitTts = mutation({
+  args: { runId: v.id("runs"), unitId: v.id("microUnits") },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+    return await regenerateUnitTtsHelper(ctx, args);
+  },
+});
+
+/** Admin: force fresh TTS renders for every non-blocked unit at gate 3. */
+export const adminRegenerateRunTts = mutation({
+  args: { runId: v.id("runs") },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+    return await regenerateRunTtsHelper(ctx, args.runId);
   },
 });

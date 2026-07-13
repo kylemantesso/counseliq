@@ -47,6 +47,9 @@ export function QuestionPanel({ question, kicker, continueLabel, onContinue }: Q
       <div
         style={{
           fontFamily: cssVar("fontDisplay"),
+          fontWeight: cssVar("displayWeight") as React.CSSProperties["fontWeight"],
+          letterSpacing: cssVar("tracking"),
+          textTransform: cssVar("titleCase") as React.CSSProperties["textTransform"],
           fontSize: 23,
           lineHeight: 1.22,
           marginTop: 12,

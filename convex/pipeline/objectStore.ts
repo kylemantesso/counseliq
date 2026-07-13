@@ -181,3 +181,43 @@ export const adminPresignGetBatch = action({
     );
   },
 });
+
+/**
+ * Admin-only download URLs. The signed response explicitly requests an
+ * attachment so browsers download cross-origin object-store files reliably.
+ */
+export const adminPresignDownloadBatch = action({
+  args: {
+    items: v.array(v.object({ key: v.string(), filename: v.string() })),
+  },
+  handler: async (
+    ctx,
+    args
+  ): Promise<{ key: string; url: string; filename: string }[]> => {
+    await ctx.runQuery(internal.pipeline.queries.assertAdmin, {});
+    const { client, bucket } = createClient();
+    const items = args.items.slice(0, 300);
+    return await Promise.all(
+      items.map(async ({ key, filename }) => {
+        // Keep a user-supplied label from becoming an invalid response header.
+        const safeFilename = filename
+          .replace(/[^\x20-\x7e]|[\\/";]/g, "-")
+          .trim()
+          .slice(0, 180) || "download";
+        return {
+          key,
+          filename: safeFilename,
+          url: await getSignedUrl(
+            client,
+            new GetObjectCommand({
+              Bucket: bucket,
+              Key: key,
+              ResponseContentDisposition: `attachment; filename="${safeFilename}"`,
+            }),
+            { expiresIn: PRESIGN_TTL_SECONDS }
+          ),
+        };
+      })
+    );
+  },
+});

@@ -645,14 +645,14 @@ function GenerateForInstitution({
               isDisabled={stepIndex === 0 || busy !== null}
               onPress={() => goToStep(stepIndex - 1)}
             >
-              <ButtonText>← Back</ButtonText>
+              <ButtonText>Back</ButtonText>
             </Button>
             {stepIndex < WIZARD_STEPS.length - 1 ? (
               <Button
                 isDisabled={!canContinue || busy !== null}
                 onPress={() => goToStep(stepIndex + 1)}
               >
-                <ButtonText>Continue →</ButtonText>
+                <ButtonText>Continue</ButtonText>
               </Button>
             ) : null}
           </Box>

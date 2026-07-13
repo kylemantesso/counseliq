@@ -11,12 +11,12 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { UIProvider } from "@counseliq/ui";
 import {
   AppErrorBoundary,
-  AuthProvider,
   ForceUpgradeGate,
   OtaUpdateRuntime,
   PostHogRuntime,
   PushNotificationsRuntime,
-} from "@counseliq/client";
+} from "@counseliq/client/runtime";
+import { AuthProvider } from "@counseliq/client/auth";
 import { convex } from "../lib/convex";
 import { useCallback } from "react";
 
@@ -60,6 +60,7 @@ function RootStack() {
         <Stack.Screen name="login" />
         <Stack.Screen name="signup" />
         <Stack.Screen name="home" />
+        <Stack.Screen name="courses/[id]" />
       </Stack>
     </View>
   );

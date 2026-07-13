@@ -21,6 +21,8 @@ export interface PlayerControlsProps {
   onSeek: (ms: number) => void;
   onPrevUnit?: () => void;
   onNextUnit?: () => void;
+  onDownloadNarration?: () => void;
+  downloadingNarration?: boolean;
 }
 
 const buttonStyle: React.CSSProperties = {
@@ -57,6 +59,8 @@ export function PlayerControls({
   onSeek,
   onPrevUnit,
   onNextUnit,
+  onDownloadNarration,
+  downloadingNarration = false,
 }: PlayerControlsProps) {
   return (
     <div
@@ -106,6 +110,17 @@ export function PlayerControls({
         {onNextUnit ? (
           <button type="button" style={iconButtonStyle} onClick={onNextUnit} aria-label="Next unit">
             Next
+          </button>
+        ) : null}
+        {onDownloadNarration ? (
+          <button
+            type="button"
+            style={{ ...buttonStyle, opacity: downloadingNarration ? 0.6 : 1 }}
+            onClick={onDownloadNarration}
+            disabled={downloadingNarration}
+            aria-label="Download narration MP3 files"
+          >
+            {downloadingNarration ? "Preparing..." : "Download MP3s"}
           </button>
         ) : null}
       </div>

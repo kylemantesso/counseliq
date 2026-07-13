@@ -9,6 +9,7 @@
     "services/*"
   ],
   "scripts": {
+    "audio:campus": "node scripts/campus-audio.mjs",
     "build": "turbo run build",
     "build:admin:web": "npm run build --workspace=@counseliq/admin-web",
     "build:client:mobile": "npm run build --workspace=@counseliq/client-mobile",

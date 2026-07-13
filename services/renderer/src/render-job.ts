@@ -13,6 +13,9 @@ import {
   renderSuccessPayloadSchema,
   unitTimingSchema,
   type RenderJobRequest,
+  type RenderOutputVariant,
+  type RenderProfile,
+  type RenderVariantProfile,
 } from "@counseliq/course-schema";
 import type { RendererConfig } from "./config";
 import { ObjectStore } from "./store";
@@ -43,6 +46,31 @@ function readHttpUrl(value: unknown): string | null {
   } catch {
     return null;
   }
+}
+
+function variantProfiles(job: RenderJobRequest): RenderVariantProfile[] {
+  if (job.variants && job.variants.length > 0) return job.variants;
+  return [
+    {
+      label: `${job.profile.width}x${job.profile.height}`,
+      ...job.profile,
+    },
+  ];
+}
+
+function safeFileLabel(label: string): string {
+  return label.replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 80) || "variant";
+}
+
+function stripVariantLabel(variant: RenderVariantProfile): RenderProfile {
+  return {
+    container: variant.container,
+    width: variant.width,
+    height: variant.height,
+    fps: variant.fps,
+    videoCodec: variant.videoCodec,
+    audioCodec: variant.audioCodec,
+  };
 }
 
 export async function runRenderJob(
@@ -112,45 +140,74 @@ export async function runRenderJob(
   };
 
   const serveUrl = await getBundle();
-  const compositions = await getCompositions(serveUrl, {
-    inputProps,
-    logLevel: "error",
-  });
-  const composition = compositions.find((c) => c.id === COMPOSITION_ID);
-  if (!composition) {
-    throw new Error(`Composition ${COMPOSITION_ID} not found`);
-  }
-
   const workDir = await mkdtemp(join(tmpdir(), "renderer-job-"));
-  const outputPath = join(workDir, `${job.jobId}.mp4`);
   try {
-    await renderMedia({
-      composition,
-      serveUrl,
-      codec: "h264",
-      audioCodec: "aac",
-      outputLocation: outputPath,
-      inputProps,
-      chromiumOptions: { disableWebSecurity: true },
-      logLevel: "error",
-      pixelFormat: "yuv420p",
-    });
+    const outputs: RenderOutputVariant[] = [];
+    const durationMs = contentEndMsForTiming(timing);
 
-    const bytes = await readFile(outputPath);
-    const sha256 = createHash("sha256").update(bytes).digest("hex");
-    const objectKey = `sha256/${sha256}.mp4`;
-    await store.uploadIfAbsent(objectKey, bytes, "video/mp4");
+    for (const variant of variantProfiles(job)) {
+      const profile = stripVariantLabel(variant);
+      const variantInputProps = { ...inputProps, profile };
+      const compositions = await getCompositions(serveUrl, {
+        inputProps: variantInputProps,
+        logLevel: "error",
+      });
+      const composition = compositions.find((c) => c.id === COMPOSITION_ID);
+      if (!composition) {
+        throw new Error(`Composition ${COMPOSITION_ID} not found`);
+      }
+
+      const outputPath = join(
+        workDir,
+        `${job.jobId}-${safeFileLabel(variant.label)}.mp4`
+      );
+      await renderMedia({
+        composition,
+        serveUrl,
+        codec: "h264",
+        audioCodec: "aac",
+        outputLocation: outputPath,
+        inputProps: variantInputProps,
+        chromiumOptions: { disableWebSecurity: true },
+        logLevel: "error",
+        pixelFormat: "yuv420p",
+      });
+
+      const bytes = await readFile(outputPath);
+      const sha256 = createHash("sha256").update(bytes).digest("hex");
+      const objectKey = `sha256/${sha256}.mp4`;
+      await store.uploadIfAbsent(objectKey, bytes, "video/mp4");
+      outputs.push({
+        label: variant.label,
+        objectKey,
+        sha256,
+        sizeBytes: bytes.byteLength,
+        durationMs,
+        width: profile.width,
+        height: profile.height,
+        fps: profile.fps,
+      });
+    }
+
+    const primary =
+      outputs.find(
+        (output) =>
+          output.width === job.profile.width &&
+          output.height === job.profile.height &&
+          output.fps === job.profile.fps
+      ) ?? outputs[0];
 
     return renderSuccessPayloadSchema.parse({
-      objectKey,
-      sha256,
-      sizeBytes: bytes.byteLength,
-      durationMs: contentEndMsForTiming(timing),
-      width: job.profile.width,
-      height: job.profile.height,
-      fps: job.profile.fps,
+      objectKey: primary.objectKey,
+      sha256: primary.sha256,
+      sizeBytes: primary.sizeBytes,
+      durationMs: primary.durationMs,
+      width: primary.width,
+      height: primary.height,
+      fps: primary.fps,
       rendererVersion: config.rendererVersion,
       renderedAt: Date.now(),
+      variants: outputs,
     });
   } finally {
     await rm(workDir, { recursive: true, force: true });

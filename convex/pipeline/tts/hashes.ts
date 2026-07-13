@@ -39,11 +39,20 @@ export async function sha256Hex(
 export async function sentenceHash(input: {
   spokenText: string;
   voiceId: string;
+  voiceAccent?: string | null;
+  voiceSettings?: {
+    stability?: number;
+    similarityBoost?: number;
+    style?: number;
+    speakerBoost?: boolean;
+    speed?: number;
+  } | null;
+  regenerationKey?: string | null;
   model: string;
   outputFormat: string;
 }): Promise<string> {
   return await sha256Hex(
-    `tts:v1|${input.spokenText}|${input.voiceId}|${input.model}|${input.outputFormat}`
+    `tts:v2|${input.spokenText}|${input.voiceId}|${input.voiceAccent ?? ""}|${JSON.stringify(input.voiceSettings ?? null)}|${input.regenerationKey ?? ""}|${input.model}|${input.outputFormat}`
   );
 }
 
@@ -93,6 +102,14 @@ export async function unitContentHash(input: {
   lexicon: Record<string, string>;
   cards: unknown;
   voiceId: string;
+  voiceAccent?: string | null;
+  voiceSettings?: {
+    stability?: number;
+    similarityBoost?: number;
+    style?: number;
+    speakerBoost?: boolean;
+    speed?: number;
+  } | null;
   model: string;
   outputFormat: string;
   gapMs: number;
@@ -105,6 +122,8 @@ export async function unitContentHash(input: {
       lexicon: canonicalLexicon(input.lexicon),
       cards: sanitizeCardsForAudioHash(input.cards),
       voiceId: input.voiceId,
+      voiceAccent: input.voiceAccent ?? null,
+      voiceSettings: input.voiceSettings ?? null,
       model: input.model,
       outputFormat: input.outputFormat,
       interSentenceGapMs: input.gapMs,

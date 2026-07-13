@@ -89,4 +89,26 @@ describe("unitContentHash", () => {
       await unitContentHash({ ...BASE_INPUT, voiceId: "v2", cards: cards("a") })
     ).not.toBe(base);
   });
+
+  test("voice settings change the hash", async () => {
+    const base = await unitContentHash({ ...BASE_INPUT, cards: cards("a") });
+    expect(
+      await unitContentHash({
+        ...BASE_INPUT,
+        voiceSettings: { speed: 1.1, stability: 0.55 },
+        cards: cards("a"),
+      })
+    ).not.toBe(base);
+  });
+
+  test("voice accent changes the hash", async () => {
+    const base = await unitContentHash({ ...BASE_INPUT, cards: cards("a") });
+    expect(
+      await unitContentHash({
+        ...BASE_INPUT,
+        voiceAccent: "australian",
+        cards: cards("a"),
+      })
+    ).not.toBe(base);
+  });
 });

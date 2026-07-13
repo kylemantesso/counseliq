@@ -42,7 +42,8 @@ export const seed = internalMutation({
         placeholder: true,
         primaryColor: "#1a365d",
         secondaryColor: "#c53030",
-        fontFamily: "system-ui",
+        titleFontFamily: "system-ui",
+        bodyFontFamily: "system-ui",
       },
       pronunciationLexicon: {
         placeholder: true,

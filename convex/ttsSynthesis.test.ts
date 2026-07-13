@@ -21,7 +21,22 @@ beforeAll(() => {
  *   per-sentence artifacts;
  * - mu-202: single plain sentence with one card.
  */
-async function seedRun(options?: { failUnit?: boolean }) {
+async function seedRun(options?: {
+  failUnit?: boolean;
+  ttsVoice?: {
+    provider: string;
+    voiceRef: string;
+    voiceId: string;
+    name: string;
+    accent: string;
+    settings: {
+      stability?: number;
+      similarityBoost?: number;
+      speakerBoost?: boolean;
+      speed?: number;
+    };
+  };
+}) {
   const t = convexTest(schema, modules);
   const ids = await t.run(async (ctx) => {
     const institutionId = await ctx.db.insert("institutions", {
@@ -48,6 +63,7 @@ async function seedRun(options?: { failUnit?: boolean }) {
           voiceRef: "latrobe-narrator-01",
           pronunciationLexicon: { Geelong: "juh-LONG" },
         },
+        ...(options?.ttsVoice ? { ttsVoice: options.ttsVoice } : {}),
       },
     });
     const runId = await ctx.db.insert("runs", {
@@ -203,6 +219,53 @@ describe("runAssetGeneration (GENERATING_ASSETS stage, mock provider)", () => {
         .take(100);
       expect(calls).toHaveLength(before.calls); // zero new rows
     });
+  });
+
+  test("course-selected voice takes priority over ELEVENLABS_VOICE_ID", async () => {
+    const previousEnvVoice = process.env.ELEVENLABS_VOICE_ID;
+    process.env.ELEVENLABS_VOICE_ID = "env-american-default";
+    try {
+      const { t, runId } = await seedRun({
+        ttsVoice: {
+          provider: "elevenlabs",
+          voiceRef: "elevenlabs-charlie",
+          voiceId: "charlie-australian-voice",
+          name: "Charlie",
+          accent: "australian",
+          settings: {
+            stability: 0.55,
+            similarityBoost: 0.85,
+            speakerBoost: true,
+            speed: 1,
+          },
+        },
+      });
+
+      const result = await generateAll(t, runId);
+      expect(result.status).toBe("ok");
+
+      await t.run(async (ctx) => {
+        const sentences = await ctx.db.query("ttsSentences").take(100);
+        expect(sentences).toHaveLength(3);
+        expect(new Set(sentences.map((sentence) => sentence.voiceId))).toEqual(
+          new Set(["charlie-australian-voice"])
+        );
+
+        const calls = await ctx.db
+          .query("ttsCalls")
+          .withIndex("by_run", (q) => q.eq("runId", runId))
+          .take(100);
+        expect(new Set(calls.map((call) => call.voiceId))).toEqual(
+          new Set(["charlie-australian-voice"])
+        );
+      });
+    } finally {
+      if (previousEnvVoice === undefined) {
+        delete process.env.ELEVENLABS_VOICE_ID;
+      } else {
+        process.env.ELEVENLABS_VOICE_ID = previousEnvVoice;
+      }
+    }
   });
 
   test("single-sentence edit re-synthesises exactly one sentence", async () => {

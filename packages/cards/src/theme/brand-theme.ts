@@ -27,7 +27,7 @@ export interface BrandTheme {
   paperDim: string;
   /** Hairline rules on paper. */
   paperRule: string;
-  /** Display (heading) font stack. */
+  /** Title/display (heading) font stack. */
   fontDisplay: string;
   /** Body font stack. */
   fontText: string;
@@ -309,7 +309,8 @@ function baseThemeFromTokens(tokens: unknown): BrandTheme {
  * Map loose institution brand data — `institutions.brandTokens` or an
  * extracted candidate theme ({ colors[], fonts[] }) — onto a full
  * BrandTheme, falling back to counseliq defaults for anything missing or
- * malformed. Colors: [0] → accent. Fonts: [0] → display stack head.
+ * malformed. Colors: [0] → accent. Fonts: [0] → title stack head,
+ * Fonts: [1] → body stack head.
  */
 export function brandThemeFromTokens(tokens: unknown): BrandTheme {
   const base = baseThemeFromTokens(tokens);
@@ -363,10 +364,17 @@ export function brandThemeFromTokens(tokens: unknown): BrandTheme {
   }
 
   const fonts = Array.isArray(tokens.fonts) ? tokens.fonts : [];
-  const font = typeof tokens.fontFamily === "string" ? tokens.fontFamily : fonts[0];
-  if (typeof font === "string" && font.trim().length > 0) {
-    const head = font.includes(",") ? font : `'${font.trim()}'`;
+  const titleFont =
+    asNonEmptyString(tokens.titleFontFamily) ??
+    asNonEmptyString(tokens.fontFamily) ??
+    asNonEmptyString(fonts[0]);
+  const bodyFont = asNonEmptyString(tokens.bodyFontFamily) ?? asNonEmptyString(fonts[1]);
+  if (titleFont !== null) {
+    const head = titleFont.includes(",") ? titleFont : `'${titleFont.trim()}'`;
     out.fontDisplay = `${head}, ${base.fontDisplay}`;
+  }
+  if (bodyFont !== null) {
+    const head = bodyFont.includes(",") ? bodyFont : `'${bodyFont.trim()}'`;
     out.fontText = `${head}, ${base.fontText}`;
   }
   return out;

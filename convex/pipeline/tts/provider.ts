@@ -16,6 +16,13 @@ export interface TtsSynthesizeInput {
   /** Spoken text: normalised speakText AFTER lexicon substitution. */
   text: string;
   voiceId: string;
+  /** Course-level accent intent; the concrete ElevenLabs voiceId carries it. */
+  accent?: string;
+  stability?: number;
+  similarityBoost?: number;
+  style?: number;
+  speakerBoost?: boolean;
+  speed?: number;
   /** Prosody conditioning: the neighbouring sentences' spoken text. */
   previousText?: string;
   nextText?: string;

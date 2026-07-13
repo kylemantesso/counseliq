@@ -52,10 +52,10 @@ export function CaptionBar({ timing, clock, playing, onEditSentence }: CaptionBa
         style={{
           background: cssVar("scrim"),
           color: cssVar("photoInk"),
-          fontSize: 14.5,
-          lineHeight: 1.4,
+          fontSize: 14,
+          lineHeight: 1.36,
           textAlign: "center",
-          padding: "10px 16px",
+          padding: "8px 16px 11px",
           borderRadius: 8,
           maxWidth: "100%",
           pointerEvents: "auto",
@@ -107,7 +107,8 @@ function CaptionFrame({ children }: { children?: React.ReactNode }) {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        padding: "0 18px",
+        boxSizing: "border-box",
+        padding: "0 18px 8px",
         pointerEvents: "none",
       }}
     >

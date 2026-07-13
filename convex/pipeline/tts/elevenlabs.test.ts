@@ -77,6 +77,30 @@ describe("createElevenLabsProvider", () => {
     expect(body.next_text).toBe("after.");
   });
 
+  test("passes voice settings when provided", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(okResponse("settings"));
+    const provider = createElevenLabsProvider({ apiKey: API_KEY, fetchImpl });
+
+    await provider.synthesize({
+      text: "settings",
+      voiceId: "v1",
+      stability: 0.55,
+      similarityBoost: 0.85,
+      speakerBoost: true,
+      speed: 1.1,
+    });
+
+    const body = JSON.parse(
+      (fetchImpl.mock.calls[0] as [string, RequestInit])[1].body as string
+    );
+    expect(body.voice_settings).toEqual({
+      stability: 0.55,
+      similarity_boost: 0.85,
+      use_speaker_boost: true,
+      speed: 1.1,
+    });
+  });
+
   test("respects retry-after on 429 then succeeds", async () => {
     vi.useFakeTimers();
     try {

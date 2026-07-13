@@ -42,6 +42,10 @@ function googleFontStylesheetHref(family: string): string {
 
 export function fontFamilyFromThemeTokens(tokens: unknown): string | null {
   if (!isRecord(tokens)) return null;
+  if (typeof tokens.titleFontFamily === "string") {
+    const titleFontFamily = normalizeFontFamily(tokens.titleFontFamily);
+    if (titleFontFamily !== null) return titleFontFamily;
+  }
   if (typeof tokens.fontFamily === "string") {
     return normalizeFontFamily(tokens.fontFamily);
   }

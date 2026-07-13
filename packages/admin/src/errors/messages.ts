@@ -18,6 +18,14 @@ export const APP_ERROR_MESSAGES: Record<AppErrorCodeType, string> = {
     "Enter the institution website URL before extracting a theme.",
   [AppErrorCode.INSTITUTION_THEME_EXTRACTION_FAILED]:
     "Could not extract a theme from that website. Check the URL and try again.",
+  [AppErrorCode.INSTITUTION_LOGO_URL_INVALID]:
+    "Enter a valid logo image URL, or upload a logo file.",
+  [AppErrorCode.INSTITUTION_LOGO_FETCH_FAILED]:
+    "Could not copy that logo image. Check the URL or upload the logo file.",
+  [AppErrorCode.INSTITUTION_LOGO_FILE_INVALID]:
+    "Logo must be an image file under 2 MB.",
+  [AppErrorCode.INSTITUTION_LOGO_NOT_FOUND]:
+    "That uploaded logo could not be found. Upload it again.",
   [AppErrorCode.RUN_NOT_FOUND]: "That pipeline run could not be found.",
   [AppErrorCode.RUN_TRANSITION_INVALID]:
     "That pipeline run cannot move to the requested state.",
@@ -47,6 +55,10 @@ export const APP_ERROR_MESSAGES: Record<AppErrorCodeType, string> = {
     "Resolve every blocked or failed unit before approving this step.",
   [AppErrorCode.TTS_NOT_CONFIGURED]:
     "Voice synthesis is not configured. Contact an administrator.",
+  [AppErrorCode.TTS_VOICE_INVALID]:
+    "Choose a valid ElevenLabs voice before auditioning or setting narration.",
+  [AppErrorCode.TTS_AUDITION_FAILED]:
+    "Could not audition that voice. Try another voice or try again later.",
   [AppErrorCode.NARRATION_NOT_FOUND]:
     "That narration sentence could not be found.",
   [AppErrorCode.NARRATION_EDIT_BREAKS_CARD]:

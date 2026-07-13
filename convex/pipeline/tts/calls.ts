@@ -68,7 +68,7 @@ export const estimateTtsCostForRun = internalQuery({
     }
 
     const meta = course.definitionMeta as
-      | { voice?: { voiceRef?: string } }
+      | { voice?: { voiceRef?: string }; ttsVoice?: { voiceRef?: string } }
       | undefined;
     const institution = await ctx.db.get(course.institutionId);
     const model = ttsModel();
@@ -76,7 +76,10 @@ export const estimateTtsCostForRun = internalQuery({
       characters,
       model,
       voiceRef:
-        institution?.voiceConfig?.voiceRef ?? meta?.voice?.voiceRef ?? null,
+        meta?.ttsVoice?.voiceRef ??
+        institution?.voiceConfig?.voiceRef ??
+        meta?.voice?.voiceRef ??
+        null,
       estimateUsd: estimateTtsCostUsd({ model, characters }),
       priceSheetVerifiedAt: TTS_PRICING[model]?.verifiedAt ?? null,
       exact,

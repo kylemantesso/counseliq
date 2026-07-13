@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import type { ChangeEvent } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAction, useMutation } from "convex/react";
-import { useRouter } from "solito/navigation";
 import {
   Box,
   Button,
@@ -13,9 +13,9 @@ import {
   ScrollView,
   Text,
 } from "@counseliq/ui";
-import { CARD_TEMPLATES, type CardTemplate } from "@counseliq/course-schema";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import { AdminGuard } from "../components/admin-guard";
+import { CardStaticPreview } from "../components/card-static-preview.web";
 import { GoogleBrandFontLoader } from "../components/theme/google-brand-font-loader.web";
 import { useSelectedInstitution } from "../components/admin/use-selected-institution";
 import { AdminWorkspaceFrame } from "../components/admin-workspace-frame";
@@ -25,28 +25,21 @@ import {
   GOOGLE_BRAND_FONT_OPTIONS,
   normalizeFontFamily,
 } from "../theme/google-brand-fonts";
+import {
+  CARD_PREVIEW_TEMPLATES,
+  formatTemplateName,
+  genericInstitutionCardProps,
+} from "./institution-card-preview-data";
 
 const CUSTOM_FONT_OPTION = "__custom__";
+const MAX_LOGO_BYTES = 2 * 1024 * 1024;
 const MARKET_OPTIONS = ["AU", "NZ", "US", "UK", "CA"];
-const CARD_PREVIEW_TEMPLATES = CARD_TEMPLATES.filter(
-  (template) => template !== "video-card"
-) as CardTemplate[];
 const HEADING_CASE_OPTIONS = [
   { value: "none", label: "Sentence" },
   { value: "uppercase", label: "UPPER" },
 ] as const;
 
-type CardPreviewHrefInput = {
-  name: string;
-  market: string;
-  primaryColor: string;
-  secondaryColor: string;
-  backgroundColor: string;
-  logoUrl: string;
-  fontFamily: string;
-  titleCase: "none" | "uppercase";
-  placeholder: boolean;
-};
+type InstitutionTab = "details" | "preview";
 
 export function AdminInstitutionsScreen() {
   return (
@@ -57,17 +50,27 @@ export function AdminInstitutionsScreen() {
 }
 
 function AdminInstitutionsContent() {
-  const router = useRouter();
+  const logoInputRef = useRef<HTMLInputElement | null>(null);
   const { institutions, selectedInstitutionId, setInstitution } = useSelectedInstitution();
   const createInstitution = useMutation(api.pipeline.assetsCatalogue.adminCreateInstitution);
   const updateInstitution = useMutation(api.pipeline.assetsCatalogue.adminUpdateInstitution);
+  const generateLogoUploadUrl = useMutation(
+    api.pipeline.assetsCatalogue.adminGenerateInstitutionLogoUploadUrl
+  );
+  const resolveLogoStorageUrl = useMutation(
+    api.pipeline.assetsCatalogue.adminResolveInstitutionLogoStorageUrl
+  );
   const extractThemeFromWebsite = useAction(
     api.pipeline.institutionTheme.adminExtractInstitutionThemeFromWebsite
+  );
+  const copyLogoFromUrl = useAction(
+    api.pipeline.institutionTheme.adminCopyInstitutionLogoFromUrl
   );
 
   const [createName, setCreateName] = useState("");
   const [showCreate, setShowCreate] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [activeTab, setActiveTab] = useState<InstitutionTab>("details");
   const [detailsInstitutionId, setDetailsInstitutionId] = useState<
     Id<"institutions"> | null
   >(null);
@@ -78,11 +81,12 @@ function AdminInstitutionsContent() {
   const [detailsSecondaryColor, setDetailsSecondaryColor] = useState("");
   const [detailsBackgroundColor, setDetailsBackgroundColor] = useState("");
   const [detailsLogoUrl, setDetailsLogoUrl] = useState("");
-  const [detailsFontFamily, setDetailsFontFamily] = useState("");
+  const [detailsLogoStorageId, setDetailsLogoStorageId] = useState("");
+  const [detailsTitleFontFamily, setDetailsTitleFontFamily] = useState("");
+  const [detailsBodyFontFamily, setDetailsBodyFontFamily] = useState("");
   const [detailsTitleCase, setDetailsTitleCase] = useState<"none" | "uppercase">(
     "none"
   );
-  const [detailsPlaceholder, setDetailsPlaceholder] = useState(false);
   const [extractFeedback, setExtractFeedback] = useState<{
     tone: "info" | "warning" | "success";
     message: string;
@@ -116,16 +120,29 @@ function AdminInstitutionsContent() {
   const previewBackgroundColor = isHexColor(detailsBackgroundColor.trim())
     ? detailsBackgroundColor.trim()
     : "#FFFFFF";
-  const previewFontFamily = detailsFontFamily.trim() || "system-ui";
+  const previewTitleFontFamily = detailsTitleFontFamily.trim() || "system-ui";
+  const previewBodyFontFamily = detailsBodyFontFamily.trim() || "system-ui";
   const previewInstitutionName = detailsName.trim() || "Institution";
-  const normalizedFontFamily = normalizeFontFamily(detailsFontFamily);
-  const fontSelectValue =
-    normalizedFontFamily &&
-    GOOGLE_BRAND_FONT_OPTIONS.includes(
-      normalizedFontFamily as (typeof GOOGLE_BRAND_FONT_OPTIONS)[number]
-    )
-      ? normalizedFontFamily
-      : CUSTOM_FONT_OPTION;
+  const previewBrandTokens = useMemo(
+    () => ({
+      primaryColor: previewPrimaryColor,
+      secondaryColor: previewSecondaryColor,
+      backgroundColor: previewBackgroundColor,
+      ...(detailsLogoUrl.trim() ? { logoUrl: detailsLogoUrl.trim() } : {}),
+      titleFontFamily: previewTitleFontFamily,
+      bodyFontFamily: previewBodyFontFamily,
+      titleCase: detailsTitleCase,
+    }),
+    [
+      previewPrimaryColor,
+      previewSecondaryColor,
+      previewBackgroundColor,
+      detailsLogoUrl,
+      previewTitleFontFamily,
+      previewBodyFontFamily,
+      detailsTitleCase,
+    ]
+  );
 
   useEffect(() => {
     if (!rows.length) {
@@ -151,9 +168,12 @@ function AdminInstitutionsContent() {
     setDetailsSecondaryColor(readToken(tokens, "secondaryColor"));
     setDetailsBackgroundColor(readToken(tokens, "backgroundColor"));
     setDetailsLogoUrl(readToken(tokens, "logoUrl"));
-    setDetailsFontFamily(readToken(tokens, "fontFamily"));
+    setDetailsLogoStorageId(readToken(tokens, "logoStorageId"));
+    setDetailsTitleFontFamily(
+      readToken(tokens, "titleFontFamily") || readToken(tokens, "fontFamily")
+    );
+    setDetailsBodyFontFamily(readToken(tokens, "bodyFontFamily"));
     setDetailsTitleCase(parseTitleCaseToken(tokens.titleCase));
-    setDetailsPlaceholder(tokens.placeholder === true);
     setExtractFeedback(null);
   }
 
@@ -190,6 +210,66 @@ function AdminInstitutionsContent() {
     }
   }
 
+  async function ensureStoredLogo(): Promise<{
+    logoUrl: string;
+    logoStorageId: string;
+  }> {
+    if (!detailsInstitutionId) return { logoUrl: "", logoStorageId: "" };
+    const logoUrl = detailsLogoUrl.trim();
+    if (!logoUrl) return { logoUrl: "", logoStorageId: "" };
+    if (detailsLogoStorageId.trim()) {
+      return { logoUrl, logoStorageId: detailsLogoStorageId.trim() };
+    }
+    const copied = await copyLogoFromUrl({
+      institutionId: detailsInstitutionId,
+      logoUrl,
+    });
+    setDetailsLogoUrl(copied.logoUrl);
+    setDetailsLogoStorageId(copied.logoStorageId);
+    return copied;
+  }
+
+  async function handleLogoFileSelected(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0] ?? null;
+    event.target.value = "";
+    if (!file || !detailsInstitutionId) return;
+    if (!file.type.startsWith("image/") || file.size <= 0 || file.size > MAX_LOGO_BYTES) {
+      setError("Logo must be an image file under 2 MB.");
+      return;
+    }
+
+    setBusy(`logo-upload:${detailsInstitutionId}`);
+    setError(null);
+    setNotice(null);
+    try {
+      const { uploadUrl } = await generateLogoUploadUrl({
+        institutionId: detailsInstitutionId,
+      });
+      const uploadResponse = await fetch(uploadUrl, {
+        method: "POST",
+        headers: { "Content-Type": file.type },
+        body: file,
+      });
+      if (!uploadResponse.ok) {
+        throw new Error(`upload failed (${uploadResponse.status})`);
+      }
+      const uploadResult = (await uploadResponse.json()) as { storageId?: string };
+      if (!uploadResult.storageId) {
+        throw new Error("upload did not return a storage id");
+      }
+      const resolved = await resolveLogoStorageUrl({
+        storageId: uploadResult.storageId as never,
+      });
+      setDetailsLogoUrl(resolved.logoUrl);
+      setDetailsLogoStorageId(String(resolved.logoStorageId));
+      setNotice("Logo uploaded. Save institution details to apply it.");
+    } catch (uploadError) {
+      setError(getUserFacingErrorMessage(uploadError, "Could not upload logo. Try again."));
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function handleSaveDetails() {
     if (!detailsInstitutionId) return;
     const nextName = detailsName.trim();
@@ -218,13 +298,13 @@ function AdminInstitutionsContent() {
     setError(null);
     setNotice(null);
     try {
+      const storedLogo = await ensureStoredLogo();
       await updateInstitution({
         institutionId: detailsInstitutionId,
         name: nextName,
         market: detailsMarket.trim() || "AU",
         websiteUrl: detailsWebsiteUrl.trim() || null,
         brandTokens: {
-          placeholder: detailsPlaceholder,
           ...(detailsPrimaryColor.trim() ? { primaryColor: detailsPrimaryColor.trim() } : {}),
           ...(detailsSecondaryColor.trim()
             ? { secondaryColor: detailsSecondaryColor.trim() }
@@ -232,8 +312,14 @@ function AdminInstitutionsContent() {
           ...(detailsBackgroundColor.trim()
             ? { backgroundColor: detailsBackgroundColor.trim() }
             : {}),
-          ...(detailsLogoUrl.trim() ? { logoUrl: detailsLogoUrl.trim() } : {}),
-          ...(detailsFontFamily.trim() ? { fontFamily: detailsFontFamily.trim() } : {}),
+          ...(storedLogo.logoUrl ? { logoUrl: storedLogo.logoUrl } : {}),
+          ...(storedLogo.logoStorageId ? { logoStorageId: storedLogo.logoStorageId } : {}),
+          ...(detailsTitleFontFamily.trim()
+            ? { titleFontFamily: detailsTitleFontFamily.trim() }
+            : {}),
+          ...(detailsBodyFontFamily.trim()
+            ? { bodyFontFamily: detailsBodyFontFamily.trim() }
+            : {}),
           titleCase: detailsTitleCase,
         },
       });
@@ -277,11 +363,9 @@ function AdminInstitutionsContent() {
       if (extracted.backgroundColor) applied += 1;
       if (extracted.logoUrl) setDetailsLogoUrl(extracted.logoUrl);
       if (extracted.logoUrl) applied += 1;
-      if (extracted.fontFamily) setDetailsFontFamily(extracted.fontFamily);
+      if (extracted.logoStorageId) setDetailsLogoStorageId(String(extracted.logoStorageId));
+      if (extracted.fontFamily) setDetailsTitleFontFamily(extracted.fontFamily);
       if (extracted.fontFamily) applied += 1;
-      if (applied > 0) {
-        setDetailsPlaceholder(false);
-      }
       const message = extracted.warning
         ? `${extracted.warning} ${
             applied > 0
@@ -308,22 +392,6 @@ function AdminInstitutionsContent() {
     }
   }
 
-  function handlePreviewCards() {
-    router.push(
-      buildCardPreviewHref({
-        name: previewInstitutionName,
-        market: detailsMarket.trim() || "AU",
-        primaryColor: previewPrimaryColor,
-        secondaryColor: previewSecondaryColor,
-        backgroundColor: previewBackgroundColor,
-        logoUrl: detailsLogoUrl.trim(),
-        fontFamily: previewFontFamily,
-        titleCase: detailsTitleCase,
-        placeholder: detailsPlaceholder,
-      })
-    );
-  }
-
   return (
     <AdminWorkspaceFrame
       activeNav="institutions"
@@ -333,7 +401,7 @@ function AdminInstitutionsContent() {
       contentClassName="flex-1 bg-background p-0"
       contentStyle={{ overflow: "hidden" }}
     >
-      <GoogleBrandFontLoader fontFamily={previewFontFamily} />
+      <GoogleBrandFontLoader fontFamilies={[previewTitleFontFamily, previewBodyFontFamily]} />
       <Box className="flex-1 min-h-0 flex-col bg-background lg:flex-row">
         <Box className="w-full shrink-0 gap-4 border-b border-border bg-[#F8F7F4] p-4 lg:h-full lg:w-[292px] lg:border-b-0 lg:border-r lg:p-5">
           <Box className="flex-row items-center justify-between gap-3">
@@ -443,20 +511,38 @@ function AdminInstitutionsContent() {
                   </Box>
 
                   <Box className="flex-row items-end gap-6 border-b border-border">
-                    <Box className="border-b-2 border-primary pb-3">
-                      <Text className="text-sm font-bold text-foreground">Institution details</Text>
-                    </Box>
-                    <Pressable className="pb-3" onPress={handlePreviewCards}>
-                      <Text className="text-sm font-bold text-muted-foreground">
+                    <Pressable
+                      className={`pb-3 ${activeTab === "details" ? "border-b-2 border-primary" : ""}`}
+                      onPress={() => setActiveTab("details")}
+                    >
+                      <Text
+                        className={`text-sm font-bold ${
+                          activeTab === "details" ? "text-foreground" : "text-muted-foreground"
+                        }`}
+                      >
+                        Institution details
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      className={`pb-3 ${activeTab === "preview" ? "border-b-2 border-primary" : ""}`}
+                      onPress={() => setActiveTab("preview")}
+                    >
+                      <Text
+                        className={`text-sm font-bold ${
+                          activeTab === "preview" ? "text-foreground" : "text-muted-foreground"
+                        }`}
+                      >
                         Card preview · {CARD_PREVIEW_TEMPLATES.length}
                       </Text>
                     </Pressable>
                   </Box>
 
-                  {error ? <Text className="text-sm text-destructive">{error}</Text> : null}
-                  {notice ? <Text className="text-sm text-[#1f7a45]">{notice}</Text> : null}
+                  {activeTab === "details" ? (
+                    <>
+                      {error ? <Text className="text-sm text-destructive">{error}</Text> : null}
+                      {notice ? <Text className="text-sm text-[#1f7a45]">{notice}</Text> : null}
 
-                  <Box className="flex-col gap-8 xl:flex-row xl:items-start">
+                      <Box className="flex-col gap-8 xl:flex-row xl:items-start">
                     <Box className="min-w-0 flex-1 gap-8">
                       <Box className="gap-4">
                         <SectionLabel>Identity</SectionLabel>
@@ -564,16 +650,45 @@ function AdminInstitutionsContent() {
                           />
                         </Box>
                         <Box className="gap-1.5">
-                          <FieldLabel>Logo URL</FieldLabel>
-                          <Input>
-                            <InputField
-                              value={detailsLogoUrl}
-                              onChangeText={setDetailsLogoUrl}
-                              placeholder="https://www.example.edu/logo.svg"
-                              autoCapitalize="none"
-                              autoCorrect={false}
-                            />
-                          </Input>
+                          <FieldLabel>Logo</FieldLabel>
+                          <input
+                            ref={logoInputRef}
+                            type="file"
+                            accept="image/*"
+                            style={{ display: "none" }}
+                            onChange={(event) => void handleLogoFileSelected(event)}
+                          />
+                          <Box className="flex-col gap-2 md:flex-row md:items-center">
+                            <Box className="min-w-0 flex-1">
+                              <Input>
+                                <InputField
+                                  value={detailsLogoUrl}
+                                  onChangeText={(value) => {
+                                    setDetailsLogoUrl(value);
+                                    setDetailsLogoStorageId("");
+                                  }}
+                                  placeholder="https://www.example.edu/logo.svg"
+                                  autoCapitalize="none"
+                                  autoCorrect={false}
+                                />
+                              </Input>
+                            </Box>
+                            <Button
+                              className="h-[42px] rounded-xl"
+                              variant="outline"
+                              isDisabled={busy !== null}
+                              onPress={() => logoInputRef.current?.click()}
+                            >
+                              <ButtonText>
+                                {busy === `logo-upload:${detailsInstitution._id}`
+                                  ? "Uploading..."
+                                  : "Upload logo"}
+                              </ButtonText>
+                            </Button>
+                          </Box>
+                          <Text className="text-[11px] text-muted-foreground">
+                            Uploaded, extracted, and pasted logos are copied into CounselIQ storage.
+                          </Text>
                         </Box>
                       </Box>
 
@@ -582,36 +697,20 @@ function AdminInstitutionsContent() {
                       <Box className="gap-4">
                         <SectionLabel>Typography</SectionLabel>
                         <Box className="flex-col gap-3 md:flex-row">
-                          <Box className="min-w-0 flex-1 gap-1.5">
-                            <FieldLabel>Font family</FieldLabel>
-                            <Box className="h-[42px] justify-center rounded-xl border border-border bg-card px-3">
-                              <select
-                                value={fontSelectValue}
-                                onChange={(event) => {
-                                  if (event.target.value === CUSTOM_FONT_OPTION) return;
-                                  setDetailsFontFamily(event.target.value);
-                                }}
-                                style={selectStyle}
-                              >
-                                <option value={CUSTOM_FONT_OPTION}>Custom or existing value</option>
-                                {GOOGLE_BRAND_FONT_OPTIONS.map((font) => (
-                                  <option key={font} value={font}>
-                                    {font}
-                                  </option>
-                                ))}
-                              </select>
-                            </Box>
-                            <Input>
-                              <InputField
-                                value={detailsFontFamily}
-                                onChangeText={setDetailsFontFamily}
-                                placeholder="Open Sans"
-                              />
-                            </Input>
-                            <Text className="text-[11px] text-muted-foreground">
-                              Any Google Font family name works.
-                            </Text>
-                          </Box>
+                          <FontFamilyField
+                            label="Title font"
+                            value={detailsTitleFontFamily}
+                            placeholder="Playfair Display"
+                            description="Used for card headings and titles. Any Google Font family name works."
+                            onChange={setDetailsTitleFontFamily}
+                          />
+                          <FontFamilyField
+                            label="Body font"
+                            value={detailsBodyFontFamily}
+                            placeholder="Open Sans"
+                            description="Used for body text, answers, explanations, and questions."
+                            onChange={setDetailsBodyFontFamily}
+                          />
                           <Box className="w-full gap-1.5 md:w-[260px]">
                             <FieldLabel>Heading case</FieldLabel>
                             <Box className="h-[42px] flex-row overflow-hidden rounded-xl border border-border bg-muted p-1">
@@ -639,26 +738,6 @@ function AdminInstitutionsContent() {
                           </Box>
                         </Box>
 
-                        <Pressable
-                          className="flex-row items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3"
-                          onPress={() => setDetailsPlaceholder((value) => !value)}
-                        >
-                          <Box className="min-w-0 flex-1">
-                            <Text className="text-sm font-bold text-foreground">
-                              Placeholder theme
-                            </Text>
-                            <Text className="text-xs text-muted-foreground">
-                              Keep off for production institutions.
-                            </Text>
-                          </Box>
-                          <Box
-                            className={`h-6 w-11 justify-center rounded-full px-1 ${
-                              detailsPlaceholder ? "items-end bg-primary" : "items-start bg-muted"
-                            }`}
-                          >
-                            <Box className="h-5 w-5 rounded-full bg-card" />
-                          </Box>
-                        </Pressable>
                       </Box>
                     </Box>
 
@@ -669,41 +748,51 @@ function AdminInstitutionsContent() {
                         primaryColor={previewPrimaryColor}
                         secondaryColor={previewSecondaryColor}
                         backgroundColor={previewBackgroundColor}
-                        fontFamily={previewFontFamily}
+                        titleFontFamily={previewTitleFontFamily}
+                        bodyFontFamily={previewBodyFontFamily}
                         titleCase={detailsTitleCase}
                         logoUrl={detailsLogoUrl.trim()}
                       />
-                      <Button className="h-12 rounded-xl" onPress={handlePreviewCards}>
+                      <Button className="h-12 rounded-xl" onPress={() => setActiveTab("preview")}>
                         <ButtonText>
                           Preview all {CARD_PREVIEW_TEMPLATES.length} cards with this theme
                         </ButtonText>
-                        <ButtonText> -&gt;</ButtonText>
                       </Button>
                     </Box>
                   </Box>
+                    </>
+                  ) : (
+                    <InstitutionCardPreviewTab
+                      institutionName={previewInstitutionName}
+                      market={detailsMarket.trim() || "AU"}
+                      brandTokens={previewBrandTokens}
+                    />
+                  )}
                 </Box>
               </ScrollView>
 
-              <Box className="shrink-0 flex-row flex-wrap items-center justify-between gap-3 border-t border-border bg-background px-5 py-3 md:px-8 lg:px-9">
-                <Text className="text-xs text-muted-foreground">
-                  {error ? "Fix the highlighted issue before saving." : notice ?? "All changes saved."}
-                </Text>
-                <Box className="flex-row items-center gap-2">
-                  <Button variant="outline" onPress={() => hydrateDetails(detailsInstitution._id)}>
-                    <ButtonText>Reset changes</ButtonText>
-                  </Button>
-                  <Button
-                    isDisabled={busy === `save:${detailsInstitution._id}`}
-                    onPress={handleSaveDetails}
-                  >
-                    <ButtonText>
-                      {busy === `save:${detailsInstitution._id}`
-                        ? "Saving..."
-                        : "Save institution details"}
-                    </ButtonText>
-                  </Button>
+              {activeTab === "details" ? (
+                <Box className="shrink-0 flex-row flex-wrap items-center justify-between gap-3 border-t border-border bg-background px-5 py-3 md:px-8 lg:px-9">
+                  <Text className="text-xs text-muted-foreground">
+                    {error ? "Fix the highlighted issue before saving." : notice ?? "All changes saved."}
+                  </Text>
+                  <Box className="flex-row items-center gap-2">
+                    <Button variant="outline" onPress={() => hydrateDetails(detailsInstitution._id)}>
+                      <ButtonText>Reset changes</ButtonText>
+                    </Button>
+                    <Button
+                      isDisabled={busy === `save:${detailsInstitution._id}`}
+                      onPress={handleSaveDetails}
+                    >
+                      <ButtonText>
+                        {busy === `save:${detailsInstitution._id}`
+                          ? "Saving..."
+                          : "Save institution details"}
+                      </ButtonText>
+                    </Button>
+                  </Box>
                 </Box>
-              </Box>
+              ) : null}
             </Box>
           ) : (
             <Box className="flex-1 items-center justify-center p-8">
@@ -723,6 +812,72 @@ function SectionLabel({ children }: { children: string }) {
     <Text className="text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">
       {children}
     </Text>
+  );
+}
+
+function InstitutionCardPreviewTab({
+  institutionName,
+  market,
+  brandTokens,
+}: {
+  institutionName: string;
+  market: string;
+  brandTokens: Record<string, unknown>;
+}) {
+  return (
+    <Box className="gap-5">
+      <Box className="flex-row flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-card p-4">
+        <Box className="gap-1">
+          <Text className="text-sm font-bold text-foreground">
+            {CARD_PREVIEW_TEMPLATES.length} card templates
+          </Text>
+          <Text className="text-xs text-muted-foreground">
+            Generic {market} course content rendered with the current theme values.
+          </Text>
+        </Box>
+        <Box className="flex-row flex-wrap gap-2">
+          <TokenPill label="Primary" value={readToken(brandTokens, "primaryColor") || "default"} />
+          <TokenPill label="Secondary" value={readToken(brandTokens, "secondaryColor") || "default"} />
+          <TokenPill label="Background" value={readToken(brandTokens, "backgroundColor") || "default"} />
+        </Box>
+      </Box>
+
+      <Box
+        style={{
+          display: "grid",
+          gap: 20,
+          gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))",
+        } as never}
+      >
+        {CARD_PREVIEW_TEMPLATES.map((template) => (
+          <Box key={template} className="gap-2">
+            <Box className="overflow-hidden rounded-2xl border border-border bg-card p-2">
+              <Box style={{ aspectRatio: 9 / 16 } as never}>
+                <CardStaticPreview
+                  template={template}
+                  props={genericInstitutionCardProps(template, institutionName, market)}
+                  brandTokens={brandTokens}
+                  showControls={false}
+                />
+              </Box>
+            </Box>
+            <Text className="text-center text-xs font-bold text-muted-foreground">
+              {formatTemplateName(template)}
+            </Text>
+          </Box>
+        ))}
+      </Box>
+    </Box>
+  );
+}
+
+function TokenPill({ label, value }: { label: string; value: string }) {
+  return (
+    <Box className="rounded-full border border-border bg-background px-3 py-1">
+      <Text className="text-xs font-bold text-secondary-foreground">
+        {label}: {value}
+      </Text>
+    </Box>
   );
 }
 
@@ -769,12 +924,67 @@ function ColorField({
   );
 }
 
+function FontFamilyField({
+  label,
+  value,
+  placeholder,
+  description,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  placeholder: string;
+  description: string;
+  onChange: (value: string) => void;
+}) {
+  const normalizedFontFamily = normalizeFontFamily(value);
+  const selectValue =
+    normalizedFontFamily &&
+    GOOGLE_BRAND_FONT_OPTIONS.includes(
+      normalizedFontFamily as (typeof GOOGLE_BRAND_FONT_OPTIONS)[number]
+    )
+      ? normalizedFontFamily
+      : CUSTOM_FONT_OPTION;
+
+  return (
+    <Box className="min-w-0 flex-1 gap-1.5">
+      <FieldLabel>{label}</FieldLabel>
+      <Box className="h-[42px] justify-center rounded-xl border border-border bg-card px-3">
+        <select
+          value={selectValue}
+          onChange={(event) => {
+            if (event.target.value === CUSTOM_FONT_OPTION) return;
+            onChange(event.target.value);
+          }}
+          style={selectStyle}
+        >
+          <option value={CUSTOM_FONT_OPTION}>Custom or existing value</option>
+          {GOOGLE_BRAND_FONT_OPTIONS.map((font) => (
+            <option key={font} value={font}>
+              {font}
+            </option>
+          ))}
+        </select>
+      </Box>
+      <Input>
+        <InputField
+          value={value}
+          onChangeText={onChange}
+          placeholder={placeholder}
+        />
+      </Input>
+      <Text className="text-[11px] text-muted-foreground">{description}</Text>
+    </Box>
+  );
+}
+
 function LiveThemePreview({
   institutionName,
   primaryColor,
   secondaryColor,
   backgroundColor,
-  fontFamily,
+  titleFontFamily,
+  bodyFontFamily,
   titleCase,
   logoUrl,
 }: {
@@ -782,7 +992,8 @@ function LiveThemePreview({
   primaryColor: string;
   secondaryColor: string;
   backgroundColor: string;
-  fontFamily: string;
+  titleFontFamily: string;
+  bodyFontFamily: string;
   titleCase: "none" | "uppercase";
   logoUrl: string;
 }) {
@@ -793,7 +1004,7 @@ function LiveThemePreview({
           className="text-lg font-bold"
           style={{
             color: textOnColor(primaryColor),
-            fontFamily,
+            fontFamily: titleFontFamily,
             textTransform: titleCase,
           }}
         >
@@ -801,15 +1012,15 @@ function LiveThemePreview({
         </Text>
         <Text
           className="text-xs font-bold"
-          style={{ color: textOnColor(primaryColor), fontFamily, opacity: 0.88 }}
+          style={{ color: textOnColor(primaryColor), fontFamily: bodyFontFamily, opacity: 0.88 }}
         >
           Primary {primaryColor} · Secondary {secondaryColor}
         </Text>
       </Box>
       <Box className="gap-3 p-4" style={{ backgroundColor }}>
         <Box className="rounded-xl border border-border bg-card/80 px-4 py-3">
-          <Text className="text-sm leading-5 text-foreground" style={{ fontFamily }}>
-            This is how cards and controls inherit your brand accent, background, and font.
+          <Text className="text-sm leading-5 text-foreground" style={{ fontFamily: bodyFontFamily }}>
+            This is how cards and controls inherit your brand accent, background, title font, and body font.
           </Text>
         </Box>
         <Box className="gap-1.5 rounded-xl border border-dashed border-border bg-card/60 p-3">
@@ -835,7 +1046,7 @@ function LiveThemePreview({
           >
             <Text
               className="text-xs font-bold"
-              style={{ color: textOnColor(secondaryColor), fontFamily }}
+              style={{ color: textOnColor(secondaryColor), fontFamily: bodyFontFamily }}
             >
               Secondary action
             </Text>
@@ -844,7 +1055,7 @@ function LiveThemePreview({
             className="flex-1 items-center rounded-lg border px-3 py-2.5"
             style={{ borderColor: primaryColor }}
           >
-            <Text className="text-xs font-bold" style={{ color: primaryColor, fontFamily }}>
+            <Text className="text-xs font-bold" style={{ color: primaryColor, fontFamily: bodyFontFamily }}>
               Primary outline
             </Text>
           </Box>
@@ -863,20 +1074,6 @@ const selectStyle = {
   fontSize: 13,
   fontWeight: 700,
 } as const;
-
-function buildCardPreviewHref(input: CardPreviewHrefInput): string {
-  const params = new URLSearchParams();
-  params.set("name", input.name);
-  params.set("market", input.market);
-  params.set("primaryColor", input.primaryColor);
-  params.set("secondaryColor", input.secondaryColor);
-  params.set("backgroundColor", input.backgroundColor);
-  params.set("fontFamily", input.fontFamily);
-  params.set("titleCase", input.titleCase);
-  params.set("placeholder", input.placeholder ? "1" : "0");
-  if (input.logoUrl) params.set("logoUrl", input.logoUrl);
-  return `/admin/institution-card-preview?${params.toString()}`;
-}
 
 function institutionInitials(name: string): string {
   const parts = name

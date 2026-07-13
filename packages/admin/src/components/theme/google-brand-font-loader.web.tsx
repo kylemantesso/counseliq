@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import {
   googleFontStylesheetHref,
   normalizeFontFamily,
@@ -9,28 +9,37 @@ import {
 
 export function GoogleBrandFontLoader({
   fontFamily,
+  fontFamilies,
 }: {
   fontFamily?: string | null;
+  fontFamilies?: Array<string | null | undefined>;
 }) {
-  const normalized = normalizeFontFamily(fontFamily);
+  const fontSignature = [fontFamily, ...(fontFamilies ?? [])].join("\u0000");
+  const families = useMemo(() => {
+    const normalized = [fontFamily, ...(fontFamilies ?? [])]
+      .map((family) => normalizeFontFamily(family))
+      .filter((family): family is string => family !== null);
+    return [...new Set(normalized)];
+  }, [fontSignature]);
 
   useEffect(() => {
-    if (!shouldLoadGoogleFont(normalized)) return;
-    const family = normalized as string;
-    const id = `ciq-google-font-${family
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/(^-|-$)/g, "")}`;
+    for (const family of families) {
+      if (!shouldLoadGoogleFont(family)) continue;
+      const id = `ciq-google-font-${family
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/(^-|-$)/g, "")}`;
 
-    let link = document.getElementById(id) as HTMLLinkElement | null;
-    if (!link) {
-      link = document.createElement("link");
-      link.id = id;
-      link.rel = "stylesheet";
-      document.head.appendChild(link);
+      let link = document.getElementById(id) as HTMLLinkElement | null;
+      if (!link) {
+        link = document.createElement("link");
+        link.id = id;
+        link.rel = "stylesheet";
+        document.head.appendChild(link);
+      }
+      link.href = googleFontStylesheetHref(family);
     }
-    link.href = googleFontStylesheetHref(family);
-  }, [normalized]);
+  }, [families]);
 
   return null;
 }
