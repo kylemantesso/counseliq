@@ -3,6 +3,7 @@ import {
   parseCourseDefinition,
   type Concept,
   type CourseDefinition,
+  type CoursePresentation,
   type Fact,
   type QuestionBankItem,
 } from "@counseliq/course-schema";
@@ -98,6 +99,7 @@ export const getReviewedInventoryInternal = internalQuery({
       provenanceIds: [...provenanceIds],
       /** M6.5: operator brief, threaded into authoring prompts. */
       brief: run.brief ?? null,
+      presentation: run.presentation ?? { mode: "standard" },
     };
   },
 });
@@ -149,6 +151,9 @@ export interface CourseDefinitionMeta {
   voice: CourseDefinition["voice"];
   _pipelineNotes: CourseDefinition["_pipelineNotes"];
   assessment: CourseDefinition["assessment"];
+  presentation?: CoursePresentation;
+  /** Concrete provider data is operational metadata, not a portable course field. */
+  ttsVoice?: unknown;
 }
 
 /**
@@ -178,6 +183,51 @@ export const saveCompiledCourse = internalMutation({
     const conceptKeys = args.conceptKeysByUnitId ?? {};
     const complianceWarnings = args.complianceWarningsByUnitId ?? {};
 
+    const previousMeta = run.courseId
+      ? ((await ctx.db.get(run.courseId))?.definitionMeta as Record<string, unknown> | undefined)
+      : undefined;
+    // A Gate-2 operator override is stored on the course. Preserve it through
+    // re-authoring instead of reverting every module to the build-time default.
+    const requestedPresentation =
+      (previousMeta?.presentation as CoursePresentation | undefined) ??
+      (run.presentation as CoursePresentation | undefined);
+    const presentation =
+      requestedPresentation?.mode === "avatar"
+        ? {
+            ...requestedPresentation,
+            unitLooks: Object.fromEntries(
+              definition.modules.flatMap((module) =>
+                module.microUnits.map((unit) => [
+                  unit.unitId,
+                  requestedPresentation.unitLooks[unit.unitId] ??
+                    requestedPresentation.moduleLooks?.[module.moduleId] ??
+                    requestedPresentation.defaultLook,
+                ])
+              )
+            ),
+            unitAssignments: Object.fromEntries(
+              definition.modules.flatMap((module) =>
+                module.microUnits.map((unit) => {
+                  const existing = requestedPresentation.unitAssignments?.[unit.unitId];
+                  const look =
+                    existing?.look ??
+                    requestedPresentation.unitLooks[unit.unitId] ??
+                    requestedPresentation.moduleLooks?.[module.moduleId] ??
+                    requestedPresentation.defaultLook;
+                  return [
+                    unit.unitId,
+                    existing ?? {
+                      look,
+                      source: "fallback" as const,
+                      reason: "Using the course fallback look until per-video assignment completes.",
+                      assignedAt: Date.now(),
+                    },
+                  ];
+                })
+              )
+            ),
+          }
+        : requestedPresentation;
     const definitionMeta: CourseDefinitionMeta = {
       schemaRef: definition.$schema,
       courseId: definition.courseId,
@@ -188,6 +238,8 @@ export const saveCompiledCourse = internalMutation({
       voice: definition.voice,
       _pipelineNotes: definition._pipelineNotes,
       assessment: definition.assessment,
+      ...(presentation !== undefined ? { presentation } : {}),
+      ...(previousMeta?.ttsVoice !== undefined ? { ttsVoice: previousMeta.ttsVoice } : {}),
     };
 
     let courseId: Id<"courses">;
@@ -329,6 +381,7 @@ export function reconstructCourseDefinition(
     brandRef: meta.brandRef,
     language: meta.language,
     voice: meta.voice,
+    ...(meta.presentation !== undefined ? { presentation: meta.presentation } : {}),
     _pipelineNotes: meta._pipelineNotes,
     modules,
     assessment: meta.assessment,

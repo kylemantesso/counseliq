@@ -13,7 +13,6 @@ const BASE_INPUT = {
   voiceId: "v1",
   model: "mock-tts-1",
   outputFormat: "mp3_44100_128",
-  gapMs: 250,
 };
 
 function cards(assetRef: string) {

@@ -6,7 +6,7 @@ import { assetAspectSchema, mediaAssetKindSchema } from "./assets";
  * Publish manifest — the contract a gate-3 approval produces alongside the
  * Course Definition export. It is the single index Remotion (M6) and the
  * learner app use to fetch everything a published course version needs:
- * per-sentence audio artifacts, per-unit timing artifacts, theme tokens,
+ * continuous unit audio, per-unit timing artifacts, theme tokens,
  * voice, and the versions that produced them.
  *
  * The manifest is stored content-addressed in the object store next to the
@@ -15,7 +15,7 @@ import { assetAspectSchema, mediaAssetKindSchema } from "./assets";
  * verifies each key exists before finalizing).
  */
 
-export const PUBLISH_MANIFEST_SCHEMA_REF = "counseliq://publish-manifest/v2";
+export const PUBLISH_MANIFEST_SCHEMA_REF = "counseliq://publish-manifest/v3";
 
 export const manifestAssetSchema = z
   .object({
@@ -38,8 +38,6 @@ export const manifestAudioSentenceSchema = z
   .object({
     /** Narration sentence id ("n1", …) within the unit. */
     sentenceId: z.string().min(1),
-    /** Per-sentence mp3, content-addressed: sha256/{hash}.mp3 */
-    audioKey: z.string().min(1),
     /** Characters synthesised (billing/observability). */
     characters: z.number().int().nonnegative(),
     durationMs: z.number().nonnegative(),
@@ -59,8 +57,8 @@ export const manifestUnitSchema = z
     audio: z
       .object({
         sentences: z.array(manifestAudioSentenceSchema).min(1),
-        /** Concatenated whole-unit audio, if produced (not in M5). */
-        unitAudioKey: z.string().min(1).optional(),
+        /** Canonical continuously synthesized whole-unit audio. */
+        unitAudioKey: z.string().min(1),
       })
       .strict(),
     /** The unit's UnitTiming artifact: sha256/{hash}.json */
@@ -69,6 +67,15 @@ export const manifestUnitSchema = z
     timingSchemaVersion: z.number().int().positive(),
     /** Asset refs used by this unit's cards + anchor (deduped). */
     assetRefs: z.array(z.string().min(1)),
+    /** Optional persistent HeyGen presenter footage composited by the renderer. */
+    avatarTrack: z
+      .object({
+        objectKey: z.string().min(1),
+        thumbKey: z.string().min(1).optional(),
+        durationMs: z.number().int().positive(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 
@@ -161,26 +168,27 @@ export const publishManifestSchema = publishManifestObjectSchema.superRefine(
         });
       }
 
-      if (
-        unit.audio.unitAudioKey !== undefined &&
-        !keySet.has(unit.audio.unitAudioKey)
-      ) {
+      if (!keySet.has(unit.audio.unitAudioKey)) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ["units", uIndex, "audio", "unitAudioKey"],
           message: `unitAudioKey "${unit.audio.unitAudioKey}" for unit "${unit.unitId}" is missing from artifactKeys`,
         });
       }
-
-      unit.audio.sentences.forEach((sentence, sIndex) => {
-        if (!keySet.has(sentence.audioKey)) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            path: ["units", uIndex, "audio", "sentences", sIndex, "audioKey"],
-            message: `audioKey "${sentence.audioKey}" for sentence "${sentence.sentenceId}" in unit "${unit.unitId}" is missing from artifactKeys`,
-          });
-        }
-      });
+      if (unit.avatarTrack && !keySet.has(unit.avatarTrack.objectKey)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["units", uIndex, "avatarTrack", "objectKey"],
+          message: `avatar track for unit "${unit.unitId}" is missing from artifactKeys`,
+        });
+      }
+      if (unit.avatarTrack?.thumbKey && !keySet.has(unit.avatarTrack.thumbKey)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["units", uIndex, "avatarTrack", "thumbKey"],
+          message: `avatar track thumbnail for unit "${unit.unitId}" is missing from artifactKeys`,
+        });
+      }
 
       const seenRefs = new Set<string>();
       unit.assetRefs.forEach((assetRef, rIndex) => {

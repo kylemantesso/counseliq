@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { coursePresentationSchema, visualTreatmentSchema } from "./presentation";
 
 /**
  * Course Definition interchange schema — the contract between the compiler
@@ -57,6 +58,8 @@ export const cardSchema = z
   .object({
     template: cardTemplateSchema,
     props: cardPropsSchema,
+    /** Presentation is independent from the card's learning semantics. */
+    visualTreatment: visualTreatmentSchema.optional(),
     enterAt: enterAtSchema,
     provenance: z.string().min(1),
   })
@@ -166,6 +169,8 @@ const courseDefinitionObjectSchema = z
     brandRef: z.string().min(1),
     language: z.string().min(1),
     voice: voiceSchema,
+    /** Absent means the course uses standard card presentation. */
+    presentation: coursePresentationSchema.optional(),
     _pipelineNotes: pipelineNotesSchema,
     modules: z.array(moduleSchema).min(1),
     assessment: assessmentSchema,

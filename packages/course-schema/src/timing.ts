@@ -60,7 +60,7 @@ export const unitScriptSchema = z
 // UnitTiming (stored on microUnits.timing, written by GENERATING_ASSETS)
 // ---------------------------------------------------------------------------
 
-export const TIMING_VERSION = 2 as const;
+export const TIMING_VERSION = 3 as const;
 
 /** Settled time after the final narration word before content advances. */
 export const FINAL_CONTENT_HOLD_MS = 1500;
@@ -78,8 +78,6 @@ export const timingSentenceSchema = z
   .object({
     narrationId: z.string().min(1),
     speakText: z.string().min(1),
-    /** Per-sentence audio artifact: sha256/{hash}.mp3 in the object store. */
-    audioKey: z.string().min(1),
     startMs: z.number().int().nonnegative(),
     durationMs: z.number().int().positive(),
     words: z.array(timingWordSchema).min(1),
@@ -118,8 +116,8 @@ export const unitTimingSchema = z
     provider: z.string().min(1),
     voiceRef: z.string().min(1),
     model: z.string().min(1),
-    /** Constant silence inserted between sentences on the unit clock. */
-    interSentenceGapMs: z.number().int().nonnegative(),
+    /** Canonical continuous narration for the whole unit. */
+    unitAudioKey: z.string().min(1),
     totalDurationMs: z.number().int().positive(),
     sentences: z.array(timingSentenceSchema).min(1),
     cardBeats: z.array(cardBeatSchema),

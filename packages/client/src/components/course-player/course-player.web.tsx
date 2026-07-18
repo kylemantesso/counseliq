@@ -93,6 +93,7 @@ export function CoursePlayer({
   const flow = useUnitFlow(unit ?? EMPTY_UNIT, onUnitComplete);
 
   const audio = useUnitAudio({
+    unitId: unit?.id,
     timing: unit?.timing ?? null,
     urls: presignedUrls,
     muted,
@@ -112,9 +113,8 @@ export function CoursePlayer({
     const adjacent = [flatUnits[flatIndex], flatUnits[flatIndex + 1]];
     const wanted: string[] = [];
     for (const f of adjacent) {
-      for (const s of f?.unit.timing?.sentences ?? []) {
-        if (!presignedUrls.has(s.audioKey)) wanted.push(s.audioKey);
-      }
+      const timing = f?.unit.timing;
+      if (timing && !presignedUrls.has(timing.unitAudioKey)) wanted.push(timing.unitAudioKey);
     }
     for (const key of mediaKeysForUnits(
       adjacent.map((f) => f?.unit),

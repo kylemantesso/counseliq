@@ -79,6 +79,11 @@ const RUN_PHASES: Record<string, RunPhase> = {
     activity: "Generating audio and media",
     progress: 88,
   },
+  GENERATING_AVATAR: {
+    label: "Generate avatar video",
+    activity: "Generating avatar videos",
+    progress: 90,
+  },
   GATE_3_PREVIEW: {
     label: "Preview approval",
     activity: "Course preview is ready for approval",
@@ -233,14 +238,13 @@ function AdminCourseQueueContent() {
                   <TableHeading className="w-48">Status</TableHeading>
                   <TableHeading className="w-16">Sources</TableHeading>
                   <TableHeading className="w-28">Started</TableHeading>
-                  <Box className="w-60" />
+                  <Box className="w-72" />
                 </Box>
 
                 {visibleRuns.map((run) => {
                   const presentation = runPresentation(run.state, run.failedFromState);
                   const runName = displayGenerationName(run);
-                  const openRoute =
-                    routeForRunState(run._id, run.state) ?? `/admin/runs/${run._id}`;
+                  const approvalRoute = approvalRouteForRunState(run._id, run.state);
                   return (
                     <Box
                       key={run._id}
@@ -304,7 +308,7 @@ function AdminCourseQueueContent() {
                         {startedAt(run._creationTime)}
                       </QueueDatum>
 
-                      <Box className="flex-row flex-wrap items-center gap-2 xl:w-60 xl:justify-end">
+                      <Box className="flex-row flex-wrap items-center gap-2 xl:w-72 xl:justify-end">
                         {run.state === "FAILED" ? (
                           <Button
                             size="sm"
@@ -315,10 +319,20 @@ function AdminCourseQueueContent() {
                             <ButtonText>Resume</ButtonText>
                           </Button>
                         ) : null}
+                        {approvalRoute ? (
+                          <Button
+                            size="sm"
+                            onPress={() => router.push(approvalRoute)}
+                            isDisabled={deletingRunId === run._id}
+                            accessibilityLabel={`Review and approve ${runName}`}
+                          >
+                            <ButtonText>Review & approve</ButtonText>
+                          </Button>
+                        ) : null}
                         <Button
                           size="sm"
                           variant="outline"
-                          onPress={() => router.push(openRoute)}
+                          onPress={() => router.push(`/admin/runs/${run._id}`)}
                           isDisabled={deletingRunId === run._id}
                           accessibilityLabel={`Open ${runName}`}
                         >
@@ -477,21 +491,10 @@ function startedAt(timestamp: number): string {
   return `${day}, ${time}`;
 }
 
-function routeForRunState(runId: Id<"runs">, state: string): string | null {
-  if (state === "OUTLINE_REVIEW" || state === "OUTLINING") return `/admin/runs/${runId}/outline`;
-  if (["GATE_2_COURSE_REVIEW", "COMPILED", "QA_RUNNING", "QA_PASSED", "QA_FLAGGED"].includes(state)) {
-    return `/admin/runs/${runId}/gate-2`;
-  }
-  if (state === "PUBLISHED") {
-    return `/admin/runs/${runId}`;
-  }
-  if (
-    ["GATE_3_PREVIEW", "GENERATING_SCRIPT", "GENERATING_ASSETS", "PUBLISHING"].includes(
-      state
-    )
-  ) {
-    return `/admin/runs/${runId}/gate-3`;
-  }
+function approvalRouteForRunState(runId: Id<"runs">, state: string): string | null {
+  if (state === "OUTLINE_REVIEW") return `/admin/runs/${runId}/outline`;
+  if (state === "GATE_2_COURSE_REVIEW") return `/admin/runs/${runId}/gate-2`;
+  if (state === "GATE_3_PREVIEW") return `/admin/runs/${runId}/gate-3`;
   return null;
 }
 

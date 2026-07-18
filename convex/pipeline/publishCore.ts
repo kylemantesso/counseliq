@@ -83,10 +83,6 @@ export function publishPreconditionViolations(units: PublishUnitRow[]): string[]
         violations.push(
           `unit ${unit.unitKey}: narration sentence "${sentence.id}" has no timing entry`
         );
-      } else if (!timed.audioKey) {
-        violations.push(
-          `unit ${unit.unitKey}: narration sentence "${sentence.id}" has no audio artifact`
-        );
       }
     }
   }
@@ -100,7 +96,9 @@ export interface ManifestUnitInput {
   unitDefinitionHash: string;
   timing: UnitTiming;
   timingKey: string;
+  unitAudioKey: string;
   assetRefs: string[];
+  avatarTrack?: { objectKey: string; thumbKey?: string; durationMs: number };
 }
 
 export interface ManifestAssetInput {
@@ -170,8 +168,10 @@ export function buildPublishManifest(
   const artifactKeys = new Set<string>([input.exportKey]);
   for (const unit of input.units) {
     artifactKeys.add(unit.timingKey);
-    for (const sentence of unit.timing.sentences) {
-      artifactKeys.add(sentence.audioKey);
+    artifactKeys.add(unit.unitAudioKey);
+    if (unit.avatarTrack) {
+      artifactKeys.add(unit.avatarTrack.objectKey);
+      if (unit.avatarTrack.thumbKey) artifactKeys.add(unit.avatarTrack.thumbKey);
     }
   }
   for (const asset of Object.values(input.assets)) {
@@ -222,9 +222,9 @@ export function buildPublishManifest(
       moduleId: unit.moduleId,
       contentHash: unit.unitDefinitionHash,
       audio: {
+        unitAudioKey: unit.unitAudioKey,
         sentences: unit.timing.sentences.map((sentence) => ({
           sentenceId: sentence.narrationId,
-          audioKey: sentence.audioKey,
           characters: sentence.speakText.length,
           durationMs: sentence.durationMs,
         })),
@@ -232,6 +232,7 @@ export function buildPublishManifest(
       timingKey: unit.timingKey,
       timingSchemaVersion: unit.timing.version,
       assetRefs: unit.assetRefs,
+      ...(unit.avatarTrack !== undefined ? { avatarTrack: unit.avatarTrack } : {}),
     })),
     assets: input.assets,
     artifactKeys: [...artifactKeys],

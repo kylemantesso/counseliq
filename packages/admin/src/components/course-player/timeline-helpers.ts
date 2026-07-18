@@ -310,10 +310,11 @@ export function mediaKeysForUnits(
   units: Array<PreviewUnit | undefined>,
   assets: Record<string, PreviewAsset> | undefined
 ): string[] {
-  if (!assets) return [];
   const keys = new Set<string>();
   for (const unit of units) {
     if (!unit) continue;
+    if (unit.avatarTrack?.objectKey) keys.add(unit.avatarTrack.objectKey);
+    if (!assets) continue;
     for (const ref of assetRefsForUnit(unit)) {
       const asset = assets[ref];
       if (!asset) continue;

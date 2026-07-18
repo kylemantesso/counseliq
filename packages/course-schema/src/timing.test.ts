@@ -31,14 +31,13 @@ const validTiming: UnitTiming = {
   provider: "elevenlabs",
   voiceRef: "latrobe-narrator-01",
   model: "eleven_multilingual_v2",
-  interSentenceGapMs: 250,
+  unitAudioKey: "sha256/abc123.mp3",
   totalDurationMs: 4200,
   generatedAt: 1780000000000,
   sentences: [
     {
       narrationId: "n1",
       speakText: "La Trobe trains nurses on campus.",
-      audioKey: "sha256/abc123.mp3",
       startMs: 0,
       durationMs: 4200,
       words: [

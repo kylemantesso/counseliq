@@ -72,6 +72,7 @@ function toPreviewUnit(u: PayloadUnit): PreviewUnit {
     meta: (u.meta as PreviewUnit["meta"]) ?? {},
     script: (u.script as UnitScript | null) ?? null,
     timing: (u.timing as UnitTiming | null) ?? null,
+    avatarTrack: (u.avatarTrack as PreviewUnit["avatarTrack"]) ?? null,
   };
 }
 
@@ -128,8 +129,8 @@ function downloadFile(url: string, filename: string) {
   link.remove();
 }
 
-function narrationFilename(courseTitle: string, unitKey: string, index: number) {
-  const stem = `${courseTitle}-${unitKey}-narration-${String(index).padStart(2, "0")}`
+function narrationFilename(courseTitle: string, unitKey: string) {
+  const stem = `${courseTitle}-${unitKey}-narration`
     .replace(/[^a-z0-9._-]+/gi, "-")
     .replace(/^-+|-+$/g, "");
   return `${stem || "narration"}.mp3`;
@@ -146,6 +147,10 @@ function AdminGateThreeReviewContent() {
     api.pipeline.tts.preview.adminGetRunPreview,
     runId ? { runId } : "skip"
   );
+  const avatarJobs = useQuery(
+    api.pipeline.avatar.jobs.listAvatarJobsForRun,
+    runId ? { runId } : "skip"
+  );
   const decideGate = useMutation(api.pipeline.runs.adminDecideGate);
   const updateSentence = useMutation(
     api.pipeline.tts.edit.adminUpdateNarrationSentence
@@ -156,6 +161,7 @@ function AdminGateThreeReviewContent() {
   const retryUnit = useMutation(api.pipeline.tts.edit.adminRetryUnitTts);
   const regenerateUnit = useMutation(api.pipeline.tts.edit.adminRegenerateUnitTts);
   const regenerateRun = useMutation(api.pipeline.tts.edit.adminRegenerateRunTts);
+  const retryAvatarJob = useMutation(api.pipeline.avatar.jobs.adminRetryAvatarJob);
   const presignBatch = useAction(api.pipeline.objectStore.adminPresignGetBatch);
   const presignDownloadBatch = useAction(
     api.pipeline.objectStore.adminPresignDownloadBatch
@@ -366,8 +372,8 @@ function AdminGateThreeReviewContent() {
   };
 
   const onDownloadNarration = async (unit: PreviewUnit) => {
-    const audioKeys = unit.timing?.sentences.map((sentence) => sentence.audioKey) ?? [];
-    if (audioKeys.length === 0) {
+    const audioKey = unit.timing?.unitAudioKey;
+    if (!audioKey) {
       setError("No synthesized narration is available for this unit yet.");
       return;
     }
@@ -376,10 +382,10 @@ function AdminGateThreeReviewContent() {
     setDownloadingNarration(true);
     try {
       const downloads = await presignDownloadBatch({
-        items: audioKeys.map((key, index) => ({
-          key,
-          filename: narrationFilename(preview.course.title, unit.unitKey, index + 1),
-        })),
+        items: [{
+          key: audioKey,
+          filename: narrationFilename(preview.course.title, unit.unitKey),
+        }],
       });
       for (const download of downloads) {
         downloadFile(download.url, download.filename);
@@ -510,6 +516,34 @@ function AdminGateThreeReviewContent() {
       </Box>
     </div>
   ) : null;
+  const avatarFailurePanel = (avatarJobs ?? []).filter((job) => job.status === "failed").length > 0 ? (
+    <div style={{ borderTop: "1px solid #35232a", background: "rgba(126,35,35,.16)", padding: "12px 22px" }}>
+      <Text className="text-sm font-semibold" style={{ color: "#ff8c8c" }}>Avatar video warning</Text>
+      <Box className="mt-2 gap-2">
+        {(avatarJobs ?? []).filter((job) => job.status === "failed").map((job) => (
+          <Box key={String(job._id)} className="flex-row flex-wrap items-center gap-2">
+            <Chip label="AVATAR FAILED" tone="bad" />
+            <Text className="text-sm" style={{ color: "#ff8c8c" }}>
+              {job.error?.code === "insufficient_credit"
+                ? "HeyGen credits are required before this video can be generated."
+                : job.error?.code === "avatar_not_found"
+                  ? "The selected avatar look is unavailable. Retry to use a compatible fallback look."
+                : "HeyGen could not generate this avatar video. Retry after resolving the provider issue."}
+            </Text>
+            <Button
+              variant="outline"
+              size="sm"
+              onPress={() => void retryAvatarJob({ jobId: job._id })}
+              isDisabled={!atGate}
+              className="border-[#303946] bg-[#111820]"
+            >
+              <ButtonText className="text-[#f2efe8]">Retry avatar</ButtonText>
+            </Button>
+          </Box>
+        ))}
+      </Box>
+    </div>
+  ) : null;
 
   return (
     <AdminWorkspaceFrame
@@ -553,6 +587,7 @@ function AdminGateThreeReviewContent() {
               ) : null}
               {rejectPanel}
               {warningPanel}
+              {avatarFailurePanel}
             </GateThreeStudioHeader>
           }
           onActiveUnitChange={setActiveUnitId}

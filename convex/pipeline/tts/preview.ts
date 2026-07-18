@@ -14,7 +14,7 @@ import { getCourseRowsForRun } from "../courses";
  * blocked/failed review items that gate approval.
  *
  * Audio itself is NOT presigned here (URLs must never sit in query results);
- * the client batch-presigns audioKeys via objectStore.adminPresignGetBatch.
+ * the client batch-presigns unitAudioKey via objectStore.adminPresignGetBatch.
  */
 
 interface PreviewUnit {
@@ -29,6 +29,7 @@ interface PreviewUnit {
   script: unknown;
   timing: unknown;
   qa: unknown;
+  avatarTrack?: { objectKey: string; durationMs: number } | null;
 }
 
 interface PreviewModule {
@@ -40,9 +41,8 @@ interface PreviewModule {
 /**
  * A stored timing artifact from an older TIMING_VERSION is surfaced as
  * absent (the studio shows the unit as needing re-synthesis) rather than
- * crashing a consumer that reads v2-only fields. The contentHash embeds
- * TIMING_VERSION, so the next GENERATING_ASSETS pass rebuilds it — audio
- * itself is per-sentence cached, so the rebuild costs no TTS spend.
+ * crashing a consumer that reads current-version fields. The contentHash
+ * embeds TIMING_VERSION, so the next GENERATING_ASSETS pass rebuilds it.
  */
 function currentVersionTiming(timing: unknown): unknown {
   if (
@@ -60,6 +60,15 @@ async function buildRunPreview(ctx: QueryCtx, runId: Id<"runs">) {
   if (!rows) return null;
   const { run, course, units, questions } = rows;
   const institution = await ctx.db.get(course.institutionId);
+  const avatarJobs = await ctx.db
+    .query("avatarJobs")
+    .withIndex("by_run", (q) => q.eq("runId", runId))
+    .take(500);
+  const avatarByUnit = new Map(
+    avatarJobs
+      .filter((job) => job.status === "succeeded" && job.output)
+      .map((job) => [String(job.unitId), job.output!])
+  );
 
   // Units arrive ordered by (module, unit) from getCourseRowsForRun; group
   // them into modules the same way the gate-2 viewer does.
@@ -86,6 +95,10 @@ async function buildRunPreview(ctx: QueryCtx, runId: Id<"runs">) {
       script: unit.script ?? null,
       timing: currentVersionTiming(unit.timing),
       qa: unit.qa ?? null,
+      avatarTrack: (() => {
+        const output = avatarByUnit.get(String(unit._id));
+        return output ? { objectKey: output.objectKey, durationMs: output.durationMs } : null;
+      })(),
     });
   }
 

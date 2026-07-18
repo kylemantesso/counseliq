@@ -43,6 +43,8 @@ export const runStateValidator = v.union(
   v.literal("GATE_2_COURSE_REVIEW"),
   v.literal("GENERATING_SCRIPT"),
   v.literal("GENERATING_ASSETS"),
+  /** ElevenLabs narration is ready; HeyGen avatar videos are being created. */
+  v.literal("GENERATING_AVATAR"),
   v.literal("GATE_3_PREVIEW"),
   /** M5: gate-3 approval accepted; the publish workflow is assembling and
    *  uploading the export + manifest artifacts. */
@@ -86,6 +88,56 @@ export const renderJobStatusValidator = v.union(
   v.literal("queued"),
   v.literal("dispatched"),
   v.literal("rendering"),
+  v.literal("succeeded"),
+  v.literal("failed"),
+  v.literal("cancelled")
+);
+
+const avatarLookValidator = v.object({
+  groupId: v.string(),
+  lookId: v.string(),
+  name: v.string(),
+  previewImageUrl: v.optional(v.union(v.string(), v.null())),
+  preferredOrientation: v.optional(v.union(v.literal("portrait"), v.literal("landscape"), v.literal("square"), v.null())),
+  supportedEngines: v.optional(v.array(v.string())),
+  avatarType: v.optional(
+    v.union(
+      v.literal("photo_avatar"),
+      v.literal("digital_twin"),
+      v.literal("studio_avatar")
+    )
+  ),
+});
+
+const avatarLookAssignmentValidator = v.object({
+  look: avatarLookValidator,
+  source: v.union(v.literal("ai"), v.literal("manual"), v.literal("fallback")),
+  reason: v.string(),
+  promptVersion: v.optional(v.string()),
+  model: v.optional(v.string()),
+  assignedAt: v.number(),
+  manuallyLocked: v.optional(v.boolean()),
+});
+
+const presentationValidator = v.union(
+  v.object({ mode: v.literal("standard") }),
+  v.object({
+    mode: v.literal("avatar"),
+    provider: v.literal("heygen"),
+    avatarGroupId: v.string(),
+    defaultLook: avatarLookValidator,
+    unitLooks: v.optional(v.record(v.string(), avatarLookValidator)),
+    unitAssignments: v.optional(v.record(v.string(), avatarLookAssignmentValidator)),
+    moduleLooks: v.optional(v.record(v.string(), avatarLookValidator)),
+    assignmentStrategy: v.union(v.literal("ai-per-unit"), v.literal("ai-per-module")),
+    engine: v.union(v.literal("avatar_iv"), v.literal("avatar_v")),
+  })
+);
+
+const avatarJobStatusValidator = v.union(
+  v.literal("queued"),
+  v.literal("submitted"),
+  v.literal("processing"),
   v.literal("succeeded"),
   v.literal("failed"),
   v.literal("cancelled")
@@ -294,6 +346,8 @@ export default defineSchema({
     hasExplicitAssetSelection: v.optional(v.literal(true)),
     /** M6.5: operator brief directing the course's purpose and outcomes. */
     brief: v.optional(v.string()),
+    /** Chosen before authoring so the compiler can create a balanced card mix. */
+    presentation: v.optional(presentationValidator),
     error: v.optional(
       v.object({
         retryable: v.boolean(),
@@ -429,34 +483,6 @@ export default defineSchema({
     updatedAt: v.number(),
     updatedByUserId: v.id("users"),
   }).index("by_task", ["task"]),
-
-  /**
-   * Per-sentence TTS cache (M5): content-addressed by the SPOKEN text (post
-   * lexicon substitution) + voice + model + output format, so an edited
-   * sentence — or a lexicon change affecting it — re-synthesises alone and
-   * everything else is reused across runs and courses.
-   */
-  ttsSentences: defineTable({
-    /** sha256("tts:v1|" + spokenText + "|" + voiceId + "|" + model + "|" + outputFormat) */
-    sentenceHash: v.string(),
-    /** Object-store key of the mp3: sha256/{sha256(audioBytes)}.mp3 */
-    audioKey: v.string(),
-    durationMs: v.number(),
-    /** Word timestamps; charStart/charEnd are offsets into the SPOKEN text. */
-    words: v.array(
-      v.object({
-        text: v.string(),
-        startMs: v.number(),
-        endMs: v.number(),
-        charStart: v.number(),
-        charEnd: v.number(),
-      })
-    ),
-    characters: v.number(),
-    provider: v.string(),
-    model: v.string(),
-    voiceId: v.string(),
-  }).index("by_sentence_hash", ["sentenceHash"]),
 
   /**
    * TTS usage ledger (M5), mirroring llmCalls. Unlike llmCalls, costUsd is
@@ -642,4 +668,87 @@ export default defineSchema({
     .index("by_course_version", ["courseVersionId"])
     .index("by_course_version_and_unit", ["courseVersionId", "unitId"])
     .index("by_run_and_render_spec", ["runId", "renderSpecHash"]),
+
+  /** Durable HeyGen unit-video jobs. Output is composited with cards by Remotion. */
+  avatarJobs: defineTable({
+    runId: v.id("runs"),
+    courseId: v.id("courses"),
+    unitId: v.id("microUnits"),
+    moduleId: v.string(),
+    unitIndex: v.number(),
+    look: avatarLookValidator,
+    engine: v.union(v.literal("avatar_iv"), v.literal("avatar_v")),
+    inputHash: v.string(),
+    audioKey: v.string(),
+    heygenAudioAssetId: v.optional(v.string()),
+    providerJobId: v.optional(v.string()),
+    status: avatarJobStatusValidator,
+    attempts: v.number(),
+    maxAttempts: v.number(),
+    output: v.optional(
+      v.object({
+        objectKey: v.string(),
+        thumbKey: v.optional(v.string()),
+        sha256: v.string(),
+        sizeBytes: v.number(),
+        durationMs: v.number(),
+        width: v.number(),
+        height: v.number(),
+      })
+    ),
+    error: v.optional(v.object({ code: v.string(), message: v.string(), retryable: v.boolean() })),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_run", ["runId"])
+    .index("by_run_and_unit", ["runId", "unitId"])
+    .index("by_run_and_input_hash", ["runId", "inputHash"])
+    .index("by_provider_job", ["providerJobId"]),
+
+  /** Webhook idempotency records. HeyGen retries successful event deliveries. */
+  avatarWebhookEvents: defineTable({
+    eventId: v.string(),
+    receivedAt: v.number(),
+  }).index("by_event_id", ["eventId"]),
+
+  /** Cached private HeyGen avatar identities, refreshed on demand by an admin. */
+  avatarGroups: defineTable({
+    provider: v.literal("heygen"),
+    groupId: v.string(),
+    name: v.string(),
+    previewImageUrl: v.optional(v.union(v.string(), v.null())),
+    looksCount: v.number(),
+    status: v.optional(v.union(v.string(), v.null())),
+    consentStatus: v.optional(v.union(v.string(), v.null())),
+    syncedAt: v.number(),
+  }).index("by_provider_and_group", ["provider", "groupId"]),
+
+  /** A look's source hash changes only when HeyGen metadata changes. */
+  avatarLooks: defineTable({
+    provider: v.literal("heygen"),
+    lookId: v.string(),
+    groupId: v.string(),
+    name: v.string(),
+    previewImageUrl: v.optional(v.union(v.string(), v.null())),
+    preferredOrientation: v.optional(v.union(v.literal("portrait"), v.literal("landscape"), v.literal("square"), v.null())),
+    supportedEngines: v.array(v.string()),
+    tags: v.array(v.string()),
+    avatarType: v.string(),
+    status: v.optional(v.union(v.string(), v.null())),
+    sourceHash: v.string(),
+    evaluation: v.optional(v.object({
+      description: v.string(), setting: v.string(), attire: v.string(), framing: v.string(), tone: v.string(), suitableTopics: v.array(v.string()), visualTags: v.array(v.string()),
+    })),
+    evaluationOverrides: v.optional(v.object({
+      description: v.string(), setting: v.string(), attire: v.string(), framing: v.string(), tone: v.string(), suitableTopics: v.array(v.string()), visualTags: v.array(v.string()),
+    })),
+    evaluationEditedAt: v.optional(v.number()),
+    evaluationEditedBy: v.optional(v.string()),
+    evaluationPromptVersion: v.optional(v.string()),
+    evaluationModel: v.optional(v.string()),
+    evaluatedAt: v.optional(v.number()),
+    syncedAt: v.number(),
+  })
+    .index("by_provider_and_look", ["provider", "lookId"])
+    .index("by_provider_and_group", ["provider", "groupId"]),
 });

@@ -18,11 +18,11 @@ and gate 2 reviews the compiled course (judge flags attached) in a dedicated
 course viewer with send-back-for-re-authoring. As of M5, **the last stages
 are real**: GENERATING_SCRIPT deterministically normalises narration into a
 speakable script (unresolved pronunciations *block* their unit),
-GENERATING_ASSETS synthesises per-sentence audio with word-level timestamps
+  GENERATING_ASSETS synthesises continuous unit audio with word-level timestamps
 (ElevenLabs; mocked in tests/CI) into a versioned per-unit **timing
 artifact**, gate 3 reviews the course in a **playable studio** (real audio,
-cards firing on their word anchors, per-sentence editing with single-sentence
-re-synthesis), and approval assembles the canonical Course Definition export
+  cards firing on their word anchors, sentence editing with whole-unit
+  re-synthesis), and approval assembles the canonical Course Definition export
 + publish manifest into an immutable published version.
 
 ## State diagram
@@ -40,7 +40,7 @@ UPLOADED → CONVERTING → CONVERTED
                                may send back to COMPILING for re-authoring)
   → GENERATING_SCRIPT         (narration normalisation; unresolved
                                pronunciations block their unit)
-  → GENERATING_ASSETS         (per-sentence TTS + timing artifacts)
+  → GENERATING_ASSETS         (continuous unit TTS + timing artifacts)
   → GATE_3_PREVIEW            (playable studio; approve refuses while any
                                unit is blocked/failed; reject →
                                GATE_2_COURSE_REVIEW with reviewer notes)
@@ -302,18 +302,17 @@ and the unit re-synthesises.
 
 `unitTimingSchema` in `packages/course-schema/src/timing.ts` — the single
 clock every downstream consumer reads. **Versioned**: the artifact carries
-`version` (`TIMING_VERSION`, currently **2**); any field change bumps it and
+`version` (`TIMING_VERSION`, currently **3**); any field change bumps it and
 consumers must check it before reading (the gate-3 preview surfaces an
 older-version artifact as "needs re-synthesis" — the bump is inside
-`unitContentHash`, so the next GENERATING_ASSETS pass rebuilds it with zero
-TTS spend thanks to the sentence cache). Shape (all times integer ms on the
+`unitContentHash`, so the next GENERATING_ASSETS pass regenerates the unit).
+Shape (all times integer ms on the
 **unit clock** — t=0 at the start of the unit's first sentence):
 
 ```
-{ version, unitKey, provider, voiceRef, model, interSentenceGapMs,
-  totalDurationMs,
-  sentences: [{ narrationId, speakText, audioKey,      // per-sentence mp3
-                startMs, durationMs,
+{ version, unitKey, provider, voiceRef, model,
+  unitAudioKey, totalDurationMs,                        // continuous unit mp3
+  sentences: [{ narrationId, speakText, startMs, durationMs,
                 words: [{ text, startMs, endMs }] }],   // word timestamps
   cardBeats: [{ cardIndex, atMs }],                     // enterAt resolved
   media: [{ cardIndex, inMs, outMs }],                  // v2: media windows
@@ -343,21 +342,15 @@ object store at publish (`manifest.units[].timingKey`).
 `tts/synthesize.ts` runs at GENERATING_ASSETS: per-unit `synthesizeUnit`
 actions fan out through the `ttsPool` workpool (`TTS_PARALLELISM`, default 2
 — ElevenLabs concurrency caps are low; `TTS_MODE=sequential` for tests;
-`TTS_TIMEOUT_MS` default 10 min). Each unit synthesises **per narration
-sentence** (neighbouring sentences passed as `previous_text`/`next_text`
-prosody conditioning) via `TtsProvider` — ElevenLabs
+`TTS_TIMEOUT_MS` default 10 min). Each unit synthesises one continuous
+narration track via `TtsProvider` — ElevenLabs
 `/v1/text-to-speech/{voice}/with-timestamps` (`tts/elevenlabs.ts`, native
 fetch, retry-after-honouring backoff) or the deterministic mock
 (`TTS_PROVIDER=mock` — all tests/CI; never calls ElevenLabs).
 
-Two invalidation layers, both content-addressed:
-
-- **`ttsSentences` cache** — `sentenceHash = sha256(spokenText | voiceId |
-  model | outputFormat)`. An edited sentence re-synthesises *alone*; every
-  other sentence is a cache hit (audio reused across runs and courses).
-- **`microUnits.contentHash`** — hash of (speakTexts, lexicon, cards,
-  voiceId, model, format, gap). An unchanged unit is skipped entirely on
-  re-runs — test-proven.
+`microUnits.contentHash` is the content-addressed invalidation layer. It hashes
+all speakTexts, lexicon, cards, voice, model, and format. An unchanged unit is
+skipped entirely; any narration change regenerates the complete unit track.
 
 Audio artifacts are content-addressed mp3s (`sha256/{hash}.mp3`) in the
 object store; word timestamps derive from the provider's character
@@ -394,8 +387,8 @@ The gate-3 studio (`/admin/runs/[id]/gate-3`) embeds the course player from
 - **Studio navigation**: module rail (state chips, blocked/failed badges),
   click any unit, click any phase (hook → content → retrieve → anchor),
   scrub within content, inspect card props, edit narration sentences —
-  a save re-normalises the sentence and re-synthesises exactly that
-  sentence, and the player reflects the new audio reactively.
+  a save re-normalises the sentence and re-synthesises the complete unit
+  narration, and the player reflects the new audio reactively.
 - **Reduced motion** is honoured end-to-end: cards settle instantly, no
   autoplaying pan, captions still track words.
 
@@ -405,7 +398,7 @@ Gate-3 approval transitions to **PUBLISHING** and runs `publish.ts
 runPublish`:
 
 1. Preconditions (`publishCore.ts`, pure): every unit `assets_ready` with a
-   versioned timing artifact and per-sentence audio coverage; no blocked or
+   versioned timing artifact and continuous unit audio; no blocked or
    errored units.
 2. `reconstructCourseDefinition` over the normalised tables →
    `parseCourseDefinition` (the canonical export must be schema-valid,
@@ -413,7 +406,7 @@ runPublish`:
 3. Content-addressed artifacts: `export.json` (key = `sha256/{specHash}`),
    one timing JSON per unit, and `manifest.json` — validated by
    `publishManifestSchema` (`packages/course-schema/src/publish-manifest.ts`):
-   per-unit audio keys + timingKey, theme tokens, the voice actually used
+   one audio key per unit + timingKey, theme tokens, the voice actually used
    for synthesis, prompt/model versions, specHash, course version, and a
    deduped `artifactKeys` integrity list.
 4. Audio keys are HEAD-checked against the store before anything is written
@@ -635,8 +628,8 @@ npm run eval:assets -- --yes --run <id>  # target a specific gate-2 run
 Chains off a compiled run so you never pay for compile twice. Prints the TTS
 character/cost estimate and requires `--yes`, approves gate 2, waits for
 synthesis, and scores: every non-blocked unit `assets_ready` with a
-versioned timing artifact, every narration sentence has a per-sentence audio
-artifact, card beats resolved for every card; blocked/failed units fail the
+   versioned timing artifact and continuous audio track, with card beats
+   resolved for every card; blocked/failed units fail the
 eval. Then approves gate 3, waits for PUBLISHED, and verifies the round-trip
 (`courseVersions` snapshot + every manifest artifact key HEAD-checked in the
 store). Appends a `kind:"assets"` row to `eval-history.jsonl` with
@@ -700,9 +693,9 @@ characters, TTS cost vs estimate, and the publish specHash.
 | `tts/models.ts` / `tts/pricing.ts` | TTS env routing (`TTS_*`) + estimated price sheet |
 | `tts/beats.ts` | Word timestamps, unit-clock assembly, card-beat resolution |
 | `tts/synthesize.ts` | `synthesizeUnit` + `runAssetGeneration` via the `ttsPool` workpool |
-| `tts/data.ts` / `tts/calls.ts` | Synthesis data layer, `ttsSentences` cache, `recordTtsCall`, `estimateTtsCostForRun` |
+| `tts/data.ts` / `tts/calls.ts` | Unit synthesis data layer, `recordTtsCall`, `estimateTtsCostForRun` |
 | `tts/preview.ts` | `adminGetRunPreview` — the gate-3 studio's data source |
-| `tts/edit.ts` | `adminUpdateNarrationSentence` (single-sentence re-synthesis) + `adminRetryUnitTts` |
+| `tts/edit.ts` | `adminUpdateNarrationSentence` (whole-unit re-synthesis) + `adminRetryUnitTts` |
 | `publishCore.ts` | Pure publish builders: spec hash, preconditions, manifest assembly |
 | `publish.ts` | `runPublish` + `verifyPublishedArtifacts` (`"use node"`, object store) |
 | `publishedCourses.ts` | `finalizePublish`, `getPublishedCourse`, `courseVersions` snapshots |
@@ -797,17 +790,19 @@ templates, theme/reduced-motion toggles, timing scrubber).
 ### One-command local stack
 
 ```bash
-npm run dev:stack          # MinIO + converter (Docker) + local Convex + web app
+npm run dev:web:all        # MinIO + converter (Docker) + local Convex + admin and client web apps
 npm run walkthrough:local  # in another terminal: e2e run against that stack
 ```
 
-`dev:stack` starts docker compose, configures a **local anonymous Convex
+`dev:web:all` (also available as `dev:stack`) starts docker compose, configures a **local anonymous Convex
 deployment** (cloud dev can't reach localhost) with all ingestion env vars —
 including `CLERK_JWT_ISSUER_DOMAIN` derived from the web app's Clerk
-publishable key — then runs `convex dev` and the Next.js dev server together.
-Ctrl-C stops everything and restores `.env.local` to the cloud dev deployment.
+publishable key — then runs `convex dev`, the admin web app, and the client web
+app together. The admin app runs on port `3005`; the client app runs on port
+`3020`. Ctrl-C stops everything and restores `.env.local` to the cloud dev deployment.
 
-Options: `WEB_PORT=3001` (web port, default 3005), `CONVERTER_PORT=8090`
+Options: `WEB_PORT=3001` (admin web port, default 3005),
+`CLIENT_WEB_PORT=3021` (client web port, default 3020), `CONVERTER_PORT=8090`
 (converter host port), `ADMIN_EMAILS=you@example.com` (grant your login admin
 on the local deployment so `/admin/source-docs` works).
 
@@ -833,7 +828,7 @@ vars from "Operator setup" set on that deployment.
 | `extract` stage | **real** (per-page LLM extraction → knowledge inventory) | — |
 | `compile` stage | **real** (two-pass compiler → Course Definition, code-enforced rules) | — |
 | `qa` stage | **real** (adversarial judge, provenance tracing, `QA_FLAGGED` routing) | — |
-| `generate-script` / `generate-assets` stages | **real** (normalisation, per-sentence TTS, timing artifacts) | — |
+| `generate-script` / `generate-assets` stages | **real** (normalisation, continuous unit TTS, timing artifacts) | — |
 | Gate-1 review items | **real** (one per flagged fact, per-item resolution) | — |
 | Gate-2 review | **real** (course viewer + send-back re-authoring, real card renders) | — |
 | Gate-3 review | **real** (playable studio, blocked/failed enforcement, sentence editing) | — |

@@ -1,5 +1,6 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import {
+  AvatarOverlayCard,
   CardRenderer,
   cssVar,
   deriveActiveCard,
@@ -29,6 +30,8 @@ export interface ContentPhaseProps {
   audio: UnitAudioControls;
   reducedMotion: boolean;
   institutionLogoUrl?: string | null;
+  /** Persisted HeyGen avatar footage, resolved through the object store. */
+  avatarVideoUrl?: string;
   onEditSentence?: (narrationId: string) => void;
 }
 
@@ -38,6 +41,7 @@ export function ContentPhase({
   audio,
   reducedMotion,
   institutionLogoUrl,
+  avatarVideoUrl,
   onEditSentence,
 }: ContentPhaseProps) {
   const timing = unit.timing ?? null;
@@ -45,12 +49,14 @@ export function ContentPhase({
     return <AssetsNotReady unit={unit} />;
   }
   return (
-    <div style={{ position: "absolute", inset: 0, background: cssVar("bg") }}>
+    <div style={{ position: "absolute", inset: 0, background: avatarVideoUrl ? "#000000" : cssVar("bg") }}>
+      {avatarVideoUrl ? <AvatarVideoLayer url={avatarVideoUrl} clock={clock} playing={audio.playing} /> : null}
       <CardLayer
         unit={unit}
         clock={clock}
         reducedMotion={reducedMotion}
         institutionLogoUrl={institutionLogoUrl}
+        avatarVideoUrl={avatarVideoUrl}
       />
       <CaptionBar
         timing={timing}
@@ -67,11 +73,13 @@ function CardLayer({
   clock,
   reducedMotion,
   institutionLogoUrl,
+  avatarVideoUrl,
 }: {
   unit: PreviewUnit;
   clock: UnitClockStore;
   reducedMotion: boolean;
   institutionLogoUrl?: string | null;
+  avatarVideoUrl?: string;
 }) {
   const clockMs = useUnitClock(clock);
   const timing = unit.timing!;
@@ -82,6 +90,7 @@ function CardLayer({
     [unit.concept]
   );
   if (!card) {
+    if (avatarVideoUrl) return null;
     // Before the first beat: quiet concept slate (mockup's cNone state).
     return (
       <div
@@ -117,14 +126,32 @@ function CardLayer({
     institutionLogoUrl
   );
 
+  const cardView =
+    avatarVideoUrl && card.visualTreatment === "avatar-overlay" ? (
+      <>
+        <style>{AVATAR_OVERLAY_VIDEO_CSS}</style>
+        <AvatarOverlayCard template={card.template} props={cardProps} timing={active.timing} />
+      </>
+    ) : (
+      <div
+        style={
+          avatarVideoUrl
+            ? { position: "absolute", inset: 0, background: cssVar("bg") }
+            : undefined
+        }
+      >
+        <CardRenderer template={card.template} props={cardProps} timing={active.timing} />
+      </div>
+    );
+
   const swap = deriveCardSwapTransition(timing, clockMs, reducedMotion);
   if (!swap || swap.toCardIndex !== active.cardIndex) {
-    return <CardRenderer template={card.template} props={cardProps} timing={active.timing} />;
+    return cardView;
   }
 
   const previousCard = unit.cards[swap.fromCardIndex];
   if (!previousCard) {
-    return <CardRenderer template={card.template} props={cardProps} timing={active.timing} />;
+    return cardView;
   }
   const variant = pickCardTransitionVariant({
     unitId: unit.id,
@@ -137,8 +164,63 @@ function CardLayer({
 
   return (
     <div style={{ position: "absolute", inset: 0, ...transitionStyle }}>
-      <CardRenderer template={card.template} props={cardProps} timing={active.timing} />
+      {cardView}
     </div>
+  );
+}
+
+const AVATAR_OVERLAY_VIDEO_CSS = `
+  [data-ciq-avatar-overlay-card] { background: transparent !important; }
+  [data-ciq-avatar-overlay-card] > img,
+  [data-ciq-avatar-overlay-card] > [data-ciq-image-placeholder],
+  [data-ciq-avatar-overlay-card] > [data-ciq-video] { display: none !important; }
+`;
+
+function AvatarVideoLayer({
+  url,
+  clock,
+  playing,
+}: {
+  url: string;
+  clock: UnitClockStore;
+  playing: boolean;
+}) {
+  const ref = useRef<HTMLVideoElement>(null);
+  const clockMs = useUnitClock(clock);
+
+  useEffect(() => {
+    const video = ref.current;
+    if (!video) return;
+    const targetSeconds = Math.max(0, clockMs / 1000);
+    // Seek only after a meaningful drift so normal playback stays smooth.
+    if (Math.abs(video.currentTime - targetSeconds) > 0.15) {
+      video.currentTime = targetSeconds;
+    }
+  }, [clockMs]);
+
+  useEffect(() => {
+    const video = ref.current;
+    if (!video) return;
+    if (playing) {
+      void video.play().catch(() => {
+        // The player controls initiated audio playback; if this video is
+        // blocked, the card sequence and narration remain reviewable.
+      });
+    } else {
+      video.pause();
+    }
+  }, [playing]);
+
+  return (
+    <video
+      ref={ref}
+      src={url}
+      muted
+      playsInline
+      preload="auto"
+      aria-hidden="true"
+      style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }}
+    />
   );
 }
 

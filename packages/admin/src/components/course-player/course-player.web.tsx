@@ -98,6 +98,7 @@ export function CoursePlayer({
   const flow = useUnitFlow(unit ?? EMPTY_UNIT, onUnitComplete);
 
   const audio = useUnitAudio({
+    unitId: unit?.id,
     timing: unit?.timing ?? null,
     urls: presignedUrls,
     muted,
@@ -117,9 +118,8 @@ export function CoursePlayer({
     const adjacent = [flatUnits[flatIndex], flatUnits[flatIndex + 1]];
     const wanted: string[] = [];
     for (const f of adjacent) {
-      for (const s of f?.unit.timing?.sentences ?? []) {
-        if (!presignedUrls.has(s.audioKey)) wanted.push(s.audioKey);
-      }
+      const timing = f?.unit.timing;
+      if (timing && !presignedUrls.has(timing.unitAudioKey)) wanted.push(timing.unitAudioKey);
     }
     for (const key of mediaKeysForUnits(
       adjacent.map((f) => f?.unit),
@@ -161,6 +161,9 @@ export function CoursePlayer({
         (data.course.brandRef ? { brandRef: data.course.brandRef } : undefined);
   const theme = brandThemeFromTokens(themeTokens);
   const institutionLogoUrl = logoUrlFromBrandTokens(themeTokens);
+  const avatarVideoUrl = current.unit.avatarTrack
+    ? presignedUrls.get(current.unit.avatarTrack.objectKey)
+    : undefined;
 
   return (
     <>
@@ -232,6 +235,7 @@ export function CoursePlayer({
                     audio={audio}
                     reducedMotion={reducedMotion}
                     institutionLogoUrl={institutionLogoUrl}
+                    avatarVideoUrl={avatarVideoUrl}
                     isLastUnit={current.flatIndex === flatUnits.length - 1}
                     onEditSentence={
                       onEditSentence

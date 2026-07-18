@@ -95,6 +95,52 @@ http.route({
   }),
 });
 
+/** HeyGen sends signed, retryable completion events for asynchronous avatar video jobs. */
+http.route({
+  path: "/heygen/webhook",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const secret = process.env.HEYGEN_WEBHOOK_SECRET;
+    if (!secret) return jsonResponse(500, { error: "not configured" });
+    const timestamp = Number(request.headers.get("heygen-timestamp"));
+    if (!Number.isFinite(timestamp) || Math.abs(Date.now() / 1000 - timestamp) > 300) {
+      return jsonResponse(400, { error: "stale event" });
+    }
+    const rawBody = await request.text();
+    if (!(await verifyHmacHex(rawBody, request.headers.get("heygen-signature"), secret))) {
+      return jsonResponse(401, { error: "invalid signature" });
+    }
+    const eventId = request.headers.get("heygen-event-id");
+    if (!eventId) return jsonResponse(400, { error: "missing event id" });
+    const firstDelivery = await ctx.runMutation(internal.pipeline.avatar.jobs.recordWebhookEvent, { eventId });
+    if (!firstDelivery) return jsonResponse(200, { ok: true, duplicate: true });
+    let event: unknown;
+    try {
+      event = JSON.parse(rawBody);
+    } catch {
+      return jsonResponse(400, { error: "invalid JSON" });
+    }
+    const body = event as { event_type?: unknown; event_data?: { video_id?: unknown; url?: unknown } };
+    if (body.event_type === "avatar_video.success" && typeof body.event_data?.video_id === "string" && typeof body.event_data.url === "string") {
+      await ctx.scheduler.runAfter(0, internal.pipeline.avatar.heygen.ingestCompletedAvatarVideo, {
+        providerJobId: body.event_data.video_id,
+        url: body.event_data.url,
+      });
+    } else if (body.event_type === "avatar_video.fail" && typeof body.event_data?.video_id === "string") {
+      const job = await ctx.runQuery(internal.pipeline.avatar.jobs.getAvatarJobByProviderId, {
+        providerJobId: body.event_data.video_id,
+      });
+      if (job) {
+        await ctx.runMutation(internal.pipeline.avatar.jobs.markAvatarFailure, {
+          jobId: job._id,
+          error: { code: "heygen_generation_failed", message: "HeyGen could not generate this avatar video", retryable: true },
+        });
+      }
+    }
+    return jsonResponse(200, { ok: true });
+  }),
+});
+
 /**
  * Asset-ingest completion callback (M6). Same HMAC + shared-contract
  * validation discipline as /converter/callback; applied idempotently.

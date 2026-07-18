@@ -1,5 +1,5 @@
 {
-  "$schema": "counseliq://publish-manifest/v2",
+  "$schema": "counseliq://publish-manifest/v3",
   "courseId": "latrobe-health-innovation-101",
   "courseVersion": 2,
   "specHash": "3f1a2b4c5d6e7f8091a2b3c4d5e6f70123456789abcdef0123456789abcdef01",
@@ -44,23 +44,22 @@
       "moduleId": "m1",
       "contentHash": "aa11bb22cc33dd44ee55ff660718293a4b5c6d7e8f9012345678901234567890",
       "audio": {
+        "unitAudioKey": "sha256/0101010101010101010101010101010101010101010101010101010101010101.mp3",
         "sentences": [
           {
             "sentenceId": "n1",
-            "audioKey": "sha256/0101010101010101010101010101010101010101010101010101010101010101.mp3",
             "characters": 92,
             "durationMs": 4600
           },
           {
             "sentenceId": "n2",
-            "audioKey": "sha256/0202020202020202020202020202020202020202020202020202020202020202.mp3",
             "characters": 118,
             "durationMs": 5900
           }
         ]
       },
       "timingKey": "sha256/1111111111111111111111111111111111111111111111111111111111111111.json",
-      "timingSchemaVersion": 2,
+      "timingSchemaVersion": 3,
       "assetRefs": [
         "k57z8k6hgg4n4n6kqkbhqf9v4x7n1z2p",
         "c2w7q4z6m0f8k2p9v1n5d3r7s4t8y6u"
@@ -71,17 +70,17 @@
       "moduleId": "m1",
       "contentHash": "bb22cc33dd44ee55ff6607182934a4b5c6d7e8f901234567890123456789aa11",
       "audio": {
+        "unitAudioKey": "sha256/0303030303030303030303030303030303030303030303030303030303030303.mp3",
         "sentences": [
           {
             "sentenceId": "n1",
-            "audioKey": "sha256/0303030303030303030303030303030303030303030303030303030303030303.mp3",
             "characters": 104,
             "durationMs": 5200
           }
         ]
       },
       "timingKey": "sha256/2222222222222222222222222222222222222222222222222222222222222222.json",
-      "timingSchemaVersion": 2,
+      "timingSchemaVersion": 3,
       "assetRefs": [
         "k57z8k6hgg4n4n6kqkbhqf9v4x7n1z2p"
       ]
@@ -111,7 +110,6 @@
   "artifactKeys": [
     "sha256/3f1a2b4c5d6e7f8091a2b3c4d5e6f70123456789abcdef0123456789abcdef01.json",
     "sha256/0101010101010101010101010101010101010101010101010101010101010101.mp3",
-    "sha256/0202020202020202020202020202020202020202020202020202020202020202.mp3",
     "sha256/0303030303030303030303030303030303030303030303030303030303030303.mp3",
     "sha256/1111111111111111111111111111111111111111111111111111111111111111.json",
     "sha256/2222222222222222222222222222222222222222222222222222222222222222.json",

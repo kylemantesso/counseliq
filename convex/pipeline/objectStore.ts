@@ -74,6 +74,20 @@ export async function getObjectText(
   return await result.Body.transformToString("utf-8");
 }
 
+/** Fetch an object's raw bytes for provider uploads. */
+export async function getObjectBytes(
+  store: ObjectStoreClient,
+  key: string
+): Promise<Uint8Array> {
+  const result = await store.client.send(
+    new GetObjectCommand({ Bucket: store.bucket, Key: key })
+  );
+  if (!result.Body) {
+    throw new Error(`object ${key} has no body`);
+  }
+  return await result.Body.transformToByteArray();
+}
+
 function createClient(): { client: S3Client; bucket: string } {
   const endpoint = process.env.OBJECT_STORE_ENDPOINT;
   const bucket = process.env.OBJECT_STORE_BUCKET;

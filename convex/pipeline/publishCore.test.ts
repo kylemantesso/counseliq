@@ -21,18 +21,17 @@ function fakeSha256(input: string): string {
 
 function makeTiming(overrides?: Partial<UnitTiming>): UnitTiming {
   return {
-    version: 2,
+    version: 3,
     unitKey: "mu-101",
     provider: "mock",
     voiceRef: "latrobe-narrator-01",
     model: "mock-tts-1",
-    interSentenceGapMs: 250,
+    unitAudioKey: "sha256/unit-audio.mp3",
     totalDurationMs: 9000,
     sentences: [
       {
         narrationId: "n1",
         speakText: "First sentence spoken aloud.",
-        audioKey: "sha256/aaaa.mp3",
         startMs: 0,
         durationMs: 4000,
         words: [{ text: "First", startMs: 0, endMs: 400 }],
@@ -40,7 +39,6 @@ function makeTiming(overrides?: Partial<UnitTiming>): UnitTiming {
       {
         narrationId: "n2",
         speakText: "Second sentence follows on.",
-        audioKey: "sha256/bbbb.mp3",
         startMs: 4250,
         durationMs: 4750,
         words: [{ text: "Second", startMs: 4250, endMs: 4700 }],
@@ -80,6 +78,7 @@ function makeManifestInput(): BuildPublishManifestInput {
         moduleId: "m1",
         unitDefinitionHash: "cafe0001",
         timing: makeTiming(),
+        unitAudioKey: "sha256/unit-101.mp3",
         timingKey: "sha256/t101.json",
         assetRefs: ["asset-1", "asset-2"],
       },
@@ -93,13 +92,13 @@ function makeManifestInput(): BuildPublishManifestInput {
             {
               narrationId: "n1",
               speakText: "Third sentence for unit two.",
-              audioKey: "sha256/cccc.mp3",
               startMs: 0,
               durationMs: 3000,
               words: [{ text: "Third", startMs: 0, endMs: 350 }],
             },
           ],
         }),
+        unitAudioKey: "sha256/unit-102.mp3",
         timingKey: "sha256/t102.json",
         assetRefs: ["asset-1"],
       },
@@ -210,16 +209,15 @@ describe("buildPublishManifest", () => {
     const keys = collectArtifactKeys(manifest);
     expect(new Set(keys).size).toBe(keys.length);
     expect(keys).toContain("sha256/feedface.json");
-    expect(keys).toContain("sha256/aaaa.mp3");
-    expect(keys).toContain("sha256/bbbb.mp3");
-    expect(keys).toContain("sha256/cccc.mp3");
+    expect(keys).toContain("sha256/unit-101.mp3");
+    expect(keys).toContain("sha256/unit-102.mp3");
     expect(keys).toContain("sha256/t101.json");
     expect(keys).toContain("sha256/t102.json");
     expect(keys).toContain("sha256/img1.png");
     expect(keys).toContain("sha256/img1-thumb.jpg");
     expect(keys).toContain("sha256/vid2.mp4");
     expect(keys).toContain("sha256/vid2-poster.jpg");
-    expect(keys).toHaveLength(10);
+    expect(keys).toHaveLength(9);
   });
 
   test("manifest voice is the synthesis voice, with a warning on divergence", () => {
@@ -235,6 +233,14 @@ describe("buildPublishManifest", () => {
     expect(manifest.units[0].audio.sentences[0].characters).toBe(
       "First sentence spoken aloud.".length
     );
+  });
+
+  test("publishes continuous unit audio as a verified artifact", () => {
+    const input = makeManifestInput();
+    input.units[0].unitAudioKey = "sha256/unit-audio.mp3";
+    const { manifest } = buildPublishManifest(input);
+    expect(manifest.units[0].audio.unitAudioKey).toBe("sha256/unit-audio.mp3");
+    expect(manifest.artifactKeys).toContain("sha256/unit-audio.mp3");
   });
 
   test("an invalid assembly throws (self-validation)", () => {

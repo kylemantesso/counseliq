@@ -149,6 +149,8 @@ export const runPublish = internalAction({
         unitKey: string;
         moduleKey: string;
         timing: unknown;
+        audioKey?: string;
+        _id: Id<"microUnits">;
       }
     >;
     const manifestUnits = publishUnits.map((unit) => {
@@ -162,9 +164,13 @@ export const runPublish = internalAction({
           sha256
         ),
         timing,
+        unitAudioKey: timing.unitAudioKey,
         timingKey: `sha256/${sha256(timingJson)}.json`,
         timingJson,
         assetRefs: collectAssetRefsFromUnit(unit),
+        ...(input.avatarTracksByUnit?.[String(unit._id)] !== undefined
+          ? { avatarTrack: input.avatarTracksByUnit[String(unit._id)] }
+          : {}),
       };
     });
 
@@ -217,12 +223,7 @@ export const runPublish = internalAction({
     const manifestJson = JSON.stringify(manifest);
     const manifestKey = `sha256/${sha256(manifestJson)}.json`;
 
-    const audioKeys = new Set<string>();
-    for (const unit of manifest.units) {
-      for (const sentence of unit.audio.sentences) {
-        audioKeys.add(sentence.audioKey);
-      }
-    }
+    const audioKeys = new Set(manifest.units.map((unit) => unit.audio.unitAudioKey));
     const mediaKeys = new Set<string>();
     for (const asset of Object.values(manifest.assets)) {
       mediaKeys.add(asset.objectKey);
@@ -336,6 +337,7 @@ export const runPublish = internalAction({
               profile,
               variants: DEFAULT_RENDER_VARIANTS,
               rendererVersion: RENDERER_SPEC_VERSION,
+              avatarTrack: unit.avatarTrack ?? null,
             })
           ),
         })),
@@ -397,12 +399,7 @@ export const verifyPublishedArtifacts = internalAction({
     // Mock TTS runs never uploaded audio bytes; verify the artifacts publish
     // itself wrote (export + timing + manifest) and skip audio keys.
     const mockMode = ttsProviderName() === "mock";
-    const audioKeys = new Set<string>();
-    for (const unit of manifest.units) {
-      for (const sentence of unit.audio.sentences) {
-        audioKeys.add(sentence.audioKey);
-      }
-    }
+    const audioKeys = new Set(manifest.units.map((unit) => unit.audio.unitAudioKey));
     const keysToCheck = [
       ...manifest.artifactKeys.filter(
         (key) => !mockMode || !audioKeys.has(key)

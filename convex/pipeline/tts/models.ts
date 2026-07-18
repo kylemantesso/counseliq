@@ -17,13 +17,10 @@ import type { TtsProvider } from "./provider";
 const DEFAULT_TTS_MODEL = "eleven_multilingual_v2";
 
 /**
- * Output format is part of the sentence cache hash — changing it re-renders
- * every sentence.
+ * Output format is part of the unit content hash, so changing it regenerates
+ * every unit narration track.
  */
 export const OUTPUT_FORMAT = "mp3_44100_128";
-
-/** Constant silence inserted between sentences on the unit clock. */
-export const INTER_SENTENCE_GAP_MS = 250;
 
 /**
  * STATIC default narrator fallback: ElevenLabs' premade "Matilda —

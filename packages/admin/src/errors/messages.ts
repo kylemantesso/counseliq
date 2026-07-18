@@ -95,4 +95,10 @@ export const APP_ERROR_MESSAGES: Record<AppErrorCodeType, string> = {
   [AppErrorCode.RENDER_JOB_NOT_FOUND]: "That render job could not be found.",
   [AppErrorCode.RENDER_JOB_NOT_RETRYABLE]:
     "That render job cannot be retried in its current state.",
+  [AppErrorCode.AVATAR_NOT_CONFIGURED]:
+    "HeyGen avatar generation is not configured. Contact an administrator.",
+  [AppErrorCode.AVATAR_LOOK_INVALID]:
+    "Choose a completed HeyGen avatar look before generating the course.",
+  [AppErrorCode.AVATAR_GENERATION_FAILED]:
+    "Avatar video generation failed. Retry the affected unit from preview.",
 };

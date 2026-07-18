@@ -15,7 +15,6 @@ describe("cssVar / themeToCssProperties", () => {
   test("kebab-cases token names under the --ciq prefix", () => {
     expect(cssVar("accent")).toBe("var(--ciq-accent)");
     expect(cssVar("accentInk")).toBe("var(--ciq-accent-ink)");
-    expect(cssVar("interSentenceGapMs" as never)).toContain("--ciq-inter-sentence-gap-ms");
   });
 
   test("emits every theme token as a custom property", () => {

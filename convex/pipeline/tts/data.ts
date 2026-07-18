@@ -140,53 +140,6 @@ export const getRunTtsOverview = internalQuery({
   },
 });
 
-export const getTtsSentenceByHash = internalQuery({
-  args: { sentenceHash: v.string() },
-  handler: async (ctx, args) => {
-    return await ctx.db
-      .query("ttsSentences")
-      .withIndex("by_sentence_hash", (q) =>
-        q.eq("sentenceHash", args.sentenceHash)
-      )
-      .first();
-  },
-});
-
-const spokenWordValidator = v.object({
-  text: v.string(),
-  startMs: v.number(),
-  endMs: v.number(),
-  charStart: v.number(),
-  charEnd: v.number(),
-});
-
-/** Idempotent upsert of a synthesised sentence into the cross-run cache. */
-export const saveTtsSentence = internalMutation({
-  args: {
-    sentenceHash: v.string(),
-    audioKey: v.string(),
-    durationMs: v.number(),
-    words: v.array(spokenWordValidator),
-    characters: v.number(),
-    provider: v.string(),
-    model: v.string(),
-    voiceId: v.string(),
-  },
-  handler: async (ctx, args) => {
-    const existing = await ctx.db
-      .query("ttsSentences")
-      .withIndex("by_sentence_hash", (q) =>
-        q.eq("sentenceHash", args.sentenceHash)
-      )
-      .first();
-    if (existing) {
-      await ctx.db.replace(existing._id, args);
-      return existing._id;
-    }
-    return await ctx.db.insert("ttsSentences", args);
-  },
-});
-
 /** Idempotent registry row for an uploaded TTS audio artifact. */
 export const recordTtsAudioAsset = internalMutation({
   args: {
@@ -228,6 +181,7 @@ export const saveUnitTiming = internalMutation({
     if (!unit) appError(AppErrorCode.COURSE_NOT_FOUND);
     await ctx.db.patch(args.unitId, {
       timing,
+      audioKey: timing.unitAudioKey,
       contentHash: args.contentHash,
       state: "assets_ready",
       error: undefined,

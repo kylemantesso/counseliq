@@ -25,15 +25,15 @@ describe("publishManifestSchema", () => {
     expect(Object.keys(manifest.assets).length).toBeGreaterThan(0);
   });
 
-  test("a dangling audio artifact reference fails with the sentence path", () => {
+  test("a dangling unit audio artifact reference fails", () => {
     const broken = cloneExample();
     (broken.artifactKeys as string[]) = (broken.artifactKeys as string[]).filter(
-      (key) => !key.includes("0202")
+      (key) => !key.includes("0101")
     );
     const result = publishManifestSchema.safeParse(broken);
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues.some((issue) => issue.path.join(".").includes("audio.sentences"))).toBe(true);
+      expect(result.error.issues.some((issue) => issue.path.join(".").includes("unitAudioKey"))).toBe(true);
     }
   });
 

@@ -11,23 +11,22 @@ import {
 } from "../src/timeline";
 
 /**
- * Synthetic artifact: two sentences with a 250ms gap, three card beats.
+ * Synthetic artifact: two sentence ranges and three card beats.
  * Parsed through unitTimingSchema so the fixture can never drift from the
  * real contract.
  */
 const FIXTURE: UnitTiming = unitTimingSchema.parse({
-  version: 2,
+  version: 3,
   unitKey: "mu-101",
   provider: "mock",
   voiceRef: "test-narrator",
   model: "mock-model",
-  interSentenceGapMs: 250,
+  unitAudioKey: "sha256/unit.mp3",
   totalDurationMs: 5250,
   sentences: [
     {
       narrationId: "n1",
       speakText: "Welcome to the course",
-      audioKey: "sha256/aaa.mp3",
       startMs: 0,
       durationMs: 2000,
       words: [
@@ -40,7 +39,6 @@ const FIXTURE: UnitTiming = unitTimingSchema.parse({
     {
       narrationId: "n2",
       speakText: "It has three parts",
-      audioKey: "sha256/bbb.mp3",
       startMs: 2250,
       durationMs: 3000,
       words: [
@@ -163,7 +161,7 @@ describe("deriveActiveSentence", () => {
   });
 });
 
-describe("deriveActiveCard media windows (timing v2)", () => {
+describe("deriveActiveCard media windows", () => {
   test("no media field for cards without a window", () => {
     expect(deriveActiveCard(FIXTURE, 100).timing.media).toBeUndefined();
     expect(deriveActiveCard(FIXTURE, 3000).timing.media).toBeUndefined();

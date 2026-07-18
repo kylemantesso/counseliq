@@ -142,6 +142,16 @@ const LLM_TASK_MODEL_META: Record<
     description: "Proposes modules/units before gate-1 outline review.",
     requiresVision: false,
   },
+  "assign-avatar-look": {
+    label: "Assign avatar looks",
+    description: "Matches available custom avatar looks to course modules.",
+    requiresVision: false,
+  },
+  "evaluate-avatar-look": {
+    label: "Evaluate avatar looks",
+    description: "Vision evaluation of a new or changed HeyGen avatar look.",
+    requiresVision: true,
+  },
 };
 
 const llmTaskModelMapValidator = v.record(v.string(), v.string());

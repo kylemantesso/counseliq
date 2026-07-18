@@ -24,6 +24,7 @@
     "dev:all": "concurrently \"npm run convex:dev\" \"turbo run dev --parallel --filter=@counseliq/admin-web --filter=@counseliq/client-web --filter=@counseliq/client-mobile\"",
     "dev:client:mobile": "npm run dev --workspace=@counseliq/client-mobile",
     "dev:client:web": "npm run dev --workspace=@counseliq/client-web",
+    "dev:web:all": "node scripts/dev-local-stack.mjs",
     "dev:renderer": "npm run dev --workspace=@counseliq/renderer",
     "dev:stack": "node scripts/dev-local-stack.mjs",
     "dev:web": "npm run dev:admin:web",

@@ -10,9 +10,11 @@ import {
   parseCourseDefinition,
   parsePublishManifest,
   renderFailurePayloadSchema,
+  renderAvatarTrackSchema,
   renderSuccessPayloadSchema,
   unitTimingSchema,
   type RenderJobRequest,
+  type RenderAvatarTrack,
   type RenderOutputVariant,
   type RenderProfile,
   type RenderVariantProfile,
@@ -48,6 +50,45 @@ function readHttpUrl(value: unknown): string | null {
   }
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Accept the optional render metadata without weakening the canonical,
+ * strict publish-manifest parser. The metadata is stripped before parsing
+ * because older manifest versions intentionally do not declare it.
+ */
+function withoutAvatarTracks(manifest: unknown): unknown {
+  if (!isRecord(manifest) || !Array.isArray(manifest.units)) return manifest;
+  return {
+    ...manifest,
+    units: manifest.units.map((unit) => {
+      if (!isRecord(unit) || !("avatarTrack" in unit)) return unit;
+      const { avatarTrack: _avatarTrack, ...unitWithoutAvatarTrack } = unit;
+      return unitWithoutAvatarTrack;
+    }),
+  };
+}
+
+export function readAvatarTrackFromFrozenManifest(
+  manifest: unknown,
+  unitId: string
+): RenderAvatarTrack | undefined {
+  if (!isRecord(manifest) || !Array.isArray(manifest.units)) return undefined;
+
+  let matchedTrack: RenderAvatarTrack | undefined;
+  for (const unit of manifest.units) {
+    if (!isRecord(unit) || !("avatarTrack" in unit)) continue;
+    const parsed = renderAvatarTrackSchema.safeParse(unit.avatarTrack);
+    if (!parsed.success) {
+      throw new Error("invalid units[].avatarTrack in frozen manifest");
+    }
+    if (unit.unitId === unitId) matchedTrack = parsed.data;
+  }
+  return matchedTrack;
+}
+
 function variantProfiles(job: RenderJobRequest): RenderVariantProfile[] {
   if (job.variants && job.variants.length > 0) return job.variants;
   return [
@@ -78,9 +119,20 @@ export async function runRenderJob(
   store: ObjectStore,
   config: RendererConfig
 ) {
-  const manifest = parsePublishManifest(
-    JSON.parse(await store.downloadText(job.manifestKey))
+  const frozenManifest = JSON.parse(await store.downloadText(job.manifestKey));
+  const manifestAvatarTrack = readAvatarTrackFromFrozenManifest(
+    frozenManifest,
+    job.unitId
   );
+  const manifest = parsePublishManifest(withoutAvatarTracks(frozenManifest));
+  if (
+    manifestAvatarTrack &&
+    !manifest.artifactKeys.includes(manifestAvatarTrack.objectKey)
+  ) {
+    throw new Error(
+      `avatar track ${manifestAvatarTrack.objectKey} for unit ${job.unitId} is missing from artifactKeys`
+    );
+  }
   const unitManifest = manifest.units.find((unit) => unit.unitId === job.unitId);
   if (!unitManifest) {
     throw new Error(`unit ${job.unitId} missing from manifest`);
@@ -116,13 +168,15 @@ export async function runRenderJob(
     );
   }
 
-  const sentenceAudioUrls: Record<string, string> = {};
-  for (const sentence of unitManifest.audio.sentences) {
-    sentenceAudioUrls[sentence.audioKey] = await store.presignGet(
-      sentence.audioKey,
-      config.signedUrlTtlSeconds
-    );
-  }
+  const unitAudioUrl = await store.presignGet(
+    unitManifest.audio.unitAudioKey,
+    config.signedUrlTtlSeconds
+  );
+
+  const avatarTrack = manifestAvatarTrack ?? job.avatarTrack;
+  const avatarVideoUrl = avatarTrack
+    ? await store.presignGet(avatarTrack.objectKey, config.signedUrlTtlSeconds)
+    : undefined;
 
   const themeTokens: Record<string, unknown> = {
     ...(manifest.theme.tokens as Record<string, unknown>),
@@ -135,7 +189,8 @@ export async function runRenderJob(
     profile: job.profile,
     themeTokens,
     assetUrls,
-    sentenceAudioUrls,
+    unitAudioUrl,
+    avatarVideoUrl,
     institutionLogoUrl,
   };
 

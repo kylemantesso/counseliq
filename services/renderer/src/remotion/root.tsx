@@ -17,18 +17,17 @@ const FALLBACK_PROFILE: RenderProfile = {
 };
 
 const FALLBACK_TIMING: UnitTiming = {
-  version: 2,
+  version: 3,
   unitKey: "fallback",
   provider: "fallback",
   voiceRef: "fallback",
   model: "fallback",
-  interSentenceGapMs: 0,
+  unitAudioKey: "sha256/fallback.mp3",
   totalDurationMs: 1000,
   sentences: [
     {
       narrationId: "n1",
       speakText: "fallback",
-      audioKey: "sha256/fallback.mp3",
       startMs: 0,
       durationMs: 1000,
       words: [{ text: "fallback", startMs: 0, endMs: 1000 }],
@@ -56,7 +55,8 @@ const FALLBACK_PROPS: UnitContentCompositionProps = {
   profile: FALLBACK_PROFILE,
   themeTokens: {},
   assetUrls: {},
-  sentenceAudioUrls: {},
+  unitAudioUrl: "https://example.test/fallback.mp3",
+  avatarVideoUrl: null,
   institutionLogoUrl: null,
 };
 

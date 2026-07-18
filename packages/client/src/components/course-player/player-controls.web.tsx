@@ -61,29 +61,32 @@ export function PlayerControls({
   return (
     <div
       data-ciq-player-controls=""
-      style={{ display: "flex", alignItems: "center", gap: 12, color: "#8b95a2" }}
+      style={{ display: "flex", flexDirection: "column", gap: 10, width: "100%", color: "#8b95a2" }}
     >
-      <button
-        type="button"
-        style={{
-          width: 48,
-          height: 48,
-          borderRadius: 999,
-          border: "1px solid #f0efe9",
-          background: "#f5f2ea",
-          color: "#101419",
-          cursor: "pointer",
-          fontSize: 18,
-          fontWeight: 800,
-          boxShadow: "0 10px 28px rgba(0,0,0,.3)",
-        }}
-        onClick={onPlayPause}
-        aria-label={playing ? "Pause" : "Play"}
-      >
-        {playing ? "II" : "Play"}
-      </button>
-      <ScrubBar timing={timing} clock={clock} onSeek={onSeek} />
-      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, width: "100%" }}>
+        <button
+          type="button"
+          style={{
+            width: 48,
+            height: 48,
+            flex: "0 0 48px",
+            borderRadius: 999,
+            border: "1px solid #f0efe9",
+            background: "#f5f2ea",
+            color: "#101419",
+            cursor: "pointer",
+            fontSize: 18,
+            fontWeight: 800,
+            boxShadow: "0 10px 28px rgba(0,0,0,.3)",
+          }}
+          onClick={onPlayPause}
+          aria-label={playing ? "Pause" : "Play"}
+        >
+          {playing ? "II" : "Play"}
+        </button>
+        <ScrubBar timing={timing} clock={clock} onSeek={onSeek} />
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", alignItems: "center", gap: 6 }}>
         {onPrevUnit ? (
           <button type="button" style={iconButtonStyle} onClick={onPrevUnit} aria-label="Previous unit">
             Prev
@@ -126,7 +129,7 @@ function ScrubBar({
   const contentEndMs = contentEndMsForTiming(timing);
   return (
     <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 10 }}>
-      <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 10.5, color: "#7e8793", width: 38, textAlign: "right" }}>
+      <span style={{ flex: "0 0 38px", fontFamily: "'IBM Plex Mono', monospace", fontSize: 10.5, color: "#7e8793", textAlign: "right" }}>
         {formatMs(clockMs)}
       </span>
       <input
@@ -137,9 +140,9 @@ function ScrubBar({
         step={50}
         value={Math.min(contentEndMs, clockMs)}
         onChange={(e) => onSeek(Number(e.target.value))}
-        style={{ flex: 1, accentColor: "#d6ad2f" }}
+        style={{ flex: 1, minWidth: 0, accentColor: "#d6ad2f" }}
       />
-      <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 10.5, color: "#7e8793", width: 38 }}>
+      <span style={{ flex: "0 0 38px", fontFamily: "'IBM Plex Mono', monospace", fontSize: 10.5, color: "#7e8793" }}>
         {formatMs(contentEndMs)}
       </span>
     </div>

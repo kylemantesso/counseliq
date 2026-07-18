@@ -47,7 +47,7 @@ type PlayerUnit = {
           sizeBytes: number;
         }>;
       }
-    | { status: "queued" | "dispatched" | "rendering" | "failed" | "missing" };
+    | { status: "queued" | "dispatched" | "rendering" | "failed" | "cancelled" | "missing" };
   hookQuestion: Question | null;
   retrieveQuestions: Question[];
   anchor: { template: string; props: Record<string, unknown> } | null;

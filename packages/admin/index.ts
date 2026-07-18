@@ -18,6 +18,7 @@ export { AdminRunDetailScreen } from "./src/screens/admin-run-detail-screen";
 export { AdminGateTwoReviewScreen } from "./src/screens/admin-gate-two-review-screen";
 export { AdminGateThreeReviewScreen } from "./src/screens/admin-gate-three-review-screen";
 export { AdminAssetLibraryScreen } from "./src/screens/admin-asset-library-screen";
+export { AdminAvatarLibraryScreen } from "./src/screens/admin-avatar-library-screen";
 export { AdminGenerateCourseScreen } from "./src/screens/admin-generate-course-screen";
 export { AdminOutlineReviewScreen } from "./src/screens/admin-outline-review-screen";
 export { ForceUpgradeScreen } from "./src/screens/force-upgrade-screen";

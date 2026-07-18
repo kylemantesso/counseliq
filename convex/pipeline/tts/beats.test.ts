@@ -5,14 +5,12 @@ import {
   type UnitScript,
 } from "@counseliq/course-schema";
 import {
-  assembleUnitClock,
   buildUnitTiming,
   computeMediaWindows,
   deriveWords,
   projectWordsToSpeakText,
   resolveCardBeats,
   tokenizeWords,
-  type SentenceForAssembly,
 } from "./beats";
 import { buildSubstitutionMap } from "./lexicon";
 import { createMockTtsProvider } from "./mock";
@@ -49,11 +47,32 @@ async function synthesizeSentence(narrationId: string, sourceText: string) {
     assembly: {
       narrationId,
       speakText,
-      audioKey: `sha256/fake-${narrationId}.mp3`,
       durationMs: Math.round(substitution.spokenText.length * 50),
       words,
-    } satisfies SentenceForAssembly,
+    },
   };
+}
+
+function timingOf(assemblies: Array<{
+  narrationId: string;
+  speakText: string;
+  durationMs: number;
+  words: Array<{ text: string; startMs: number; endMs: number }>;
+}>) {
+  let clock = 0;
+  return assemblies.map((sentence) => {
+    const timed = {
+      ...sentence,
+      startMs: clock,
+      words: sentence.words.map((word) => ({
+        ...word,
+        startMs: word.startMs + clock,
+        endMs: word.endMs + clock,
+      })),
+    };
+    clock += sentence.durationMs;
+    return timed;
+  });
 }
 
 function scriptOf(sentences: UnitScript["sentences"]): UnitScript {
@@ -115,19 +134,6 @@ describe("projectWordsToSpeakText", () => {
   });
 });
 
-describe("assembleUnitClock", () => {
-  test("sentences accumulate with gaps and words shift onto the unit clock", async () => {
-    const first = await synthesizeSentence("n1", "First sentence here.");
-    const second = await synthesizeSentence("n2", "Second one.");
-    const timing = assembleUnitClock([first.assembly, second.assembly], 250);
-
-    expect(timing[0].startMs).toBe(0);
-    expect(timing[1].startMs).toBe(first.assembly.durationMs + 250);
-    const firstWordOfSecond = timing[1].words[0];
-    expect(firstWordOfSecond.startMs).toBe(timing[1].startMs);
-  });
-});
-
 describe("resolveCardBeats", () => {
   test("anchor after an expanded number resolves via the alignment chain", async () => {
     // "A$82M" expands to five speakText words; the anchor word "research"
@@ -137,7 +143,7 @@ describe("resolveCardBeats", () => {
       "n1",
       "We invested A$82M in research this year."
     );
-    const timing = assembleUnitClock([s.assembly], 250);
+    const timing = timingOf([s.assembly]);
     const beats = resolveCardBeats(
       [{ enterAt: { narration: "n1", word: "research" } }],
       scriptOf([s.scriptSentence]),
@@ -153,7 +159,7 @@ describe("resolveCardBeats", () => {
 
   test("anchor word inside a lexicon alias resolves to the alias start", async () => {
     const s = await synthesizeSentence("n2", "Welcome to Bundoora in spring.");
-    const timing = assembleUnitClock([s.assembly], 250);
+    const timing = timingOf([s.assembly]);
     const beats = resolveCardBeats(
       [{ enterAt: { narration: "n2", word: "Bundoora" } }],
       scriptOf([s.scriptSentence]),
@@ -166,7 +172,7 @@ describe("resolveCardBeats", () => {
   test("beats land on the unit clock for non-first sentences", async () => {
     const first = await synthesizeSentence("n1", "Opening line.");
     const second = await synthesizeSentence("n2", "The word target is here.");
-    const timing = assembleUnitClock([first.assembly, second.assembly], 250);
+    const timing = timingOf([first.assembly, second.assembly]);
     const beats = resolveCardBeats(
       [{ enterAt: { narration: "n2", word: "target" } }],
       scriptOf([first.scriptSentence, second.scriptSentence]),
@@ -181,7 +187,7 @@ describe("resolveCardBeats", () => {
       "n2",
       "Second sentence keeps the key target word later."
     );
-    const timing = assembleUnitClock([first.assembly, second.assembly], 250);
+    const timing = timingOf([first.assembly, second.assembly]);
     const beats = resolveCardBeats(
       [
         {
@@ -206,7 +212,7 @@ describe("resolveCardBeats", () => {
 
   test("unresolvable anchors fall back to the sentence start", async () => {
     const s = await synthesizeSentence("n1", "Nothing matches here.");
-    const timing = assembleUnitClock([s.assembly], 250);
+    const timing = timingOf([s.assembly]);
     const beats = resolveCardBeats(
       [
         { enterAt: { narration: "n1", word: "absent" } },
@@ -224,7 +230,7 @@ describe("buildUnitTiming", () => {
   test("assembles a schema-valid artifact with computed total duration", async () => {
     const first = await synthesizeSentence("n1", "First sentence here.");
     const second = await synthesizeSentence("n2", "With Bundoora nearby.");
-    const timing = assembleUnitClock([first.assembly, second.assembly], 250);
+    const timing = timingOf([first.assembly, second.assembly]);
     const beats = resolveCardBeats(
       [{ enterAt: { narration: "n2", word: "Bundoora" } }],
       scriptOf([first.scriptSentence, second.scriptSentence]),
@@ -236,14 +242,14 @@ describe("buildUnitTiming", () => {
       provider: "mock",
       voiceRef: "test-narrator",
       model: "mock-tts-1",
-      gapMs: 250,
+      unitAudioKey: "sha256/unit.mp3",
       sentences: timing,
       cardBeats: beats,
       media: [],
       generatedAt: 1720000000000,
     });
 
-    expect(artifact.version).toBe(2);
+    expect(artifact.version).toBe(3);
     expect(artifact.totalDurationMs).toBe(
       timing[1].startMs + timing[1].durationMs + FINAL_CONTENT_HOLD_MS
     );

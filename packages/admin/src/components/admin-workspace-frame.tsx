@@ -22,6 +22,7 @@ type WorkspaceNavKey =
   | "institutions"
   | "source-docs"
   | "assets"
+  | "avatars"
   | "runs"
   | "create-run"
   | "deliveries"
@@ -121,6 +122,12 @@ export function AdminWorkspaceFrame({
                     label: "Assets & rights",
                     active: activeNav === "assets",
                     onPress: () => router.push("/admin/assets"),
+                  },
+                  {
+                    key: "avatars",
+                    label: "Avatars",
+                    active: activeNav === "avatars",
+                    onPress: () => router.push("/admin/avatars"),
                   },
                 ],
               },

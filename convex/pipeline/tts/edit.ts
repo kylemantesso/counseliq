@@ -4,6 +4,7 @@ import {
   unitTimingSchema,
   contentEndMsForTiming,
   typedCardContentSchema,
+  supportsAvatarOverlay,
   type UnitScript,
   type UnitTiming,
   type ScriptSentence,
@@ -36,9 +37,8 @@ import {
 /**
  * The minimal narration edit loop (M5): edit ONE sentence of one unit at
  * gate 2 or gate 3. The sentence is re-normalised in this mutation (pure
- * string work); at gate 3 the unit is re-synthesised asynchronously — only
- * the edited sentence misses the ttsSentences cache, so exactly one
- * sentence's audio is re-generated and the unit's beats are re-resolved.
+ * string work); at gate 3 the unit's continuous narration is regenerated
+ * asynchronously and its sentence timing ranges and beats are re-resolved.
  */
 
 interface EditArgs {
@@ -55,6 +55,7 @@ type RunState = Doc<"runs">["state"];
 type UnitCard = {
   template: string;
   props: Record<string, unknown>;
+  visualTreatment?: "standard" | "avatar-overlay";
   enterAt: { narration: string; word: string };
 };
 
@@ -473,6 +474,57 @@ export const adminUpdateCardProps = mutation({
   },
 });
 
+/** Admin: switch an eligible card between presenter overlay and opaque content. */
+export const adminSetCardVisualTreatment = mutation({
+  args: {
+    runId: v.id("runs"),
+    unitId: v.id("microUnits"),
+    cardIndex: v.number(),
+    visualTreatment: v.union(
+      v.literal("standard"),
+      v.literal("avatar-overlay")
+    ),
+  },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+    const { run, unit } = await loadEditableRunUnit(
+      ctx,
+      args.runId,
+      args.unitId,
+      ["GATE_2_COURSE_REVIEW"]
+    );
+    if (!Number.isInteger(args.cardIndex) || args.cardIndex < 0) {
+      appError(AppErrorCode.CARD_NOT_FOUND);
+    }
+    const cards = [...((unit.cards ?? []) as UnitCard[])];
+    const card = cards[args.cardIndex];
+    if (!card) appError(AppErrorCode.CARD_NOT_FOUND);
+    const course = run.courseId ? await ctx.db.get(run.courseId) : null;
+    const presentation = (course?.definitionMeta as {
+      presentation?: { mode?: string };
+    } | undefined)?.presentation;
+    if (args.visualTreatment === "avatar-overlay") {
+      if (presentation?.mode !== "avatar" || !supportsAvatarOverlay(card.template)) {
+        appError(AppErrorCode.CARD_PROPS_INVALID);
+      }
+    }
+    if (
+      presentation?.mode === "avatar" &&
+      args.cardIndex === 0 &&
+      card.template === "title-card" &&
+      args.visualTreatment !== "avatar-overlay"
+    ) {
+      appError(AppErrorCode.CARD_PROPS_INVALID);
+    }
+    cards[args.cardIndex] = {
+      ...card,
+      visualTreatment: args.visualTreatment,
+    };
+    await ctx.db.patch(unit._id, { cards });
+    return null;
+  },
+});
+
 /** Admin: edit the text/content props of a unit's anchor card at gate 2/3. */
 export const adminUpdateAnchorProps = mutation({
   args: {
@@ -504,7 +556,7 @@ async function retryUnitTtsHelper(
     appError(AppErrorCode.UNITS_REQUIRED);
   }
   await assertCourseMutable(ctx, unit.courseId);
-  // synthesizeUnit is idempotent (content-hash + sentence cache), so retry
+  // synthesizeUnit is idempotent through the unit content hash, so retry
   // is safe whatever the unit's current condition; success clears the error
   // and the failed_unit review item inside saveUnitTiming.
   await ctx.scheduler.runAfter(

@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { Box, Pressable, Text } from "@counseliq/ui";
 import {
   AssetResolverContext,
+  AvatarOverlayCard,
   BrandThemeProvider,
   CardRenderer,
   CardStage,
@@ -11,7 +12,7 @@ import {
   brandThemeFromTokens,
   counseliqTheme,
 } from "@counseliq/cards";
-import { validateCardProps } from "@counseliq/course-schema";
+import { supportsAvatarOverlay, validateCardProps } from "@counseliq/course-schema";
 import { GoogleBrandFontLoader } from "./theme/google-brand-font-loader.web";
 import {
   logoUrlFromBrandTokens,
@@ -33,6 +34,9 @@ export interface CardStaticPreviewProps {
   resolveAssetRef?: (ref: string) => string | null;
   /** Hide prop-toggle and validation chips when embedded as a thumbnail. */
   showControls?: boolean;
+  visualTreatment?: "standard" | "avatar-overlay";
+  /** Selected HeyGen look used to preview presenter-overlay cards. */
+  avatarPreviewImageUrl?: string | null;
 }
 
 export function CardStaticPreview({
@@ -41,6 +45,8 @@ export function CardStaticPreview({
   brandTokens,
   resolveAssetRef,
   showControls = true,
+  visualTreatment = "standard",
+  avatarPreviewImageUrl,
 }: CardStaticPreviewProps) {
   const [showProps, setShowProps] = useState(false);
   const theme = useMemo(
@@ -66,6 +72,43 @@ export function CardStaticPreview({
     () => withInstitutionLogoOnTitleCard(template, props, institutionLogoUrl),
     [template, props, institutionLogoUrl]
   );
+  const isAvatarOverlay =
+    visualTreatment === "avatar-overlay" && supportsAvatarOverlay(template);
+  const card = isAvatarOverlay ? (
+    <>
+      {avatarPreviewImageUrl ? (
+        <img
+          src={avatarPreviewImageUrl}
+          alt=""
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            inset: 0,
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+          }}
+        />
+      ) : null}
+      <style>{`
+        [data-ciq-avatar-overlay-card] { background: transparent !important; }
+        [data-ciq-avatar-overlay-card] > img,
+        [data-ciq-avatar-overlay-card] > [data-ciq-image-placeholder],
+        [data-ciq-avatar-overlay-card] > [data-ciq-video] { display: none !important; }
+      `}</style>
+      <AvatarOverlayCard template={template} props={renderProps} timing={SETTLED_TIMING} />
+    </>
+  ) : (
+    <div
+      style={{
+        position: "absolute",
+        inset: 0,
+        background: "var(--ciq-bg)",
+      }}
+    >
+      <CardRenderer template={template} props={renderProps} timing={SETTLED_TIMING} />
+    </div>
+  );
 
   if (!showControls) {
     return (
@@ -74,11 +117,7 @@ export function CardStaticPreview({
         <AssetResolverContext.Provider value={resolver}>
           <BrandThemeProvider theme={theme}>
             <CardStage style={{ borderRadius: 10, boxShadow: "none" }}>
-              <CardRenderer
-                template={template}
-                props={renderProps}
-                timing={SETTLED_TIMING}
-              />
+              {card}
             </CardStage>
           </BrandThemeProvider>
         </AssetResolverContext.Provider>
@@ -115,11 +154,7 @@ export function CardStaticPreview({
           <AssetResolverContext.Provider value={resolver}>
             <BrandThemeProvider theme={theme}>
               <CardStage>
-                <CardRenderer
-                  template={template}
-                  props={renderProps}
-                  timing={SETTLED_TIMING}
-                />
+                {card}
               </CardStage>
             </BrandThemeProvider>
           </AssetResolverContext.Provider>

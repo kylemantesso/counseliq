@@ -15,6 +15,8 @@ export interface CardStaticPreviewProps {
   resolveAssetRef?: (ref: string) => string | null;
   /** Web-only: hide preview controls/chips when embedded as a thumbnail. */
   showControls?: boolean;
+  visualTreatment?: "standard" | "avatar-overlay";
+  avatarPreviewImageUrl?: string | null;
 }
 
 export function CardStaticPreview({ template, props }: CardStaticPreviewProps) {

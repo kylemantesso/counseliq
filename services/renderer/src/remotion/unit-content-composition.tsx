@@ -1,12 +1,13 @@
 import {
   AbsoluteFill,
   Audio,
-  Sequence,
+  OffthreadVideo,
   useCurrentFrame,
   useVideoConfig,
 } from "remotion";
 import {
   AssetResolverContext,
+  AvatarOverlayCard,
   BrandThemeProvider,
   CAPTION_SAFE_HEIGHT,
   CardRenderer,
@@ -39,12 +40,10 @@ export interface UnitContentCompositionProps {
   profile: RenderProfile;
   themeTokens: Record<string, unknown>;
   assetUrls: Record<string, string>;
-  sentenceAudioUrls: Record<string, string>;
+  unitAudioUrl: string;
+  avatarVideoUrl?: string | null;
   institutionLogoUrl?: string | null;
 }
-
-const msToFrames = (ms: number, fps: number): number =>
-  Math.max(0, Math.floor((ms / 1000) * fps));
 
 function withInstitutionLogo(
   template: string,
@@ -156,6 +155,17 @@ function IdleSlate({ concept }: { concept: string }) {
   );
 }
 
+const AVATAR_OVERLAY_VIDEO_CSS = `
+  [data-ciq-avatar-overlay-card] {
+    background: transparent !important;
+  }
+  [data-ciq-avatar-overlay-card] > img,
+  [data-ciq-avatar-overlay-card] > [data-ciq-image-placeholder],
+  [data-ciq-avatar-overlay-card] > [data-ciq-video] {
+    display: none !important;
+  }
+`;
+
 export function UnitContentComposition(props: UnitContentCompositionProps) {
   const frame = useCurrentFrame();
   const video = useVideoConfig();
@@ -163,6 +173,7 @@ export function UnitContentComposition(props: UnitContentCompositionProps) {
   const active = deriveActiveCard(props.timing, clockMs, { reducedMotion: false });
   const card =
     active.cardIndex === null ? null : props.unit.content.cards[active.cardIndex] ?? null;
+  const isAvatarOverlay = card?.visualTreatment === "avatar-overlay";
   const stageScale = video.width / STAGE_WIDTH;
   const stageHeight = video.height / stageScale;
   const theme = brandThemeFromTokens(props.themeTokens);
@@ -174,6 +185,19 @@ export function UnitContentComposition(props: UnitContentCompositionProps) {
 
   return (
     <AbsoluteFill style={{ background: theme.bg }}>
+      {props.avatarVideoUrl ? (
+        <OffthreadVideo
+          src={props.avatarVideoUrl}
+          muted
+          style={{
+            position: "absolute",
+            inset: 0,
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+          }}
+        />
+      ) : null}
       <AssetResolverContext.Provider
         value={{ resolve: (ref) => props.assetUrls[ref] ?? null }}
       >
@@ -195,19 +219,42 @@ export function UnitContentComposition(props: UnitContentCompositionProps) {
                   transform: `scale(${stageScale})`,
                   transformOrigin: "top left",
                   overflow: "hidden",
-                  background: cssVar("bg"),
+                  background: isAvatarOverlay ? "transparent" : cssVar("bg"),
                 }}
               >
                 {card ? (
-                  <CardRenderer
-                    template={card.template}
-                    props={withInstitutionLogo(
-                      card.template,
-                      card.props,
-                      props.institutionLogoUrl
-                    )}
-                    timing={active.timing}
-                  />
+                  isAvatarOverlay ? (
+                    <>
+                      <style>{AVATAR_OVERLAY_VIDEO_CSS}</style>
+                      <AvatarOverlayCard
+                        template={card.template}
+                        props={withInstitutionLogo(
+                          card.template,
+                          card.props,
+                          props.institutionLogoUrl
+                        )}
+                        timing={active.timing}
+                      />
+                    </>
+                  ) : (
+                    <div
+                      style={{
+                        position: "absolute",
+                        inset: 0,
+                        background: cssVar("bg"),
+                      }}
+                    >
+                      <CardRenderer
+                        template={card.template}
+                        props={withInstitutionLogo(
+                          card.template,
+                          card.props,
+                          props.institutionLogoUrl
+                        )}
+                        timing={active.timing}
+                      />
+                    </div>
+                  )
                 ) : (
                   <IdleSlate concept={props.unit.concept} />
                 )}
@@ -218,18 +265,7 @@ export function UnitContentComposition(props: UnitContentCompositionProps) {
         </MediaModeProvider>
       </AssetResolverContext.Provider>
 
-      {props.timing.sentences.map((sentence) => {
-        const src = props.sentenceAudioUrls[sentence.audioKey];
-        if (!src) return null;
-        return (
-          <Sequence
-            key={`${sentence.narrationId}-${sentence.startMs}`}
-            from={msToFrames(sentence.startMs, video.fps)}
-          >
-            <Audio src={src} />
-          </Sequence>
-        );
-      })}
+      <Audio src={props.unitAudioUrl} />
     </AbsoluteFill>
   );
 }

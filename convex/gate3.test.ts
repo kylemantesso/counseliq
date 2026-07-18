@@ -231,7 +231,7 @@ describe("adminGetRunPreview payload (via internal sibling)", () => {
 });
 
 describe("single-sentence edit loop", () => {
-  test("edit at gate 3 re-synthesises exactly one sentence and re-resolves beats", async () => {
+  test("edit at gate 3 re-synthesises continuous unit audio and re-resolves beats", async () => {
     const { t, runId, unitAId } = await seedGate3();
     const before = await t.run(async (ctx) => {
       const unit = await ctx.db.get(unitAId);
@@ -241,8 +241,7 @@ describe("single-sentence edit loop", () => {
         .withIndex("by_run", (q) => q.eq("runId", runId))
         .take(100);
       return {
-        n1AudioKey: timing.sentences[0].audioKey,
-        n2AudioKey: timing.sentences[1].audioKey,
+        unitAudioKey: timing.unitAudioKey,
         calls: calls.length,
       };
     });
@@ -269,9 +268,8 @@ describe("single-sentence edit loop", () => {
         "Learners arrive from 120 countries every single year."
       );
       const timing = unit?.timing as UnitTiming;
-      // Unchanged sentence keeps its audio; the edited one re-synthesised.
-      expect(timing.sentences[0].audioKey).toBe(before.n1AudioKey);
-      expect(timing.sentences[1].audioKey).not.toBe(before.n2AudioKey);
+      // Both sentence ranges reference the newly generated unit audio.
+      expect(timing.unitAudioKey).not.toBe(before.unitAudioKey);
       expect(timing.cardBeats).toHaveLength(2);
       const calls = await ctx.db
         .query("ttsCalls")
@@ -366,7 +364,7 @@ describe("single-sentence edit loop", () => {
       return {
         calls: calls.length,
         beatAtMs: timing.cardBeats[1].atMs,
-        audioKeys: timing.sentences.map((sentence) => sentence.audioKey),
+        unitAudioKey: timing.unitAudioKey,
       };
     });
 
@@ -388,9 +386,7 @@ describe("single-sentence edit loop", () => {
       expect(cards[1].enterAt.word).toBe("Students");
       expect(timing.cardBeats[1].atMs).not.toBe(before.beatAtMs);
       expect(timing.cardBeats[1].atMs).toBeLessThan(before.beatAtMs);
-      expect(timing.sentences.map((sentence) => sentence.audioKey)).toEqual(
-        before.audioKeys
-      );
+      expect(timing.unitAudioKey).toBe(before.unitAudioKey);
 
       const calls = await ctx.db
         .query("ttsCalls")

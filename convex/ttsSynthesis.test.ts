@@ -18,7 +18,7 @@ beforeAll(() => {
  * Seeds a run at GENERATING_ASSETS with a compiled course of two units:
  * - mu-201: two sentences with digits/currency plus two cards anchored on
  *   words of each sentence — exercises normalisation, beat resolution, and
- *   per-sentence artifacts;
+ *   continuous unit audio;
  * - mu-202: single plain sentence with one card.
  */
 async function seedRun(options?: {
@@ -158,14 +158,12 @@ describe("runAssetGeneration (GENERATING_ASSETS stage, mock provider)", () => {
         );
         expect(timing.provider).toBe("mock");
         expect(timing.voiceRef).toBe("latrobe-narrator-01");
-        // Every narration sentence carries its own audio artifact.
+        // Sentence timing ranges all reference the unit's continuous audio.
         const narration = unit?.narration as Array<{ id: string }>;
         expect(timing.sentences.map((s) => s.narrationId)).toEqual(
           narration.map((n) => n.id)
         );
-        for (const sentence of timing.sentences) {
-          expect(sentence.audioKey).toMatch(/^sha256\/[0-9a-f]{64}\.mp3$/);
-        }
+        expect(timing.unitAudioKey).toMatch(/^sha256\/[0-9a-f]{64}\.mp3$/);
       }
 
       // The mock clock is 50ms/char: the mu-201 n1 card anchored on
@@ -184,11 +182,9 @@ describe("runAssetGeneration (GENERATING_ASSETS stage, mock provider)", () => {
         .query("ttsCalls")
         .withIndex("by_run", (q) => q.eq("runId", runId))
         .take(100);
-      expect(calls).toHaveLength(3); // 2 + 1 sentences
-      const sentences = await ctx.db.query("ttsSentences").take(100);
-      expect(sentences).toHaveLength(3);
+      expect(calls).toHaveLength(2); // one continuous narration per unit
       const assets = await ctx.db.query("assets").take(100);
-      expect(assets.filter((a) => a.kind === "tts-audio")).toHaveLength(3);
+      expect(assets.filter((a) => a.kind === "tts-audio")).toHaveLength(2);
     });
   });
 
@@ -245,12 +241,6 @@ describe("runAssetGeneration (GENERATING_ASSETS stage, mock provider)", () => {
       expect(result.status).toBe("ok");
 
       await t.run(async (ctx) => {
-        const sentences = await ctx.db.query("ttsSentences").take(100);
-        expect(sentences).toHaveLength(3);
-        expect(new Set(sentences.map((sentence) => sentence.voiceId))).toEqual(
-          new Set(["charlie-australian-voice"])
-        );
-
         const calls = await ctx.db
           .query("ttsCalls")
           .withIndex("by_run", (q) => q.eq("runId", runId))
@@ -268,7 +258,7 @@ describe("runAssetGeneration (GENERATING_ASSETS stage, mock provider)", () => {
     }
   });
 
-  test("single-sentence edit re-synthesises exactly one sentence", async () => {
+  test("single-sentence edit re-synthesises the unit's continuous narration", async () => {
     const { t, runId, numericUnitId } = await seedRun();
     await generateAll(t, runId);
     const before = await t.run(async (ctx) => {
@@ -279,8 +269,7 @@ describe("runAssetGeneration (GENERATING_ASSETS stage, mock provider)", () => {
         .withIndex("by_run", (q) => q.eq("runId", runId))
         .take(100);
       return {
-        n1AudioKey: timing.sentences[0].audioKey,
-        n2AudioKey: timing.sentences[1].audioKey,
+        unitAudioKey: timing.unitAudioKey,
         beats: timing.cardBeats,
         calls: calls.length,
       };
@@ -310,9 +299,8 @@ describe("runAssetGeneration (GENERATING_ASSETS stage, mock provider)", () => {
 
       const unit = await ctx.db.get(numericUnitId);
       const timing = unit?.timing as UnitTiming;
-      // Unchanged sentence keeps its artifact; edited one gets a new key.
-      expect(timing.sentences[0].audioKey).toBe(before.n1AudioKey);
-      expect(timing.sentences[1].audioKey).not.toBe(before.n2AudioKey);
+      // Every sentence range moves to the newly generated unit artifact.
+      expect(timing.unitAudioKey).not.toBe(before.unitAudioKey);
       // Beats recomputed and still one per card.
       expect(timing.cardBeats).toHaveLength(2);
       expect(timing.cardBeats[1].atMs).toBeGreaterThanOrEqual(
@@ -371,8 +359,8 @@ describe("runAssetGeneration (GENERATING_ASSETS stage, mock provider)", () => {
     expect(after.characters).toBeGreaterThan(0);
   });
 
-  test("run cost breakdown splits LLM vs TTS with a grand total", async () => {
-    const { t, runId } = await seedRun();
+  test("run cost breakdown splits LLM, TTS, and HeyGen with a grand total", async () => {
+    const { t, runId, courseId, numericUnitId } = await seedRun();
     await t.mutation(internal.pipeline.llmCalls.recordLlmCall, {
       runId,
       stage: "author-unit",
@@ -394,14 +382,49 @@ describe("runAssetGeneration (GENERATING_ASSETS stage, mock provider)", () => {
       characters: 2000,
       latencyMs: 5,
     });
+    await t.run(async (ctx) => {
+      await ctx.db.insert("avatarJobs", {
+        runId,
+        courseId,
+        unitId: numericUnitId,
+        moduleId: "m1-welcome",
+        unitIndex: 0,
+        look: {
+          groupId: "group-1",
+          lookId: "look-1",
+          name: "Campus presenter",
+          avatarType: "digital_twin",
+        },
+        engine: "avatar_v",
+        inputHash: "avatar-cost-test",
+        audioKey: "sha256/audio.mp3",
+        status: "succeeded",
+        attempts: 1,
+        maxAttempts: 3,
+        output: {
+          objectKey: "sha256/video.mp4",
+          sha256: "video-hash",
+          sizeBytes: 100,
+          durationMs: 3_000,
+          width: 1080,
+          height: 1920,
+        },
+        createdAt: 1,
+        updatedAt: 2,
+      });
+    });
 
     const cost = await t.query(internal.pipeline.llmCalls.getRunCostInternal, {
       runId,
     });
     expect(cost.totalUsd).toBeCloseTo(0.5);
-    expect(cost.tts.totalCalls).toBe(4); // 3 mock sentences + 1 manual row
+    expect(cost.tts.totalCalls).toBe(3); // 2 mock units + 1 manual row
     expect(cost.tts.totalUsd).toBeCloseTo(0.2); // 2000 chars at $0.10/1k
-    expect(cost.grandTotalUsd).toBeCloseTo(0.7);
+    expect(cost.heygen.totalJobs).toBe(1);
+    expect(cost.heygen.totalDurationMs).toBe(3_000);
+    expect(cost.heygen.totalUsd).toBeCloseTo(0.2001);
+    expect(cost.heygen.usedFallbackPricing).toBe(false);
+    expect(cost.grandTotalUsd).toBeCloseTo(0.9001);
     expect(cost.tts.byStage[0].stage).toBe("synthesize-unit");
   });
 });

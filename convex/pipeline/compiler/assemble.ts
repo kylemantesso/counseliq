@@ -84,6 +84,8 @@ export interface ReviewedInventory {
   provenanceIds: string[];
   /** M6.5: operator brief (null when the run has none). */
   brief?: string | null;
+  /** Build-time presentation choice, used to constrain visual treatments. */
+  presentation?: unknown;
 }
 
 function nonEmptyText(value: unknown): string | null {

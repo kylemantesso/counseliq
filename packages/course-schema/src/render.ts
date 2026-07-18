@@ -31,6 +31,19 @@ export const renderOutputVariantSchema = z
   })
   .strict();
 
+/**
+ * Optional presenter footage for a unit render. Published manifests may carry
+ * this at `units[].avatarTrack`; a dispatch can supply the same value until a
+ * manifest contains it. The frozen manifest always takes precedence.
+ */
+export const renderAvatarTrackSchema = z
+  .object({
+    objectKey: contentAddressedKeySchema,
+    thumbKey: contentAddressedKeySchema.optional(),
+    durationMs: z.number().int().positive().optional(),
+  })
+  .strict();
+
 export const renderJobRequestSchema = z
   .object({
     jobId: z.string().min(1),
@@ -46,6 +59,7 @@ export const renderJobRequestSchema = z
     renderSpecHash: z.string().min(1),
     profile: renderProfileSchema,
     variants: z.array(renderVariantProfileSchema).min(1).optional(),
+    avatarTrack: renderAvatarTrackSchema.optional(),
     callbackUrl: z.string().url(),
   })
   .strict();
@@ -101,6 +115,7 @@ export const renderCallbackSchema = z
 export type RenderProfile = z.infer<typeof renderProfileSchema>;
 export type RenderVariantProfile = z.infer<typeof renderVariantProfileSchema>;
 export type RenderOutputVariant = z.infer<typeof renderOutputVariantSchema>;
+export type RenderAvatarTrack = z.infer<typeof renderAvatarTrackSchema>;
 export type RenderJobRequest = z.infer<typeof renderJobRequestSchema>;
 export type RenderSuccessPayload = z.infer<typeof renderSuccessPayloadSchema>;
 export type RenderFailurePayload = z.infer<typeof renderFailurePayloadSchema>;

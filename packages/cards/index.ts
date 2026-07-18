@@ -48,6 +48,15 @@ export {
   type CardStageProps,
 } from "./src/card-stage";
 export { CardRenderer, type CardRendererProps } from "./src/card-renderer";
+export {
+  AvatarOverlayCard,
+  AVATAR_OVERLAY_TEMPLATES,
+  AVATAR_OVERLAY_TEMPLATE_COMPONENTS,
+  type AvatarOverlayCardProps,
+  type AvatarOverlayProps,
+  type AvatarOverlayTemplate,
+  type AvatarOverlayTemplateComponent,
+} from "./src/avatar-overlay";
 export { FallbackCard, type FallbackCardProps } from "./src/fallback-card";
 export { TEMPLATE_COMPONENTS } from "./src/templates/registry";
 export {

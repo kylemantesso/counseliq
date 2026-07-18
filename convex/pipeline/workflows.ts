@@ -130,6 +130,7 @@ export const compileAndJudge = workflow
       });
       return;
     }
+    await step.runAction(internal.pipeline.avatar.assign.assignUnitLooks, { runId });
     await step.runMutation(internal.pipeline.transitions.transitionRun, {
       runId,
       toState: judged.status === "flagged" ? "QA_FLAGGED" : "QA_PASSED",
@@ -203,6 +204,23 @@ export const generateAssets = workflow
       });
       return;
     }
+    const avatar = await step.runMutation(internal.pipeline.avatar.jobs.prepareAvatarGeneration, {
+      runId,
+    });
+    if (avatar.enabled) {
+      await step.runMutation(internal.pipeline.transitions.transitionRun, {
+        runId,
+        toState: "GENERATING_AVATAR",
+        actor: ACTOR,
+        detail:
+          `generateAssets: ${avatar.queued} continuous narration track(s) ready for avatar video`,
+      });
+      await step.runAction(internal.pipeline.avatar.heygen.dispatchQueuedAvatarJobs, {
+        runId,
+      });
+      return;
+    }
+
     await step.runMutation(internal.pipeline.transitions.transitionRun, {
       runId,
       toState: "GATE_3_PREVIEW",

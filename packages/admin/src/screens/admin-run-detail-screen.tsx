@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { Link } from "solito/link";
 import { useParams, useRouter } from "solito/navigation";
@@ -33,6 +33,12 @@ import {
   parseGeneratedModuleNumber,
   parseGeneratedUnitPosition,
 } from "../format/unit-labels";
+import { phaseIndexForRunState } from "./run-state-presentation";
+import {
+  estimateHeyGenAvatarVRun,
+  formatHeyGenAmount,
+  type HeyGenBilling,
+} from "./avatar-generation-presentation";
 
 type CompileUnitProgressLog = {
   unitId: string;
@@ -190,6 +196,53 @@ type RunCourseRows = {
   questions: Doc<"questions">[];
 } | null;
 
+type AvatarGenerationProgress = {
+  summary: {
+    total: number;
+    videoQueued: number;
+    videoGenerating: number;
+    videoReady: number;
+    videoFailed: number;
+    narrationDurationMs: number;
+  };
+  items: Array<{
+    unitId: Id<"microUnits">;
+    unitKey: string;
+    title: string;
+    moduleKey: string;
+    moduleTitle: string | null;
+    moduleNumber: number | null;
+    unitNumber: number | null;
+    lookName: string | null;
+    engine: string | null;
+    narrationDurationMs: number;
+    video: {
+      jobId: Id<"avatarJobs">;
+      status: string;
+      providerJobId: string | null;
+      attempts: number;
+      maxAttempts: number;
+      lookName: string;
+      engine: string;
+      objectKey: string | null;
+      durationMs: number | null;
+      width: number | null;
+      height: number | null;
+      errorCode: string | null;
+      updatedAt: number;
+    } | null;
+  }>;
+};
+
+type AvatarPreviewVideo = {
+  objectKey: string;
+  title: string;
+  subtitle: string;
+  durationMs: number | null;
+  width: number | null;
+  height: number | null;
+};
+
 type CourseMetricSummary = {
   modules: number | null;
   units: number | null;
@@ -201,7 +254,6 @@ type RunEvent = Doc<"runEvents">;
 type Phase = {
   label: string;
   shortLabel: string;
-  states: string[];
   substeps: string[];
   approvalIndex?: number;
 };
@@ -210,50 +262,30 @@ const PHASES: Phase[] = [
   {
     label: "Sources ready",
     shortLabel: "Sources ready",
-    states: [
-      "UPLOADED",
-      "CONVERTING",
-      "CONVERTED",
-      "EXTRACTING",
-      "EXTRACTED",
-      "GATE_1_KNOWLEDGE_REVIEW",
-    ],
     substeps: ["Upload", "Convert", "Review facts"],
     approvalIndex: 2,
   },
   {
     label: "Draft outline",
     shortLabel: "Draft outline",
-    states: ["OUTLINING", "OUTLINE_REVIEW"],
     substeps: ["Generate outline", "Your approval"],
     approvalIndex: 1,
   },
   {
     label: "Build course",
     shortLabel: "Build course",
-    states: [
-      "COMPILING",
-      "COMPILED",
-      "QA_RUNNING",
-      "QA_PASSED",
-      "QA_FLAGGED",
-      "GATE_2_COURSE_REVIEW",
-      "GATE_2_QUIZ_REVIEW",
-    ],
     substeps: ["Write narration & cards", "Quality checks", "Your approval"],
     approvalIndex: 2,
   },
   {
     label: "Create media & preview",
     shortLabel: "Media & preview",
-    states: ["GENERATING_SCRIPT", "GENERATING_ASSETS", "GATE_3_PREVIEW"],
     substeps: ["Generate voice", "Create visuals", "Preview approval"],
     approvalIndex: 2,
   },
   {
     label: "Publish",
     shortLabel: "Publish",
-    states: ["PUBLISHING", "PUBLISHED"],
     substeps: ["Publish course", "Render outputs"],
   },
 ];
@@ -295,6 +327,13 @@ function AdminRunDetailContent() {
   const [videoPreviewError, setVideoPreviewError] = useState<string | null>(null);
   const [downloadingVideoKey, setDownloadingVideoKey] = useState<string | null>(null);
   const [videoDownloadError, setVideoDownloadError] = useState<string | null>(null);
+  const [avatarRetryBusy, setAvatarRetryBusy] = useState(false);
+  const [avatarRetryError, setAvatarRetryError] = useState<string | null>(null);
+  const [avatarPreviewVideo, setAvatarPreviewVideo] = useState<AvatarPreviewVideo | null>(null);
+  const [avatarPreviewError, setAvatarPreviewError] = useState<string | null>(null);
+  const [heyGenBilling, setHeyGenBilling] = useState<HeyGenBilling | null>(null);
+  const [heyGenBillingBusy, setHeyGenBillingBusy] = useState(false);
+  const [heyGenBillingError, setHeyGenBillingError] = useState<string | null>(null);
 
   const presignBatch = useAction(api.pipeline.objectStore.adminPresignGetBatch);
   const presignDownloadBatch = useAction(
@@ -315,6 +354,10 @@ function AdminRunDetailContent() {
   const cancelRenderJob = useMutation(
     (api as any).pipeline.render.adminCancelRenderJob
   );
+  const retryAvatarGeneration = useMutation(
+    api.pipeline.avatar.jobs.adminRetryAvatarGeneration
+  );
+  const getHeyGenBilling = useAction(api.pipeline.avatar.heygen.adminGetHeyGenBilling);
   const cloneConvertedDoc = useMutation(api.pipeline.ingestion.adminCloneConvertedSourceDoc);
   const startRun = useMutation(api.pipeline.runs.adminStartRun);
   const runResult = useQuery(
@@ -342,6 +385,37 @@ function AdminRunDetailContent() {
     (api as any).pipeline.render.adminGetRunRenderStatus,
     runId ? { runId } : "skip"
   ) as RunRenderStatus | undefined;
+  const avatarProgress = useQuery(
+    api.pipeline.avatar.jobs.getAvatarGenerationProgress,
+    runId ? { runId } : "skip"
+  ) as AvatarGenerationProgress | undefined;
+
+  const refreshHeyGenBilling = async () => {
+    setHeyGenBillingBusy(true);
+    setHeyGenBillingError(null);
+    try {
+      setHeyGenBilling(await getHeyGenBilling({}));
+    } catch (error) {
+      setHeyGenBillingError(
+        getUserFacingErrorMessage(error, "Could not load the HeyGen balance.")
+      );
+    } finally {
+      setHeyGenBillingBusy(false);
+    }
+  };
+
+  useEffect(() => {
+    if (
+      !avatarProgress ||
+      avatarProgress.summary.total === 0 ||
+      heyGenBilling !== null ||
+      heyGenBillingBusy ||
+      heyGenBillingError !== null
+    ) {
+      return;
+    }
+    void refreshHeyGenBilling();
+  }, [avatarProgress?.summary.total, heyGenBilling, heyGenBillingBusy, heyGenBillingError]);
 
   const run = runResult?.run;
   const events = runResult?.events ?? [];
@@ -385,6 +459,7 @@ function AdminRunDetailContent() {
     "COMPILING",
     "GENERATING_SCRIPT",
     "GENERATING_ASSETS",
+    "GENERATING_AVATAR",
     "PUBLISHING",
   ]);
   const compileLikelyStalled = Boolean(
@@ -499,6 +574,28 @@ function AdminRunDetailContent() {
     } catch (error) {
       setVideoPreviewError(
         getUserFacingErrorMessage(error, "Could not load this rendered video. Try again.")
+      );
+    } finally {
+      setPresigningVideoKey(null);
+    }
+  };
+
+  const onOpenAvatarVideo = async (video: AvatarPreviewVideo) => {
+    setAvatarPreviewVideo(video);
+    setAvatarPreviewError(null);
+    if (videoUrls.has(video.objectKey)) return;
+
+    setPresigningVideoKey(video.objectKey);
+    try {
+      const results = await presignBatch({ keys: [video.objectKey] });
+      setVideoUrls((current) => {
+        const next = new Map(current);
+        for (const result of results) next.set(result.key, result.url);
+        return next;
+      });
+    } catch (error) {
+      setAvatarPreviewError(
+        getUserFacingErrorMessage(error, "Could not load this avatar video. Try again.")
       );
     } finally {
       setPresigningVideoKey(null);
@@ -643,6 +740,36 @@ function AdminRunDetailContent() {
                   </>
                 ) : (
                   <>
+                    {avatarProgress && avatarProgress.summary.total > 0 ? (
+                      <AvatarGenerationCard
+                        progress={avatarProgress}
+                        retryBusy={avatarRetryBusy}
+                        retryError={avatarRetryError}
+                        billing={heyGenBilling}
+                        billingBusy={heyGenBillingBusy}
+                        billingError={heyGenBillingError}
+                        onRefreshBilling={refreshHeyGenBilling}
+                        previewingKey={presigningVideoKey}
+                        onPreview={(video) => void onOpenAvatarVideo(video)}
+                        onRetry={async () => {
+                          if (!runId) return;
+                          setAvatarRetryBusy(true);
+                          setAvatarRetryError(null);
+                          try {
+                            await retryAvatarGeneration({ runId });
+                          } catch (error) {
+                            setAvatarRetryError(
+                              getUserFacingErrorMessage(
+                                error,
+                                "Could not retry avatar generation. Try again."
+                              )
+                            );
+                          } finally {
+                            setAvatarRetryBusy(false);
+                          }
+                        }}
+                      />
+                    ) : null}
                     <PhaseProgress
                       state={effectiveState}
                       phaseIndex={phaseIndex}
@@ -744,6 +871,16 @@ function AdminRunDetailContent() {
           setVideoPreviewError(null);
         }}
       />
+      <AvatarVideoModal
+        video={avatarPreviewVideo}
+        url={avatarPreviewVideo ? videoUrls.get(avatarPreviewVideo.objectKey) ?? null : null}
+        loading={avatarPreviewVideo ? presigningVideoKey === avatarPreviewVideo.objectKey : false}
+        error={avatarPreviewError}
+        onClose={() => {
+          setAvatarPreviewVideo(null);
+          setAvatarPreviewError(null);
+        }}
+      />
     </AdminWorkspaceFrame>
   );
 }
@@ -785,7 +922,7 @@ function ProgressHero({
   const description = phaseDescription(state, compileProgress);
   const actionHref = actionHrefForState(runId, state);
   const showApprovalCta = gate && actionHref !== null;
-  const qualityPassed = ["QA_PASSED", "GATE_2_COURSE_REVIEW", "GATE_2_QUIZ_REVIEW", "GENERATING_SCRIPT", "GENERATING_ASSETS", "GATE_3_PREVIEW", "PUBLISHING", "PUBLISHED"].includes(state);
+  const qualityPassed = ["QA_PASSED", "GATE_2_COURSE_REVIEW", "GATE_2_QUIZ_REVIEW", "GENERATING_SCRIPT", "GENERATING_ASSETS", "GENERATING_AVATAR", "GATE_3_PREVIEW", "PUBLISHING", "PUBLISHED"].includes(state);
 
   return (
     <Box
@@ -1303,8 +1440,8 @@ function phaseDetailLines({
   }
 
   if (phaseIndex === 3) {
-    if (["GENERATING_SCRIPT", "GENERATING_ASSETS", "GATE_3_PREVIEW"].includes(state)) {
-      return [withTime("Generating voice & visuals", eventTime(["GENERATING_SCRIPT", "GENERATING_ASSETS"])), "Preview approval comes next."];
+    if (["GENERATING_SCRIPT", "GENERATING_ASSETS", "GENERATING_AVATAR", "GATE_3_PREVIEW"].includes(state)) {
+      return [withTime("Generating voice & visuals", eventTime(["GENERATING_SCRIPT", "GENERATING_ASSETS", "GENERATING_AVATAR"])), "Preview approval comes next."];
     }
     return ["Generate voice & visuals, then a preview approval."];
   }
@@ -1445,6 +1582,256 @@ function ActivityCard({
   );
 }
 
+function AvatarGenerationCard({
+  progress,
+  retryBusy,
+  retryError,
+  billing,
+  billingBusy,
+  billingError,
+  onRefreshBilling,
+  previewingKey,
+  onPreview,
+  onRetry,
+}: {
+  progress: AvatarGenerationProgress;
+  retryBusy: boolean;
+  retryError: string | null;
+  billing: HeyGenBilling | null;
+  billingBusy: boolean;
+  billingError: string | null;
+  onRefreshBilling: () => Promise<void>;
+  previewingKey: string | null;
+  onPreview: (video: AvatarPreviewVideo) => void;
+  onRetry: () => Promise<void>;
+}) {
+  const { summary } = progress;
+  const completedWork = summary.videoReady;
+  const percent = summary.total > 0
+    ? Math.round((completedWork / summary.total) * 100)
+    : 0;
+  const failed = summary.videoFailed;
+  const estimate = estimateHeyGenAvatarVRun(
+    progress.summary.narrationDurationMs,
+    new Set(progress.items.map((item) => item.engine).filter((engine): engine is string => Boolean(engine))),
+    billing
+  );
+
+  return (
+    <SurfaceCard
+      title="Avatar video generation"
+      subtitle={
+        failed > 0
+          ? `${failed} of ${summary.total} units need a retry before video generation can continue.`
+          : `${summary.videoReady} of ${summary.total} videos ready. This updates live.`
+      }
+      actions={
+        <StatusBadge
+          label={failed > 0 ? `${failed} failed` : `${percent}% complete`}
+          tone={failed > 0 ? "danger" : summary.videoReady === summary.total ? "success" : "accent"}
+        />
+      }
+    >
+      <Box className="gap-4">
+        <Box className="flex-row flex-wrap gap-2">
+          <AvatarSummaryStat label="Video queue" value={String(summary.videoGenerating + summary.videoQueued)} />
+          <AvatarSummaryStat label="Videos ready" value={`${summary.videoReady}/${summary.total}`} />
+        </Box>
+        <Box
+          className="h-2 w-full overflow-hidden rounded-full bg-border"
+          accessibilityRole="progressbar"
+          accessibilityLabel="Avatar video generation progress"
+          accessibilityValue={{ min: 0, max: 100, now: percent }}
+        >
+          <Box
+            className={`h-2 rounded-full ${failed > 0 ? "bg-destructive" : "bg-primary"}`}
+            style={{ width: `${percent}%` }}
+          />
+        </Box>
+        {failed > 0 ? (
+          <Box className="gap-2 rounded-lg border border-destructive bg-destructive/10 px-4 py-3">
+            <Text className="text-[12.5px] leading-5 text-destructive">
+              {progress.items.some((item) => item.video?.errorCode === "insufficient_credit")
+                ? "HeyGen does not have enough credits for these videos. Add credits in HeyGen, then retry avatar generation."
+                : "One or more avatar jobs failed. Retry after resolving the issue shown below."}
+            </Text>
+            {progress.items.some((item) => item.video?.errorCode === "insufficient_credit") ? (
+              <Box className="flex-row flex-wrap gap-2 py-1">
+                <AvatarCreditStat
+                  label="API wallet balance"
+                  value={billing ? formatHeyGenAmount(billing.remaining, billing.currency) : "Loading..."}
+                />
+                <AvatarCreditStat
+                  label="Estimated run cost"
+                  value={estimate ? formatHeyGenAmount(estimate.required, estimate.currency) : "Unavailable"}
+                />
+                <AvatarCreditStat
+                  label="Estimated shortfall"
+                  value={estimate ? formatHeyGenAmount(estimate.shortfall, estimate.currency) : "Unavailable"}
+                />
+              </Box>
+            ) : null}
+            {billing?.billingType === "wallet" ? (
+              <Text className="text-[11.5px] leading-5 text-muted-foreground">
+                CounselIQ is using an API key billed to this API wallet. Credits shown in a HeyGen web subscription can be a separate balance and are not used by API-key requests.
+              </Text>
+            ) : null}
+            {billingError ? <Text className="text-xs text-destructive">{billingError}</Text> : null}
+            <Button
+              size="sm"
+              variant="ghost"
+              className="self-start"
+              onPress={() => void onRefreshBilling()}
+              isDisabled={billingBusy}
+            >
+              <ButtonText>{billingBusy ? "Refreshing balance..." : "Refresh HeyGen balance"}</ButtonText>
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="self-start border-destructive"
+              onPress={() => void onRetry()}
+              isDisabled={retryBusy || (estimate !== null && estimate.shortfall > 0)}
+            >
+              <ButtonText className="text-destructive">
+                {retryBusy
+                  ? "Retrying..."
+                  : estimate !== null && estimate.shortfall > 0
+                    ? `Add ${formatHeyGenAmount(estimate.shortfall, estimate.currency)} to retry`
+                    : "Retry avatar generation"}
+              </ButtonText>
+            </Button>
+            {retryError ? <Text className="text-xs text-destructive">{retryError}</Text> : null}
+          </Box>
+        ) : null}
+        <Box className="overflow-hidden rounded-xl border border-border">
+          {progress.items.map((item, index) => {
+            const status = avatarUnitStatus(item);
+            const moduleLabel = item.moduleTitle?.trim() ||
+              formatModuleNumberLabel(item.moduleKey, undefined, { includeWord: true });
+            const unitLabel = formatUnitPositionLabel(
+              item.unitKey,
+              item.unitNumber !== null ? String(item.unitNumber) : "Unit"
+            );
+            const avatarVideo = item.video?.objectKey
+              ? {
+                  objectKey: item.video.objectKey,
+                  title: readableIdentifier(item.title),
+                  subtitle: `${moduleLabel} · Unit ${unitLabel}`,
+                  durationMs: item.video.durationMs,
+                  width: item.video.width,
+                  height: item.video.height,
+                }
+              : null;
+            return (
+              <Box
+                key={String(item.unitId)}
+                className={`gap-2 px-4 py-3.5 md:flex-row md:items-center ${
+                  index > 0 ? "border-t border-border" : ""
+                }`}
+              >
+                <Box className="min-w-0 flex-1 gap-0.5">
+                  <Text className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                    {moduleLabel} · Unit {unitLabel}
+                  </Text>
+                  <Text className="text-[13px] font-bold text-foreground" numberOfLines={2}>
+                    {readableIdentifier(item.title)}
+                  </Text>
+                  <Text className="text-[11.5px] text-muted-foreground" numberOfLines={1}>
+                    {item.lookName ? `Avatar: ${item.lookName}` : "Avatar selection pending"}
+                    {item.engine ? ` · ${item.engine.replaceAll("_", " ")}` : ""}
+                  </Text>
+                </Box>
+                <Box className="items-start gap-1 md:w-[210px] md:items-end">
+                  <Box className="flex-row flex-wrap items-center gap-2 md:justify-end">
+                    <StatusBadge label={status.label} tone={status.tone} />
+                    {item.video?.status === "succeeded" && avatarVideo ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 rounded-full px-3"
+                        onPress={() => onPreview(avatarVideo)}
+                        isDisabled={previewingKey === avatarVideo.objectKey}
+                      >
+                        <ButtonText className="text-[11px]">
+                          {previewingKey === avatarVideo.objectKey ? "Loading..." : "Preview"}
+                        </ButtonText>
+                      </Button>
+                    ) : null}
+                  </Box>
+                  <Text className="text-[11px] text-muted-foreground md:text-right">
+                    {status.detail}
+                  </Text>
+                </Box>
+              </Box>
+            );
+          })}
+        </Box>
+      </Box>
+    </SurfaceCard>
+  );
+}
+
+function AvatarCreditStat({ label, value }: { label: string; value: string }) {
+  return (
+    <Box className="min-w-[145px] flex-1 rounded-lg bg-card px-3 py-2.5">
+      <Text className="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+        {label}
+      </Text>
+      <Text className="mt-0.5 text-lg font-bold text-foreground">{value}</Text>
+    </Box>
+  );
+}
+
+
+function AvatarSummaryStat({ label, value }: { label: string; value: string }) {
+  return (
+    <Box className="min-w-[130px] flex-1 rounded-lg bg-muted px-3 py-2.5">
+      <Text className="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+        {label}
+      </Text>
+      <Text className="mt-0.5 text-lg font-bold text-foreground">{value}</Text>
+    </Box>
+  );
+}
+
+function avatarUnitStatus(item: AvatarGenerationProgress["items"][number]): {
+  label: string;
+  detail: string;
+  tone: "neutral" | "success" | "warning" | "danger" | "accent";
+} {
+  if (item.video?.status === "succeeded") {
+    return {
+      label: "Video ready",
+      detail: item.video.durationMs ? formatDurationLong(item.video.durationMs) : "Ready for preview",
+      tone: "success",
+    };
+  }
+  if (item.video?.status === "submitted" || item.video?.status === "processing") {
+    return {
+      label: "Generating in HeyGen",
+      detail: item.video.providerJobId ? `Job ${item.video.providerJobId.slice(-10)}` : "Provider job submitted",
+      tone: "accent",
+    };
+  }
+  if (item.video?.status === "queued") {
+    return { label: "Video queued", detail: "Waiting for HeyGen submission", tone: "warning" };
+  }
+  if (item.video?.status === "failed" || item.video?.status === "cancelled") {
+    return {
+      label: "Video failed",
+      detail:
+        item.video.errorCode === "insufficient_credit"
+          ? "HeyGen credits required"
+          : item.video.errorCode === "avatar_not_found"
+            ? "Selected avatar look is unavailable"
+          : "Retry after resolving the provider issue",
+      tone: "danger",
+    };
+  }
+  return { label: "Preparing video", detail: "Waiting for HeyGen submission", tone: "neutral" };
+}
+
 function CompileActivity({ progress }: { progress: RunCompileProgress | null | undefined }) {
   const totalLabel =
     typeof progress?.totalUnits === "number" && progress.totalUnits > 0
@@ -1479,19 +1866,26 @@ function CompileActivity({ progress }: { progress: RunCompileProgress | null | u
 
 function CostCard({ cost, final }: { cost: ReturnType<typeof useQuery<typeof api.pipeline.llmCalls.getRunCost>>; final: boolean }) {
   return (
-    <SurfaceCard title="LLM costs" subtitle={final ? "Final model usage for this run." : "Updates live as the course builds."}>
+    <SurfaceCard title="Generation costs" subtitle={final ? "Final generation usage for this run." : "Updates live as the course builds."}>
       {cost === undefined ? (
         <Text className="text-sm text-muted-foreground">Loading cost...</Text>
       ) : (
         <Box className="gap-3">
           <StatRow label="Text (LLM)" value={`$${cost.totalUsd.toFixed(4)}`} />
           <StatRow label="Voice (TTS)" value={`$${cost.tts.totalUsd.toFixed(4)}`} />
+          <StatRow label="Avatar video (HeyGen est.)" value={`$${cost.heygen.totalUsd.toFixed(4)}`} />
           <Box className="border-t border-border pt-3">
             <StatRow label={final ? "Total" : "Total so far"} value={`$${cost.grandTotalUsd.toFixed(4)}`} success />
           </Box>
           <Text className="text-[11.5px] text-muted-foreground">
-            {cost.totalCalls} text call{cost.totalCalls === 1 ? "" : "s"} · {cost.tts.totalCalls} voice call{cost.tts.totalCalls === 1 ? "" : "s"}
+            {cost.totalCalls} text call{cost.totalCalls === 1 ? "" : "s"} · {cost.tts.totalCalls} voice call{cost.tts.totalCalls === 1 ? "" : "s"} · {cost.heygen.totalJobs} avatar video{cost.heygen.totalJobs === 1 ? "" : "s"}
           </Text>
+          {cost.heygen.totalJobs > 0 ? (
+            <Text className="text-[11.5px] text-muted-foreground">
+              HeyGen output: {formatDurationLong(cost.heygen.totalDurationMs)}
+              {cost.heygen.usedFallbackPricing ? " · conservative pricing used for an unknown avatar type" : ""}
+            </Text>
+          ) : null}
           {cost.byStage.length > 0 ? (
             <Box className="gap-1 border-t border-border pt-3">
               {cost.byStage.slice(0, 8).map((row) => (
@@ -1894,6 +2288,106 @@ function TableHeader({ children, className }: { children: string; className: str
     <Text className={`text-[10.5px] font-bold uppercase tracking-[0.12em] text-muted-foreground ${className}`}>
       {children}
     </Text>
+  );
+}
+
+function AvatarVideoModal({
+  video,
+  url,
+  loading,
+  error,
+  onClose,
+}: {
+  video: AvatarPreviewVideo | null;
+  url: string | null;
+  loading: boolean;
+  error: string | null;
+  onClose: () => void;
+}) {
+  return (
+    <Modal isOpen={video !== null} onClose={onClose} size="full">
+      <ModalBackdrop />
+      <ModalContent className="max-w-[1040px] overflow-hidden rounded-2xl border border-white/10 bg-[#11100e] p-0">
+        <ModalHeader className="border-b border-white/10 px-5 py-4">
+          <Box className="min-w-0 flex-1 gap-1">
+            <Text className="text-[15px] font-bold text-white" numberOfLines={1}>
+              {video?.title ?? "Avatar video"}
+            </Text>
+            <Text className="text-[12px] text-[#a9a399]" numberOfLines={1}>
+              {video?.subtitle ?? "Preview"}
+            </Text>
+          </Box>
+          <ModalCloseButton onPress={onClose} className="rounded-full bg-white/10 px-3 py-2">
+            <Text className="text-[12px] font-bold text-white">Close</Text>
+          </ModalCloseButton>
+        </ModalHeader>
+        <ModalBody className="m-0 p-5">
+          <Box className="gap-4">
+            <Box className="min-h-[320px] overflow-hidden rounded-xl bg-black">
+              {loading ? (
+                <Box className="min-h-[420px] items-center justify-center">
+                  <Text className="text-sm text-[#c7c1b7]">Loading secure preview...</Text>
+                </Box>
+              ) : error ? (
+                <Box className="min-h-[320px] items-center justify-center px-6">
+                  <Text className="text-center text-sm text-[#ffb2a8]">{error}</Text>
+                </Box>
+              ) : url && Platform.OS === "web" ? (
+                React.createElement("video", {
+                  key: url,
+                  src: url,
+                  controls: true,
+                  autoPlay: true,
+                  playsInline: true,
+                  style: {
+                    display: "block",
+                    width: "100%",
+                    maxHeight: "72vh",
+                    backgroundColor: "#000",
+                  },
+                })
+              ) : url ? (
+                <Box className="min-h-[320px] items-center justify-center px-6">
+                  <Text className="text-center text-sm text-[#c7c1b7]">
+                    Avatar video preview is available in the web app.
+                  </Text>
+                </Box>
+              ) : (
+                <Box className="min-h-[320px] items-center justify-center">
+                  <Text className="text-sm text-[#c7c1b7]">Preparing preview...</Text>
+                </Box>
+              )}
+            </Box>
+            <Box className="flex-row flex-wrap items-center justify-between gap-3">
+              <Text className="text-[12px] font-semibold text-white">
+                {video?.durationMs ? formatDurationLong(video.durationMs) : "Video ready"}
+                {video?.width && video.height ? ` · ${video.width}x${video.height}` : ""}
+              </Text>
+              {url && Platform.OS === "web"
+                ? React.createElement(
+                    "a",
+                    {
+                      href: url,
+                      target: "_blank",
+                      rel: "noreferrer",
+                      style: {
+                        borderRadius: 999,
+                        background: "rgba(255,255,255,0.1)",
+                        color: "#fff",
+                        fontSize: 12,
+                        fontWeight: 700,
+                        padding: "10px 14px",
+                        textDecoration: "none",
+                      },
+                    },
+                    "Open in new tab"
+                  )
+                : null}
+            </Box>
+          </Box>
+        </ModalBody>
+      </ModalContent>
+    </Modal>
   );
 }
 
@@ -2431,8 +2925,7 @@ function PrimaryGenerationAction({ runId, state }: { runId: Id<"runs">; state: s
 }
 
 function phaseForState(state: string): { index: number; label: string } {
-  const index = PHASES.findIndex((phase) => phase.states.includes(state));
-  const safeIndex = index >= 0 ? index : 0;
+  const safeIndex = phaseIndexForRunState(state) ?? 0;
   return { index: safeIndex, label: PHASES[safeIndex]?.label ?? PHASES[0]!.label };
 }
 
@@ -2444,7 +2937,7 @@ function substepIndexForState(state: string): number {
   if (["COMPILED", "QA_RUNNING", "QA_PASSED", "QA_FLAGGED"].includes(state)) return 1;
   if (["GATE_2_COURSE_REVIEW", "GATE_2_QUIZ_REVIEW"].includes(state)) return 2;
   if (state === "GENERATING_SCRIPT") return 0;
-  if (state === "GENERATING_ASSETS") return 1;
+  if (["GENERATING_ASSETS", "GENERATING_AVATAR"].includes(state)) return 1;
   if (state === "GATE_3_PREVIEW") return 2;
   if (state === "PUBLISHING") return 0;
   if (state === "PUBLISHED") return 2;
@@ -2469,6 +2962,7 @@ function progressPercent(state: string, compileProgress: RunCompileProgress | nu
     GATE_2_QUIZ_REVIEW: 69,
     GENERATING_SCRIPT: 75,
     GENERATING_ASSETS: 83,
+    GENERATING_AVATAR: 86,
     GATE_3_PREVIEW: 89,
     PUBLISHING: 95,
     PUBLISHED: 100,
@@ -2504,6 +2998,7 @@ function phaseHeadline(state: string): string {
     GATE_2_QUIZ_REVIEW: "Your course questions are ready to review",
     GENERATING_SCRIPT: "Creating the course voice script",
     GENERATING_ASSETS: "Creating course media and preview",
+    GENERATING_AVATAR: "Creating course avatar videos",
     GATE_3_PREVIEW: "Your playable preview is ready",
     PUBLISHING: "Publishing your course",
     PUBLISHED: "Your course is published",
@@ -2622,6 +3117,7 @@ function friendlyState(state: string): string {
   if (state === "GATE_3_PREVIEW") return "preview approval";
   if (state === "GENERATING_SCRIPT") return "script generation";
   if (state === "GENERATING_ASSETS") return "asset generation";
+  if (state === "GENERATING_AVATAR") return "avatar video generation";
   return state.replaceAll("_", " ").toLowerCase();
 }
 

@@ -15,7 +15,7 @@ import {
 
 export type LlmContentBlock =
   | { type: "text"; text: string }
-  | { type: "image"; base64Png: string };
+  | { type: "image"; base64Png: string; mimeType?: "image/png" | "image/jpeg" | "image/webp" };
 
 export interface LlmCompleteInput {
   /**
@@ -86,7 +86,7 @@ function toOpenRouterContent(
       ? { type: "text", text: block.text }
       : {
           type: "image_url",
-          image_url: { url: `data:image/png;base64,${block.base64Png}` },
+          image_url: { url: `data:${block.mimeType ?? "image/png"};base64,${block.base64Png}` },
         }
   );
 }

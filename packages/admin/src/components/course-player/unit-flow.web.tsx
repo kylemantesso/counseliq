@@ -53,6 +53,8 @@ export interface UnitFlowProps {
   audio: UnitAudioControls;
   reducedMotion: boolean;
   institutionLogoUrl?: string | null;
+  /** Persisted avatar track URL resolved by the parent player. */
+  avatarVideoUrl?: string;
   isLastUnit: boolean;
   onEditSentence?: (narrationId: string) => void;
 }
@@ -65,6 +67,7 @@ export function UnitFlow({
   audio,
   reducedMotion,
   institutionLogoUrl,
+  avatarVideoUrl,
   isLastUnit,
   onEditSentence,
 }: UnitFlowProps) {
@@ -86,6 +89,7 @@ export function UnitFlow({
           audio={audio}
           reducedMotion={reducedMotion}
           institutionLogoUrl={institutionLogoUrl}
+          avatarVideoUrl={avatarVideoUrl}
           onEditSentence={onEditSentence}
         />
       );

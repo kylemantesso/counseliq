@@ -13,6 +13,7 @@ import {
   isLlmTask,
   type LlmModelRouting,
 } from "./llm/models";
+import { estimateHeyGenCostUsd } from "./avatar/pricing";
 
 /**
  * Cost + observability for LLM usage. Every OpenRouter call (including
@@ -67,7 +68,21 @@ export interface RunCostBreakdown {
       costUsd: number;
     }>;
   };
-  /** LLM + TTS. */
+  /** HeyGen totals estimated from successful output duration. */
+  heygen: {
+    totalUsd: number;
+    totalJobs: number;
+    totalDurationMs: number;
+    usedFallbackPricing: boolean;
+    byEngine: Array<{
+      engine: "avatar_iv" | "avatar_v";
+      avatarType: string;
+      jobs: number;
+      durationMs: number;
+      costUsd: number;
+    }>;
+  };
+  /** LLM + TTS + HeyGen. */
   grandTotalUsd: number;
 }
 
@@ -131,6 +146,63 @@ async function computeRunCost(
     ttsCharacters += call.characters;
   }
 
+  const avatarJobs = (
+    await ctx.db
+      .query("avatarJobs")
+      .withIndex("by_run", (q) => q.eq("runId", runId))
+      .take(5000)
+  ).filter((job) => job.status === "succeeded" && job.output !== undefined);
+  const missingLookIds = [
+    ...new Set(
+      avatarJobs
+        .filter((job) => job.look.avatarType === undefined)
+        .map((job) => job.look.lookId)
+    ),
+  ];
+  const catalogTypes = new Map<string, string>();
+  await Promise.all(
+    missingLookIds.map(async (lookId) => {
+      const look = await ctx.db
+        .query("avatarLooks")
+        .withIndex("by_provider_and_look", (q) =>
+          q.eq("provider", "heygen").eq("lookId", lookId)
+        )
+        .unique();
+      if (look) catalogTypes.set(lookId, look.avatarType);
+    })
+  );
+  const heygenByKey = new Map<
+    string,
+    RunCostBreakdown["heygen"]["byEngine"][number]
+  >();
+  let heygenUsd = 0;
+  let heygenDurationMs = 0;
+  let usedFallbackPricing = false;
+  for (const job of avatarJobs) {
+    const avatarType =
+      job.look.avatarType ?? catalogTypes.get(job.look.lookId) ?? "unknown";
+    const estimate = estimateHeyGenCostUsd({
+      engine: job.engine,
+      avatarType,
+      durationMs: job.output!.durationMs,
+    });
+    const key = `${job.engine}\u0000${avatarType}`;
+    const entry = heygenByKey.get(key) ?? {
+      engine: job.engine,
+      avatarType,
+      jobs: 0,
+      durationMs: 0,
+      costUsd: 0,
+    };
+    entry.jobs += 1;
+    entry.durationMs += job.output!.durationMs;
+    entry.costUsd += estimate.costUsd;
+    heygenByKey.set(key, entry);
+    heygenUsd += estimate.costUsd;
+    heygenDurationMs += job.output!.durationMs;
+    usedFallbackPricing ||= estimate.usedFallbackPricing;
+  }
+
   return {
     totalUsd,
     totalCalls: calls.length,
@@ -147,7 +219,16 @@ async function computeRunCost(
         a.stage.localeCompare(b.stage)
       ),
     },
-    grandTotalUsd: totalUsd + ttsUsd,
+    heygen: {
+      totalUsd: heygenUsd,
+      totalJobs: avatarJobs.length,
+      totalDurationMs: heygenDurationMs,
+      usedFallbackPricing,
+      byEngine: [...heygenByKey.values()].sort((a, b) =>
+        a.engine.localeCompare(b.engine)
+      ),
+    },
+    grandTotalUsd: totalUsd + ttsUsd + heygenUsd,
   };
 }
 

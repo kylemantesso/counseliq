@@ -15,6 +15,7 @@ import {
   type LlmUsage,
 } from "../llm/client";
 import { type LlmModelRouting, type LlmTask } from "../llm/models";
+import { supportsAvatarOverlay, type CoursePresentation } from "@counseliq/course-schema";
 import {
   AUTHOR_UNIT_JSON_SCHEMA,
   COMPILE_STRUCTURE_JSON_SCHEMA,
@@ -157,6 +158,7 @@ async function authorOneUnit(
     lexicon !== null && typeof lexicon === "object"
       ? Object.keys(lexicon as Record<string, unknown>)
       : [];
+  const presentation = inventory.presentation as CoursePresentation | undefined;
 
   // The cleared catalogue is part of the authoring input: new uploads or
   // rights declarations change its hash, so a recompile re-authors with
@@ -193,7 +195,26 @@ async function authorOneUnit(
       institutionName: inventory.institution.name,
       courseTitle: args.courseTitle,
     });
-    return normalizeCardEnterAtAnchors(opened);
+    const normalized = normalizeCardEnterAtAnchors(opened);
+    if (presentation?.mode !== "avatar") return normalized;
+
+    // The title is always video-backed. Limit additional overlays to a
+    // readable mixed sequence even when an author model over-selects them.
+    let nonTitleOverlays = 0;
+    const cards = normalized.authored.cards.map((card, index) => {
+      if (index === 0 && card.template === "title-card") {
+        return { ...card, visualTreatment: "avatar-overlay" as const };
+      }
+      if (!supportsAvatarOverlay(card.template)) {
+        return { ...card, visualTreatment: "standard" as const };
+      }
+      const requested = card.visualTreatment === "avatar-overlay";
+      const cadenceSlot = index > 1 && index % 3 === 2;
+      const useOverlay = nonTitleOverlays < 2 && (requested || cadenceSlot);
+      if (useOverlay) nonTitleOverlays += 1;
+      return { ...card, visualTreatment: useOverlay ? ("avatar-overlay" as const) : ("standard" as const) };
+    });
+    return { ...normalized, authored: { ...normalized.authored, cards } };
   };
 
   if (!args.bypassCache) {

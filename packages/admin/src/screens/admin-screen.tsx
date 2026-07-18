@@ -307,7 +307,7 @@ function PipelineProgress({ currentState }: { currentState?: string }) {
     ["OUTLINE_REVIEW"],
     ["COMPILING", "COMPILED", "QA_RUNNING", "QA_FLAGGED", "QA_PASSED"],
     ["GATE_2_COURSE_REVIEW"],
-    ["GENERATING_SCRIPT", "GENERATING_ASSETS"],
+    ["GENERATING_SCRIPT", "GENERATING_ASSETS", "GENERATING_AVATAR"],
     ["GATE_3_PREVIEW"],
     ["PUBLISHING", "PUBLISHED"],
   ] as const;
@@ -361,6 +361,7 @@ function stateLabel(state: string): string {
   if (state === "PUBLISHED") return "Published";
   if (state === "QA_FLAGGED") return "QA warnings";
   if (state === "GENERATING_ASSETS") return "Synthesis";
+  if (state === "GENERATING_AVATAR") return "Avatar video generation";
   return state.replaceAll("_", " ").toLowerCase();
 }
 
@@ -393,7 +394,7 @@ function routeForRunState(runId: Id<"runs">, state: string): string | null {
     return `/admin/runs/${runId}/gate-2`;
   }
   if (
-    ["GATE_3_PREVIEW", "GENERATING_SCRIPT", "GENERATING_ASSETS", "PUBLISHING", "PUBLISHED"].includes(
+    ["GATE_3_PREVIEW", "GENERATING_SCRIPT", "GENERATING_ASSETS", "GENERATING_AVATAR", "PUBLISHING", "PUBLISHED"].includes(
       state
     )
   ) {

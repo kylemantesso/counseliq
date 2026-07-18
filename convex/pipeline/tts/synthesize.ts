@@ -10,18 +10,15 @@ import type { ActionCtx } from "../../_generated/server";
 import type { Doc, Id } from "../../_generated/dataModel";
 import { components, internal } from "../../_generated/api";
 import {
-  assembleUnitClock,
   computeMediaWindows,
   deriveWords,
   projectWordsToSpeakText,
   resolveCardBeats,
   buildUnitTiming,
   MEDIA_WINDOW_TEMPLATES,
-  type SentenceForAssembly,
-  type SpokenWord,
 } from "./beats";
 import { buildSubstitutionMap } from "./lexicon";
-import { sentenceHash, sha256Hex, unitContentHash } from "./hashes";
+import { sha256Hex, unitContentHash } from "./hashes";
 import {
   createProvider,
   defaultVoice,
@@ -29,19 +26,17 @@ import {
   ttsProviderName,
   ttsParallelism,
   ttsTimeoutMs,
-  INTER_SENTENCE_GAP_MS,
   OUTPUT_FORMAT,
 } from "./models";
 import { fetchAccountDefaultVoice } from "./elevenlabs";
 import type { RunVoiceContext } from "./data";
 
 /**
- * GENERATING_ASSETS (M5): per-unit TTS synthesis with word timestamps.
+ * GENERATING_ASSETS (M5): continuous per-unit TTS with word timestamps.
  *
  * Fan-out mirrors the compiler: one idempotent action per unit through the
- * ttsPool workpool, with two cache layers — `ttsSentences` (per spoken
- * sentence, shared across runs/courses) and `microUnits.contentHash` (whole
- * unit skipped when nothing audio-relevant changed). Per-unit failures mark
+ * ttsPool workpool. `microUnits.contentHash` skips the whole unit when
+ * nothing audio-relevant changed. Per-unit failures mark
  * `microUnits.error` and surface as gate-3 failed_unit items; the run only
  * fails when zero units succeed.
  */
@@ -176,7 +171,6 @@ async function synthesizeUnitInner(
     voiceSettings: settings,
     model,
     outputFormat: OUTPUT_FORMAT,
-    gapMs: INTER_SENTENCE_GAP_MS,
   });
   if (
     regenerationKey === null &&
@@ -190,112 +184,83 @@ async function synthesizeUnitInner(
     buildSubstitutionMap(sentence.speakText, lexicon)
   );
 
-  let synthesized = 0;
-  let cachedSentences = 0;
-  const assembly: SentenceForAssembly[] = [];
-  for (let i = 0; i < script.sentences.length; i++) {
-    const sentence = script.sentences[i];
-    const { spokenText, segments } = substitutions[i];
-    const hash = await sentenceHash({
-      spokenText,
-      voiceId,
-      voiceAccent: accent,
-      voiceSettings: settings,
-      regenerationKey,
-      model,
-      outputFormat: OUTPUT_FORMAT,
-    });
-
-    const cached = await ctx.runQuery(
-      internal.pipeline.tts.data.getTtsSentenceByHash,
-      { sentenceHash: hash }
-    );
-    let sentenceData: {
-      audioKey: string;
-      durationMs: number;
-      words: SpokenWord[];
-    };
-    if (!cached) {
-      const provider = createProvider();
-      const result = await provider.synthesize({
-        text: spokenText,
-        voiceId,
-        ...(accent ? { accent } : {}),
-        ...(settings?.stability !== undefined ? { stability: settings.stability } : {}),
-        ...(settings?.similarityBoost !== undefined
-          ? { similarityBoost: settings.similarityBoost }
-          : {}),
-        ...(settings?.style !== undefined ? { style: settings.style } : {}),
-        ...(settings?.speakerBoost !== undefined
-          ? { speakerBoost: settings.speakerBoost }
-          : {}),
-        ...(settings?.speed !== undefined ? { speed: settings.speed } : {}),
-        ...(i > 0 ? { previousText: substitutions[i - 1].spokenText } : {}),
-        ...(i < script.sentences.length - 1
-          ? { nextText: substitutions[i + 1].spokenText }
-          : {}),
-      });
-      const words = deriveWords(spokenText, result.timestamps);
-      const durationMs = Math.max(
-        1,
-        Math.round(
-          (result.timestamps.endSeconds.at(-1) ?? 0) * 1000
-        )
-      );
-      const audioKey = `sha256/${await sha256Hex(result.audio)}.mp3`;
-      if (providerName !== "mock") {
-        await uploadAudio(ctx, audioKey, result.audio);
-      }
-      await ctx.runMutation(internal.pipeline.tts.data.recordTtsAudioAsset, {
-        objectKey: audioKey,
-        sourceProvenance: `run:${runId}:unit:${unit.unitKey}:sentence:${sentence.narrationId}`,
-      });
-      await ctx.runMutation(internal.pipeline.tts.data.saveTtsSentence, {
-        sentenceHash: hash,
-        audioKey,
-        durationMs,
-        words,
-        characters: result.characters,
-        provider: providerName,
-        model: result.model,
-        voiceId,
-      });
-      await ctx.runMutation(internal.pipeline.tts.calls.recordTtsCall, {
-        runId,
-        stage: "synthesize-unit",
-        unitKey: unit.unitKey,
-        provider: providerName,
-        model: result.model,
-        voiceId,
-        characters: result.characters,
-        latencyMs: result.latencyMs,
-      });
-      sentenceData = { audioKey, durationMs, words };
-      synthesized += 1;
-    } else {
-      sentenceData = {
-        audioKey: cached.audioKey,
-        durationMs: cached.durationMs,
-        words: cached.words,
-      };
-      cachedSentences += 1;
-    }
-
-    const captionWords: TimingWord[] = projectWordsToSpeakText(
-      sentence.speakText,
-      segments,
-      sentenceData.words
-    );
-    assembly.push({
-      narrationId: sentence.narrationId,
-      speakText: sentence.speakText,
-      audioKey: sentenceData.audioKey,
-      durationMs: sentenceData.durationMs,
-      words: captionWords,
-    });
+  const spokenStarts: number[] = [];
+  let unitSpokenText = "";
+  for (const substitution of substitutions) {
+    if (unitSpokenText.length > 0) unitSpokenText += " ";
+    spokenStarts.push(unitSpokenText.length);
+    unitSpokenText += substitution.spokenText;
   }
 
-  const timingSentences = assembleUnitClock(assembly, INTER_SENTENCE_GAP_MS);
+  const provider = createProvider();
+  const result = await provider.synthesize({
+    text: unitSpokenText,
+    voiceId,
+    ...(accent ? { accent } : {}),
+    ...(settings?.stability !== undefined ? { stability: settings.stability } : {}),
+    ...(settings?.similarityBoost !== undefined
+      ? { similarityBoost: settings.similarityBoost }
+      : {}),
+    ...(settings?.style !== undefined ? { style: settings.style } : {}),
+    ...(settings?.speakerBoost !== undefined
+      ? { speakerBoost: settings.speakerBoost }
+      : {}),
+    ...(settings?.speed !== undefined ? { speed: settings.speed } : {}),
+  });
+  const audioKey = `sha256/${await sha256Hex(result.audio)}.mp3`;
+  if (providerName !== "mock") {
+    await uploadAudio(ctx, audioKey, result.audio);
+  }
+  await ctx.runMutation(internal.pipeline.tts.data.recordTtsAudioAsset, {
+    objectKey: audioKey,
+    sourceProvenance: `run:${runId}:unit:${unit.unitKey}`,
+  });
+  await ctx.runMutation(internal.pipeline.tts.calls.recordTtsCall, {
+    runId,
+    stage: "synthesize-unit",
+    unitKey: unit.unitKey,
+    provider: providerName,
+    model: result.model,
+    voiceId,
+    characters: result.characters,
+    latencyMs: result.latencyMs,
+  });
+
+  const spokenWords = deriveWords(unitSpokenText, result.timestamps);
+  const sentenceStartsMs = spokenStarts.map((start, index) =>
+    index === 0
+      ? 0
+      : Math.max(0, Math.round((result.timestamps.startSeconds[start] ?? 0) * 1000))
+  );
+  const unitEndMs = Math.max(
+    1,
+    Math.round((result.timestamps.endSeconds.at(-1) ?? 0) * 1000)
+  );
+  const timingSentences = script.sentences.map((sentence, index) => {
+    const spokenStart = spokenStarts[index];
+    const spokenEnd = spokenStart + substitutions[index].spokenText.length;
+    const sentenceWords = spokenWords
+      .filter((word) => word.charStart < spokenEnd && spokenStart < word.charEnd)
+      .map((word) => ({
+        ...word,
+        charStart: word.charStart - spokenStart,
+        charEnd: word.charEnd - spokenStart,
+      }));
+    const words: TimingWord[] = projectWordsToSpeakText(
+      sentence.speakText,
+      substitutions[index].segments,
+      sentenceWords
+    );
+    const startMs = sentenceStartsMs[index];
+    const endMs = sentenceStartsMs[index + 1] ?? unitEndMs;
+    return {
+      narrationId: sentence.narrationId,
+      speakText: sentence.speakText,
+      startMs,
+      durationMs: Math.max(1, endMs - startMs),
+      words,
+    };
+  });
   const cardBeats = resolveCardBeats(cards, script, timingSentences);
   const totalDurationMs = contentEndMsForTiming({ sentences: timingSentences });
   const mediaRefs = cards
@@ -323,7 +288,7 @@ async function synthesizeUnitInner(
     provider: providerName,
     voiceRef,
     model,
-    gapMs: INTER_SENTENCE_GAP_MS,
+    unitAudioKey: audioKey,
     sentences: timingSentences,
     cardBeats,
     media,
@@ -335,10 +300,10 @@ async function synthesizeUnitInner(
     timing,
     contentHash,
   });
-  return { status: "ok", synthesized, cachedSentences };
+  return { status: "ok", synthesized: 1, cachedSentences: 0 };
 }
 
-/** Workpool entry point: synthesise one unit (idempotent via both caches). */
+/** Workpool entry point: synthesize one continuous unit narration. */
 export const synthesizeUnit = internalAction({
   args: {
     runId: v.id("runs"),

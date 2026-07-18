@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAction, useMutation, useQuery } from "convex/react";
-import { useParams } from "solito/navigation";
+import { useParams, useRouter } from "solito/navigation";
 import {
   Box,
   Button,
@@ -23,10 +23,12 @@ import {
   TextareaInput,
 } from "@counseliq/ui";
 import { Image } from "react-native";
+import { supportsAvatarOverlay } from "@counseliq/course-schema";
 import type { Doc, Id } from "../../../../convex/_generated/dataModel";
 import { AdminGuard } from "../components/admin-guard";
 import { AdminWorkspaceFrame } from "../components/admin-workspace-frame";
 import { CardStaticPreview } from "../components/card-static-preview";
+import { AvatarPresentationPanel } from "../components/avatar-presentation-panel";
 import { api } from "../db/api";
 import { getUserFacingErrorMessage } from "../errors/get-user-facing-message";
 
@@ -55,6 +57,7 @@ interface NarrationSentence {
 interface UnitCard {
   template: string;
   props: Record<string, unknown>;
+  visualTreatment?: "standard" | "avatar-overlay";
   enterAt: { narration: string; word: string };
   provenance: string;
 }
@@ -178,11 +181,29 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function avatarLookForUnit(
+  presentation: unknown,
+  unitKey: string
+): { previewImageUrl?: string | null; name?: string } | null {
+  if (!isRecord(presentation) || presentation.mode !== "avatar") return null;
+  const assignments = isRecord(presentation.unitAssignments)
+    ? presentation.unitAssignments
+    : {};
+  const assignment = isRecord(assignments[unitKey]) ? assignments[unitKey] : null;
+  if (assignment && isRecord(assignment.look)) return assignment.look;
+  const unitLooks = isRecord(presentation.unitLooks) ? presentation.unitLooks : {};
+  const look = unitLooks[unitKey];
+  if (isRecord(look)) return look;
+  return isRecord(presentation.defaultLook) ? presentation.defaultLook : null;
+}
+
 function AdminGateTwoReviewContent() {
+  const router = useRouter();
   const params = useParams<{ id: string }>();
   const runId = params?.id as Id<"runs"> | undefined;
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [approving, setApproving] = useState(false);
   const [selectedUnitId, setSelectedUnitId] = useState<Id<"microUnits"> | null>(
     null
   );
@@ -330,16 +351,28 @@ function AdminGateTwoReviewContent() {
 
   const onApprove = async () => {
     if (!runId) return;
+    if (!atGate) {
+      router.push(`/admin/runs/${runId}`);
+      return;
+    }
+    if (!currentVoice) {
+      setError("Choose and save a narration voice before approving this course.");
+      setVoiceStudioOpen(true);
+      return;
+    }
     setError(null);
     setBusy(true);
+    setApproving(true);
     try {
       await decideGate({ runId, gate: 2, decision: "approve" });
+      router.push(`/admin/runs/${runId}`);
     } catch (err) {
       setError(
         getUserFacingErrorMessage(err, "Review decision failed. Try again.")
       );
     } finally {
       setBusy(false);
+      setApproving(false);
     }
   };
 
@@ -413,8 +446,8 @@ function AdminGateTwoReviewContent() {
                   size="sm"
                   variant="outline"
                   onPress={() => setVoiceStudioOpen(true)}
-                  disabled={!atGate || !runId}
-                  className="rounded-full"
+                  isDisabled={!atGate || !runId}
+                  className="web:cursor-pointer rounded-full data-[disabled=true]:web:cursor-not-allowed"
                 >
                   <ButtonText>
                     {currentVoice?.name ? `Voice: ${currentVoice.name}` : "Choose narration voice"}
@@ -424,8 +457,8 @@ function AdminGateTwoReviewContent() {
                   size="sm"
                   variant="outline"
                   onPress={onSendBack}
-                  disabled={!atGate || busy || sendBackIds.size === 0}
-                  className="rounded-full"
+                  isDisabled={!atGate || busy || sendBackIds.size === 0}
+                  className="web:cursor-pointer rounded-full data-[disabled=true]:web:cursor-not-allowed"
                 >
                   <ButtonText>
                     {sendBackIds.size > 0
@@ -435,11 +468,13 @@ function AdminGateTwoReviewContent() {
                 </Button>
                 <Button
                   size="sm"
-                  onPress={onApprove}
-                  disabled={!atGate || busy || !currentVoice}
-                  className="rounded-full bg-[#1f1d1a]"
+                  onPress={() => void onApprove()}
+                  isDisabled={approving}
+                  className="web:cursor-pointer rounded-full bg-[#1f1d1a] data-[disabled=true]:web:cursor-wait"
                 >
-                  <ButtonText>Approve course review</ButtonText>
+                  <ButtonText>
+                    {approving ? "Approving course..." : "Approve course review"}
+                  </ButtonText>
                 </Button>
               </Box>
             </Box>
@@ -478,7 +513,7 @@ function AdminGateTwoReviewContent() {
             />
           ) : null}
 
-          <Box className="flex-1 min-h-0 flex-col lg:flex-row">
+          <Box className="flex-1 min-h-0 flex-col xl:flex-row">
             <UnitQueuePanel
               modules={modules}
               runId={runId}
@@ -490,7 +525,7 @@ function AdminGateTwoReviewContent() {
               onError={setError}
             />
 
-            <ScrollView className="flex-1 min-w-0 border-r border-[#dedbd2] bg-[#fbfaf6]">
+            <ScrollView className="min-h-0 flex-1 min-w-0 bg-[#fbfaf6] xl:border-r xl:border-[#dedbd2]">
               {selectedUnit && runId ? (
                 <UnitDetail
                   unit={selectedUnit}
@@ -499,6 +534,7 @@ function AdminGateTwoReviewContent() {
                   markedForSendBack={sendBackIds.has(selectedUnit._id)}
                   onToggleSendBack={() => toggleSendBack(selectedUnit._id)}
                   editable={atGate}
+                  presentation={(courseData.course.definitionMeta as { presentation?: unknown } | undefined)?.presentation}
                   onError={setError}
                 />
               ) : (
@@ -512,6 +548,7 @@ function AdminGateTwoReviewContent() {
                 runId={runId}
                 resolveAssetRef={resolveAssetRef}
                 brandTokens={gateThemeTokens}
+                presentation={(courseData.course.definitionMeta as { presentation?: unknown } | undefined)?.presentation}
                 editable={atGate}
                 onError={setError}
               />
@@ -1104,7 +1141,7 @@ function UnitQueuePanel({
 }) {
   const totalUnits = modules.reduce((sum, module) => sum + module.units.length, 0);
   return (
-    <Box className="shrink-0 border-b border-[#dedbd2] bg-[#f0eee8] lg:w-[280px] lg:border-b-0 lg:border-r">
+    <Box className="min-h-0 shrink-0 flex-col border-b border-[#dedbd2] bg-[#f0eee8] xl:w-[270px] xl:border-b-0 xl:border-r">
       <Box className="border-b border-[#dedbd2] px-4 py-4">
         <Text className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
           Unit queue · {totalUnits}
@@ -1113,7 +1150,7 @@ function UnitQueuePanel({
           Select a unit to inspect. Mark units to send back for re-authoring.
         </Text>
       </Box>
-      <ScrollView className="max-h-[320px] lg:max-h-none">
+      <ScrollView className="min-h-0 flex-1 max-h-[320px] xl:max-h-none">
         <Box className="gap-4 p-3">
           {modules.map((module) => (
             <Box key={module.moduleKey} className="gap-1.5">
@@ -1583,6 +1620,7 @@ function UnitDetail({
   markedForSendBack,
   onToggleSendBack,
   editable,
+  presentation,
   onError,
 }: {
   unit: Doc<"microUnits">;
@@ -1591,6 +1629,7 @@ function UnitDetail({
   markedForSendBack: boolean;
   onToggleSendBack: () => void;
   editable: boolean;
+  presentation?: unknown;
   onError: (message: string | null) => void;
 }) {
   const meta = unit.meta as UnitMeta;
@@ -1699,6 +1738,14 @@ function UnitDetail({
           </ButtonText>
         </Button>
       </Box>
+
+      <AvatarPresentationPanel
+        runId={runId}
+        presentation={presentation}
+        unit={{ unitKey: unit.unitKey, concept: unit.concept }}
+        editable={editable}
+        onError={onError}
+      />
 
       <Box className="overflow-hidden rounded-2xl border border-[#dedbd2] bg-white">
         <Box className="flex-row flex-wrap items-center justify-between gap-2 border-b border-[#ebe8df] px-4 py-3">
@@ -1870,6 +1917,7 @@ function CardDeckPanel({
   runId,
   resolveAssetRef,
   brandTokens,
+  presentation,
   editable,
   onError,
 }: {
@@ -1877,6 +1925,7 @@ function CardDeckPanel({
   runId: Id<"runs">;
   resolveAssetRef: (ref: string) => string | null;
   brandTokens?: unknown;
+  presentation?: unknown;
   editable: boolean;
   onError: (message: string | null) => void;
 }) {
@@ -1884,21 +1933,37 @@ function CardDeckPanel({
   const cards = (unit.cards ?? []) as UnitCard[];
   const qa = unit.qa as UnitQa | undefined;
   const flaggedCards = flagsByCardIndex(cards, qa?.flags ?? []);
+  const avatarLook = avatarLookForUnit(presentation, unit.unitKey);
+  const avatarPreviewImageUrl =
+    typeof avatarLook?.previewImageUrl === "string"
+      ? avatarLook.previewImageUrl
+      : null;
+  const avatarMode = isRecord(presentation) && presentation.mode === "avatar";
+  const presenterCards = cards.filter(
+    (card) => card.visualTreatment === "avatar-overlay"
+  ).length;
+  const brollCards = cards.filter((card) => card.template === "video-card").length;
+  const contentCards = cards.length - presenterCards - brollCards;
   const [editingAnchor, setEditingAnchor] = useState(false);
   useEffect(() => {
     if (!editable) setEditingAnchor(false);
   }, [editable]);
   return (
-    <Box className="shrink-0 border-t border-[#dedbd2] bg-[#f0eee8] lg:w-[340px] lg:border-l lg:border-t-0">
+    <Box className="min-h-0 shrink-0 flex-col border-t border-[#dedbd2] bg-[#f0eee8] xl:w-[300px] xl:border-l xl:border-t-0">
       <Box className="border-b border-[#dedbd2] px-4 py-4">
         <Text className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
           Card deck · {cards.length}
         </Text>
         <Text className="mt-1 text-[12px] leading-4 text-muted-foreground">
-          What the learner sees. Cards anchor to narration sentences.
+          Toggle eligible cards between presenter video and full-screen content.
         </Text>
+        <Box className="mt-2 flex-row flex-wrap gap-1.5">
+          {avatarMode ? <Pill tone="neutral" label={`${presenterCards} presenter`} /> : null}
+          <Pill tone="neutral" label={`${contentCards} content`} />
+          {brollCards > 0 ? <Pill tone="neutral" label={`${brollCards} b-roll`} /> : null}
+        </Box>
       </Box>
-      <ScrollView className="max-h-[520px] lg:max-h-none">
+      <ScrollView className="min-h-0 flex-1 max-h-[520px] xl:max-h-none">
         <Box className="gap-3 p-4">
           {flaggedCards.size > 0 ? (
             <Box className="gap-2 rounded-xl border border-[#ead39c] bg-[#fffaf0] p-3">
@@ -1920,6 +1985,7 @@ function CardDeckPanel({
                   flags={flags}
                   resolveAssetRef={resolveAssetRef}
                   brandTokens={brandTokens}
+                  avatarPreviewImageUrl={avatarPreviewImageUrl}
                 />
               ))}
             </Box>
@@ -1937,6 +2003,8 @@ function CardDeckPanel({
               unitId={unit._id}
               resolveAssetRef={resolveAssetRef}
               brandTokens={brandTokens}
+              avatarPreviewImageUrl={avatarPreviewImageUrl}
+              avatarMode={avatarMode}
               flagged={flaggedCards.has(index)}
               editable={editable}
               onError={onError}
@@ -1958,6 +2026,7 @@ function CardDeckPanel({
                   brandTokens={brandTokens}
                   resolveAssetRef={resolveAssetRef}
                   showControls={false}
+                  visualTreatment="standard"
                 />
               </Box>
               <Box className="min-w-0 flex-1 gap-1">
@@ -1994,6 +2063,13 @@ function CardDeckPanel({
               />
             ) : null}
           </Box>
+          {avatarMode ? (
+            <Box className="rounded-xl border border-dashed border-[#d8d4ca] bg-[#f8f6f0] p-3">
+              <Text className="text-[10px] leading-4 text-muted-foreground">
+                The title opens over the presenter by default. Switch eligible cards between Presenter and Content, then approve the course.
+              </Text>
+            </Box>
+          ) : null}
         </Box>
       </ScrollView>
     </Box>
@@ -2006,12 +2082,14 @@ function FlaggedCardRow({
   flags,
   resolveAssetRef,
   brandTokens,
+  avatarPreviewImageUrl,
 }: {
   card: UnitCard;
   index: number;
   flags: JudgeFlag[];
   resolveAssetRef: (ref: string) => string | null;
   brandTokens?: unknown;
+  avatarPreviewImageUrl?: string | null;
 }) {
   return (
     <Box className="gap-2 rounded-lg border border-[#ead39c] bg-white p-2.5">
@@ -2026,6 +2104,8 @@ function FlaggedCardRow({
             brandTokens={brandTokens}
             resolveAssetRef={resolveAssetRef}
             showControls={false}
+            visualTreatment={card.visualTreatment}
+            avatarPreviewImageUrl={avatarPreviewImageUrl}
           />
         </Box>
         <Box className="min-w-0 flex-1 gap-1">
@@ -2050,6 +2130,8 @@ function CardDeckRow({
   unitId,
   resolveAssetRef,
   brandTokens,
+  avatarPreviewImageUrl,
+  avatarMode,
   flagged,
   editable,
   onError,
@@ -2060,12 +2142,26 @@ function CardDeckRow({
   unitId: Id<"microUnits">;
   resolveAssetRef: (ref: string) => string | null;
   brandTokens?: unknown;
+  avatarPreviewImageUrl?: string | null;
+  avatarMode: boolean;
   flagged: boolean;
   editable: boolean;
   onError: (message: string | null) => void;
 }) {
   const backgroundVariant = backgroundVariantForCard(card.props);
+  const setVisualTreatment = useMutation(
+    api.pipeline.tts.edit.adminSetCardVisualTreatment
+  );
   const [editingContent, setEditingContent] = useState(false);
+  const [savingTreatment, setSavingTreatment] = useState(false);
+  const isBroll = card.template === "video-card";
+  const overlayEligible = avatarMode && supportsAvatarOverlay(card.template);
+  const titleLocked = overlayEligible && index === 0 && card.template === "title-card";
+  const treatment = isBroll
+    ? "b-roll"
+    : card.visualTreatment === "avatar-overlay"
+      ? "presenter"
+      : "content";
   useEffect(() => {
     if (!editable) setEditingContent(false);
   }, [editable]);
@@ -2086,6 +2182,8 @@ function CardDeckRow({
             brandTokens={brandTokens}
             resolveAssetRef={resolveAssetRef}
             showControls={false}
+            visualTreatment={card.visualTreatment}
+            avatarPreviewImageUrl={avatarPreviewImageUrl}
           />
         </Box>
         <Box className="min-w-0 flex-1 gap-1">
@@ -2100,6 +2198,19 @@ function CardDeckRow({
                 </Text>
               </Box>
             ) : null}
+            <Box
+              className={`rounded-full px-1.5 py-0.5 ${
+                treatment === "presenter"
+                  ? "bg-[#eef5f0]"
+                  : treatment === "b-roll"
+                    ? "bg-[#e9eef5]"
+                    : "bg-[#f0eee8]"
+              }`}
+            >
+              <Text className="text-[9px] font-bold uppercase text-[#514d46]">
+                {treatment}
+              </Text>
+            </Box>
             {flagged ? (
               <Box className="rounded-full bg-[#fff2cf] px-1.5 py-0.5">
                 <Text className="text-[9px] font-bold uppercase text-[#8b5a08]">
@@ -2114,6 +2225,74 @@ function CardDeckRow({
           <Text className="text-[11px] text-muted-foreground" numberOfLines={2}>
             {provenanceLabel(card.provenance)}
           </Text>
+          {avatarMode && !isBroll ? (
+            <Box className="mt-1 flex-row self-start rounded-full border border-[#d8d4ca] bg-[#f8f6f0] p-0.5">
+              <Pressable
+                onPress={() => {
+                  if (!overlayEligible || savingTreatment) return;
+                  setSavingTreatment(true);
+                  void setVisualTreatment({
+                    runId,
+                    unitId,
+                    cardIndex: index,
+                    visualTreatment: "avatar-overlay",
+                  })
+                    .catch((error) =>
+                      onError(
+                        getUserFacingErrorMessage(
+                          error,
+                          "Could not change this card treatment."
+                        )
+                      )
+                    )
+                    .finally(() => setSavingTreatment(false));
+                }}
+                className={`rounded-full px-2 py-1 ${
+                  treatment === "presenter" ? "bg-[#1f1d1a]" : ""
+                } ${!overlayEligible ? "opacity-40" : ""}`}
+              >
+                <Text
+                  className={`text-[9px] font-bold ${
+                    treatment === "presenter" ? "text-white" : "text-[#69645c]"
+                  }`}
+                >
+                  Presenter
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  if (titleLocked || savingTreatment) return;
+                  setSavingTreatment(true);
+                  void setVisualTreatment({
+                    runId,
+                    unitId,
+                    cardIndex: index,
+                    visualTreatment: "standard",
+                  })
+                    .catch((error) =>
+                      onError(
+                        getUserFacingErrorMessage(
+                          error,
+                          "Could not change this card treatment."
+                        )
+                      )
+                    )
+                    .finally(() => setSavingTreatment(false));
+                }}
+                className={`rounded-full px-2 py-1 ${
+                  treatment === "content" ? "bg-[#1f1d1a]" : ""
+                } ${titleLocked ? "opacity-40" : ""}`}
+              >
+                <Text
+                  className={`text-[9px] font-bold ${
+                    treatment === "content" ? "text-white" : "text-[#69645c]"
+                  }`}
+                >
+                  Content
+                </Text>
+              </Pressable>
+            </Box>
+          ) : null}
           {editable ? (
             <Box className="mt-1 flex-row">
               <Button size="sm" variant="outline" className="h-7 rounded-full px-2" onPress={() => setEditingContent((value) => !value)}>

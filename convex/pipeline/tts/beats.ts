@@ -32,7 +32,7 @@ import {
 } from "./lexicon";
 import type { TtsCharacterTimestamps } from "./provider";
 
-/** A word of spokenText with char offsets (mirrors ttsSentences.words). */
+/** A word of spokenText with character offsets into the unit narration. */
 export interface SpokenWord {
   text: string;
   startMs: number;
@@ -105,43 +105,6 @@ export function projectWordsToSpeakText(
       endMs: Math.max(...overlapping.map((w) => w.endMs)),
     };
   });
-}
-
-export interface SentenceForAssembly {
-  narrationId: string;
-  speakText: string;
-  audioKey: string;
-  durationMs: number;
-  /** Sentence-local caption words (from projectWordsToSpeakText). */
-  words: TimingWord[];
-}
-
-/**
- * Lay sentences onto the unit clock: startMs accumulates durations plus a
- * constant inter-sentence gap; word times shift with their sentence.
- */
-export function assembleUnitClock(
-  sentences: readonly SentenceForAssembly[],
-  gapMs: number
-): TimingSentence[] {
-  const out: TimingSentence[] = [];
-  let clock = 0;
-  for (const sentence of sentences) {
-    out.push({
-      narrationId: sentence.narrationId,
-      speakText: sentence.speakText,
-      audioKey: sentence.audioKey,
-      startMs: clock,
-      durationMs: sentence.durationMs,
-      words: sentence.words.map((w) => ({
-        text: w.text,
-        startMs: w.startMs + clock,
-        endMs: w.endMs + clock,
-      })),
-    });
-    clock += sentence.durationMs + gapMs;
-  }
-  return out;
 }
 
 /**
@@ -275,7 +238,7 @@ export function buildUnitTiming(input: {
   provider: string;
   voiceRef: string;
   model: string;
-  gapMs: number;
+  unitAudioKey: string;
   sentences: readonly TimingSentence[];
   cardBeats: readonly CardBeat[];
   media: readonly MediaWindow[];
@@ -288,7 +251,7 @@ export function buildUnitTiming(input: {
     provider: input.provider,
     voiceRef: input.voiceRef,
     model: input.model,
-    interSentenceGapMs: input.gapMs,
+    unitAudioKey: input.unitAudioKey,
     totalDurationMs,
     sentences: input.sentences,
     cardBeats: input.cardBeats,

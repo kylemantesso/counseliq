@@ -2,11 +2,8 @@
  * Content-hash derivations for TTS invalidation (M5). Web Crypto only, so
  * the whole synthesis stack stays in the default Convex runtime.
  *
- * Two granularities:
- * - sentenceHash keys the cross-run `ttsSentences` cache: an edited sentence
- *   (or a lexicon change affecting it) re-synthesises alone.
- * - unitContentHash marks a unit's audio-relevant inputs: an unchanged unit
- *   is skipped entirely on re-runs of GENERATING_ASSETS.
+ * unitContentHash marks a unit's audio-relevant inputs: an unchanged unit is
+ * skipped entirely on re-runs of GENERATING_ASSETS.
  *
  * Brand tokens and card-template versions are deliberately NOT hashed here:
  * they do not affect audio or beat times. Visual-only card props (assetRef /
@@ -33,27 +30,6 @@ export async function sha256Hex(
   return [...new Uint8Array(digest)]
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
-}
-
-/** Cache key for one synthesised sentence (see ttsSentences). */
-export async function sentenceHash(input: {
-  spokenText: string;
-  voiceId: string;
-  voiceAccent?: string | null;
-  voiceSettings?: {
-    stability?: number;
-    similarityBoost?: number;
-    style?: number;
-    speakerBoost?: boolean;
-    speed?: number;
-  } | null;
-  regenerationKey?: string | null;
-  model: string;
-  outputFormat: string;
-}): Promise<string> {
-  return await sha256Hex(
-    `tts:v2|${input.spokenText}|${input.voiceId}|${input.voiceAccent ?? ""}|${JSON.stringify(input.voiceSettings ?? null)}|${input.regenerationKey ?? ""}|${input.model}|${input.outputFormat}`
-  );
 }
 
 /** Lexicon entries in key-sorted order so object insertion order never
@@ -112,11 +88,10 @@ export async function unitContentHash(input: {
   } | null;
   model: string;
   outputFormat: string;
-  gapMs: number;
 }): Promise<string> {
   return await sha256Hex(
     JSON.stringify({
-      v: 2,
+      v: 3,
       timingVersion: TIMING_VERSION,
       sentences: input.speakTexts,
       lexicon: canonicalLexicon(input.lexicon),
@@ -126,7 +101,6 @@ export async function unitContentHash(input: {
       voiceSettings: input.voiceSettings ?? null,
       model: input.model,
       outputFormat: input.outputFormat,
-      interSentenceGapMs: input.gapMs,
     })
   );
 }

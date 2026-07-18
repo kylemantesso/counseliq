@@ -31,6 +31,24 @@ export type {
 } from "./src/course-definition";
 
 export {
+  AVATAR_OVERLAY_TEMPLATES,
+  avatarLookAssignmentSchema,
+  avatarLookEvaluationSchema,
+  avatarLookSchema,
+  coursePresentationSchema,
+  supportsAvatarOverlay,
+  visualTreatmentSchema,
+} from "./src/presentation";
+
+export type {
+  AvatarLook,
+  AvatarLookAssignment,
+  AvatarLookEvaluation,
+  CoursePresentation,
+  VisualTreatment,
+} from "./src/presentation";
+
+export {
   CARD_PROP_SCHEMAS,
   typedCardContentSchema,
   validateCardProps,
@@ -189,6 +207,7 @@ export type {
 } from "./src/inventory";
 
 export {
+  renderAvatarTrackSchema,
   renderCallbackSchema,
   renderFailurePayloadSchema,
   renderJobRequestSchema,
@@ -199,6 +218,7 @@ export {
 } from "./src/render";
 
 export type {
+  RenderAvatarTrack,
   RenderCallback,
   RenderFailurePayload,
   RenderJobRequest,

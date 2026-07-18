@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   CARD_PROP_SCHEMAS,
   CARD_TEMPLATES,
+  visualTreatmentSchema,
   type CardTemplate,
 } from "@counseliq/course-schema";
 
@@ -147,6 +148,7 @@ const llmCardBranches = CARD_TEMPLATES.map((template) =>
   z.object({
     template: z.literal(template),
     props: z.preprocess(stripNullsDeep, CARD_PROP_SCHEMAS[template]),
+    visualTreatment: visualTreatmentSchema.optional(),
     enterAt: llmEnterAtSchema,
     /**
      * `compiler:derived` for connective/instructional cards, otherwise the
@@ -169,6 +171,7 @@ const llmAnchorBranches = CARD_TEMPLATES.map((template) =>
 export type LlmAuthoredCard = {
   template: CardTemplate;
   props: Record<string, unknown>;
+  visualTreatment?: "standard" | "avatar-overlay";
   enterAt: { narration: string; word: string };
   provenance: string;
 };

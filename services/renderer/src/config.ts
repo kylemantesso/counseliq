@@ -32,7 +32,7 @@ function positiveIntEnv(name: string, fallback: number): number {
 
 export function loadConfig(): RendererConfig {
   return {
-    port: Number(process.env.PORT ?? 8081),
+    port: Number(process.env.PORT ?? 8091),
     callbackSecret: required("RENDERER_CALLBACK_SECRET"),
     rendererVersion: process.env.RENDERER_VERSION?.trim() || "renderer@4-responsive",
     signedUrlTtlSeconds: positiveIntEnv("RENDERER_SIGNED_URL_TTL_SECONDS", 3600),

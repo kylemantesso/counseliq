@@ -69,6 +69,28 @@ export const getPublishInputInternal = internalQuery({
       }
     > = {};
     const assetIssues: string[] = [];
+    const presentation = (rows.course.definitionMeta as { presentation?: { mode?: string } } | undefined)
+      ?.presentation;
+    const avatarTracksByUnit: Record<string, { objectKey: string; thumbKey?: string; durationMs: number }> = {};
+    if (presentation?.mode === "avatar") {
+      const avatarJobs = await ctx.db
+        .query("avatarJobs")
+        .withIndex("by_run", (q) => q.eq("runId", args.runId))
+        .take(500);
+      for (const job of avatarJobs) {
+        if (job.status !== "succeeded" || !job.output) continue;
+        avatarTracksByUnit[String(job.unitId)] = {
+          objectKey: job.output.objectKey,
+          ...(job.output.thumbKey ? { thumbKey: job.output.thumbKey } : {}),
+          durationMs: job.output.durationMs,
+        };
+      }
+      for (const unit of rows.units) {
+        if (!avatarTracksByUnit[String(unit._id)]) {
+          assetIssues.push(`unit "${unit.unitKey}" has no completed avatar video`);
+        }
+      }
+    }
     for (const ref of assetRefs) {
       const assetId = ctx.db.normalizeId("assets", ref);
       if (!assetId) {
@@ -139,6 +161,7 @@ export const getPublishInputInternal = internalQuery({
       ),
       assetsByRef,
       assetIssues,
+      avatarTracksByUnit,
       publishedBy: publishingEvent?.actor ?? "system",
     };
   },

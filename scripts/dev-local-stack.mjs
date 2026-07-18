@@ -9,7 +9,7 @@
  *   1. MinIO + converter (docker compose, services/converter)
  *   2. A LOCAL anonymous Convex deployment (cloud dev can't reach localhost)
  *      with all ingestion env vars set
- *   3. `npx convex dev` + the Next.js web app pointed at the local deployment
+ *   3. `npx convex dev` + both Next.js web apps pointed at the local deployment
  *
  * While the stack runs, .env.local points at the local deployment (the convex
  * CLI rewrites it); it is restored to its original contents on Ctrl-C/exit.
@@ -21,9 +21,10 @@
  *
  * Options (env vars):
  *   CONVERTER_PORT=8090   host port for the converter (default 8090)
- *   RENDERER_PORT=8081    host port for the renderer (default 8081)
+ *   RENDERER_PORT=8091    host port for the renderer (default 8091)
  *   CONVERTER_REBUILD=1   rebuild converter image (default: reuse existing image)
- *   WEB_PORT=3005         port for the web dev server (default 3005)
+ *   WEB_PORT=3005         port for the admin web dev server (default 3005)
+ *   CLIENT_WEB_PORT=3020  port for the client web dev server (default 3020)
  *   ADMIN_EMAILS=you@x.y  grant admin to your login on the local deployment
  */
 
@@ -45,8 +46,9 @@ const LOCAL_CONVEX_URL = "http://127.0.0.1:3210";
 const LOCAL_CONVEX_SITE_URL = "http://127.0.0.1:3211";
 
 const CONVERTER_PORT = process.env.CONVERTER_PORT ?? "8090";
-const RENDERER_PORT = process.env.RENDERER_PORT ?? "8081";
+const RENDERER_PORT = process.env.RENDERER_PORT ?? "8091";
 const WEB_PORT = process.env.WEB_PORT ?? "3005";
+const CLIENT_WEB_PORT = process.env.CLIENT_WEB_PORT ?? "3020";
 const CALLBACK_SECRET =
   process.env.CONVERTER_CALLBACK_SECRET ?? "local-dev-secret";
 const RENDERER_CALLBACK_SECRET =
@@ -260,9 +262,10 @@ async function main() {
   console.log("Configuring local Convex deployment…");
   setConvexEnvVars();
 
-  console.log(`\nStarting convex dev + renderer + web (http://localhost:${WEB_PORT})…`);
+  console.log("\nStarting convex dev + renderer + web apps…");
   console.log(
     `  admin page:  http://localhost:${WEB_PORT}/admin/source-docs\n` +
+      `  client app:  http://localhost:${CLIENT_WEB_PORT}\n` +
       `  walkthrough: npm run walkthrough:local (in another terminal)\n` +
       (process.env.ADMIN_EMAILS
         ? ""
@@ -283,6 +286,19 @@ async function main() {
       PORT: WEB_PORT,
     },
   });
+  const clientWebDev = spawn(
+    "npm",
+    ["run", "dev", "--workspace=@counseliq/client-web"],
+    {
+      cwd: ROOT,
+      env: {
+        ...process.env,
+        NEXT_PUBLIC_CONVEX_URL: LOCAL_CONVEX_URL,
+        NEXT_PUBLIC_CONVEX_SITE_URL: LOCAL_CONVEX_SITE_URL,
+        PORT: CLIENT_WEB_PORT,
+      },
+    }
+  );
   const rendererDev = spawn("npm", ["run", "dev", "--workspace=@counseliq/renderer"], {
     cwd: ROOT,
     env: {
@@ -301,6 +317,8 @@ async function main() {
   prefixStream(convexDev.stderr, "[convex]");
   prefixStream(webDev.stdout, "[web]");
   prefixStream(webDev.stderr, "[web]");
+  prefixStream(clientWebDev.stdout, "[client-web]");
+  prefixStream(clientWebDev.stderr, "[client-web]");
   prefixStream(rendererDev.stdout, "[renderer]");
   prefixStream(rendererDev.stderr, "[renderer]");
 
@@ -308,6 +326,7 @@ async function main() {
     console.log("\nShutting down…");
     convexDev.kill("SIGINT");
     webDev.kill("SIGINT");
+    clientWebDev.kill("SIGINT");
     rendererDev.kill("SIGINT");
     spawnSync("docker", ["compose", "-f", COMPOSE_FILE, "stop"], {
       cwd: ROOT,
@@ -319,7 +338,7 @@ async function main() {
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
 
-  for (const child of [convexDev, webDev, rendererDev]) {
+  for (const child of [convexDev, webDev, clientWebDev, rendererDev]) {
     child.on("exit", (code) => {
       if (code !== 0 && code !== null) {
         console.error(`A stack process exited with code ${code}`);

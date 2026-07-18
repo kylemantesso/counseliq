@@ -15,6 +15,7 @@ export interface PreviewNarrationSentence {
 export interface PreviewCard {
   template: string;
   props: Record<string, unknown>;
+  visualTreatment?: "standard" | "avatar-overlay";
   enterAt: { narration: string; word: string };
   provenance: string;
 }
@@ -58,6 +59,7 @@ export interface PreviewUnit {
   };
   script?: UnitScript | null;
   timing?: UnitTiming | null;
+  avatarTrack?: { objectKey: string; durationMs: number } | null;
 }
 
 export interface PreviewModule {

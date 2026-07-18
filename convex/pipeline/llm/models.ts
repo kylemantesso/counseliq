@@ -34,6 +34,8 @@ export const LLM_TASKS = [
   "judge-course",
   "tag-asset",
   "outline-course",
+  "assign-avatar-look",
+  "evaluate-avatar-look",
 ] as const;
 
 export type LlmTask = (typeof LLM_TASKS)[number];
@@ -50,6 +52,8 @@ const DEFAULT_MODELS: LlmModelRouting = {
   "judge-course": "anthropic/claude-sonnet-4.5",
   "tag-asset": "google/gemini-2.5-flash",
   "outline-course": "google/gemini-2.5-flash",
+  "assign-avatar-look": "google/gemini-2.5-flash",
+  "evaluate-avatar-look": "google/gemini-2.5-flash",
 };
 
 const ENV_OVERRIDES: Record<LlmTask, string> = {
@@ -60,6 +64,8 @@ const ENV_OVERRIDES: Record<LlmTask, string> = {
   "judge-course": "MODEL_JUDGE_COURSE",
   "tag-asset": "MODEL_TAG_ASSET",
   "outline-course": "MODEL_OUTLINE_COURSE",
+  "assign-avatar-look": "MODEL_ASSIGN_AVATAR_LOOK",
+  "evaluate-avatar-look": "MODEL_EVALUATE_AVATAR_LOOK",
 };
 
 function normalizedOverride(value: string | null | undefined): string | null {
@@ -112,6 +118,8 @@ const MAX_OUTPUT_TOKENS: Record<LlmTask, number> = {
   "judge-course": 16384,
   "tag-asset": 2048,
   "outline-course": 16384,
+  "assign-avatar-look": 2048,
+  "evaluate-avatar-look": 2048,
 };
 
 /** OpenRouter model string for a task (config > env > default). */
@@ -143,5 +151,7 @@ export function currentModelRouting(
     "judge-course": modelForTask("judge-course", configuredOverrides),
     "tag-asset": modelForTask("tag-asset", configuredOverrides),
     "outline-course": modelForTask("outline-course", configuredOverrides),
+    "assign-avatar-look": modelForTask("assign-avatar-look", configuredOverrides),
+    "evaluate-avatar-look": modelForTask("evaluate-avatar-look", configuredOverrides),
   };
 }

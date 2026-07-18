@@ -15,6 +15,8 @@ import {
   isAssetCleared,
   isCatalogueAsset,
 } from "./assetsCatalogue";
+import type { CoursePresentation } from "@counseliq/course-schema";
+import { requeueRetryableAvatarGeneration } from "./avatar/jobs";
 
 const decisionValidator = v.union(v.literal("approve"), v.literal("reject"));
 type GateDecision = "approve" | "reject";
@@ -27,6 +29,7 @@ type ResumeResult = {
     | "outline"
     | "compile"
     | "assets"
+    | "avatar"
     | "publish"
     | "render"
     | "recovered"
@@ -76,6 +79,8 @@ function recoveryStateForFailedFromState(fromState: RunState): RunState | null {
       return "COMPILING";
     case "GENERATING_ASSETS":
       return "GENERATING_SCRIPT";
+    case "GENERATING_AVATAR":
+      return "GENERATING_AVATAR";
     case "FAILED":
       return null;
     default:
@@ -114,6 +119,14 @@ async function queueResumeForState(
   if (state === "GENERATING_SCRIPT" || state === "GENERATING_ASSETS") {
     await start(ctx, internal.pipeline.workflows.generateAssets, { runId });
     return { queued: true, stage: "assets" as const };
+  }
+
+  if (state === "GENERATING_AVATAR") {
+    await requeueRetryableAvatarGeneration(ctx, runId);
+    await ctx.scheduler.runAfter(0, internal.pipeline.avatar.heygen.dispatchQueuedAvatarJobs, {
+      runId,
+    });
+    return { queued: true, stage: "avatar" as const };
   }
 
   if (state === "PUBLISHING") {
@@ -185,7 +198,8 @@ async function startRunHelper(
   institutionId: Id<"institutions">,
   sourceDocIds: Id<"sourceDocs">[] = [],
   brief?: string,
-  assetIds?: Id<"assets">[]
+  assetIds?: Id<"assets">[],
+  presentation?: CoursePresentation
 ): Promise<Id<"runs">> {
   const institution = await ctx.db.get(institutionId);
   if (!institution) {
@@ -234,6 +248,7 @@ async function startRunHelper(
     promptVersions: {},
     ...(assetIds !== undefined ? { hasExplicitAssetSelection: true } : {}),
     ...(trimmedBrief ? { brief: trimmedBrief } : {}),
+    ...(presentation !== undefined ? { presentation } : {}),
   });
 
   for (const assetId of assetIds ?? []) {
@@ -394,6 +409,7 @@ export const startRun = internalMutation({
     sourceDocIds: v.optional(v.array(v.id("sourceDocs"))),
     brief: v.optional(v.string()),
     assetIds: v.optional(v.array(v.id("assets"))),
+    presentation: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
     return await startRunHelper(
@@ -401,7 +417,8 @@ export const startRun = internalMutation({
       args.institutionId,
       args.sourceDocIds,
       args.brief,
-      args.assetIds
+      args.assetIds,
+      args.presentation as CoursePresentation | undefined
     );
   },
 });
@@ -434,6 +451,7 @@ export const adminStartRun = mutation({
     sourceDocIds: v.optional(v.array(v.id("sourceDocs"))),
     brief: v.optional(v.string()),
     assetIds: v.optional(v.array(v.id("assets"))),
+    presentation: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
@@ -442,7 +460,8 @@ export const adminStartRun = mutation({
       args.institutionId,
       args.sourceDocIds,
       args.brief,
-      args.assetIds
+      args.assetIds,
+      args.presentation as CoursePresentation | undefined
     );
   },
 });
